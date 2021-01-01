@@ -29,6 +29,96 @@
 
 namespace gandiva {
 
+class ProjectorCacheKey {
+ public:
+  ProjectorCacheKey(SchemaPtr schema, std::shared_ptr<Configuration> configuration,
+                    ExpressionVector expression_vector, SelectionVector::Mode mode)
+      : schema_(schema), configuration_(configuration), mode_(mode), uniqifier_(0) {
+    static const int kSeedValue = 4;
+    size_t result = kSeedValue;
+    for (auto& expr : expression_vector) {
+      std::string expr_as_string = expr->ToString();
+      expressions_as_strings_.push_back(expr_as_string);
+      arrow::internal::hash_combine(result, expr_as_string);
+      UpdateUniqifier(expr_as_string);
+    }
+    arrow::internal::hash_combine(result, static_cast<size_t>(mode));
+    arrow::internal::hash_combine(result, configuration->Hash());
+    arrow::internal::hash_combine(result, schema_->ToString());
+    arrow::internal::hash_combine(result, uniqifier_);
+    hash_code_ = result;
+  }
+
+  std::size_t Hash() const { return hash_code_; }
+
+  bool operator==(const ProjectorCacheKey& other) const {
+    // arrow schema does not overload equality operators.
+    if (!(schema_->Equals(*other.schema().get(), true))) {
+      return false;
+    }
+
+    if (*configuration_ != *other.configuration_) {
+      return false;
+    }
+
+    if (expressions_as_strings_ != other.expressions_as_strings_) {
+      return false;
+    }
+
+    if (mode_ != other.mode_) {
+      return false;
+    }
+
+    if (uniqifier_ != other.uniqifier_) {
+      return false;
+    }
+    return true;
+  }
+
+  bool operator!=(const ProjectorCacheKey& other) const { return !(*this == other); }
+
+  SchemaPtr schema() const { return schema_; }
+
+  std::string ToString() const {
+    std::stringstream ss;
+    // indent, window, indent_size, null_rep and skip new lines.
+    arrow::PrettyPrintOptions options{0, 10, 2, "null", true};
+    DCHECK_OK(PrettyPrint(*schema_.get(), options, &ss));
+
+    ss << "Expressions: [";
+    bool first = true;
+    for (auto& expr : expressions_as_strings_) {
+      if (first) {
+        first = false;
+      } else {
+        ss << ", ";
+      }
+
+      ss << expr;
+    }
+    ss << "]";
+    return ss.str();
+  }
+
+ private:
+  void UpdateUniqifier(const std::string& expr) {
+    if (uniqifier_ == 0) {
+      // caching of expressions with re2 patterns causes lock contention. So, use
+      // multiple instances to reduce contention.
+      if (expr.find(" like(") != std::string::npos) {
+        uniqifier_ = std::hash<std::thread::id>()(std::this_thread::get_id()) % 16;
+      }
+    }
+  }
+
+  const SchemaPtr schema_;
+  const std::shared_ptr<Configuration> configuration_;
+  SelectionVector::Mode mode_;
+  std::vector<std::string> expressions_as_strings_;
+  size_t hash_code_;
+  uint32_t uniqifier_;
+};
+
 Projector::Projector(std::unique_ptr<LLVMGenerator> llvm_generator, SchemaPtr schema,
                      const FieldVector& output_fields,
                      std::shared_ptr<Configuration> configuration)
@@ -217,6 +307,35 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   // Create and return array arrays.
   output->clear();
   for (auto& array_data : output_data_vecs) {
+    if (array_data->type->id() == arrow::Type::LIST) {
+      auto child_data = array_data->child_data[0];
+      int64_t child_data_size = 1;
+      if (arrow::is_binary_like(child_data->type->id())) {
+        /* when allocate array data, child data length is an initialized value,
+         * after calculating, child data offsets buffer has been resized for results,
+         * but array data length is unchanged.
+         * We should recalculate child data length and make ArrayData with new length
+         *
+         * Otherwise, child data offsets buffer length is data length + 1
+         * and offset data is int32_t, need use buffer->size()/4 - 1
+         */
+        child_data_size = child_data->buffers[1]->size() / 4 - 1;
+      } else if (child_data->type->id() == arrow::Type::INT32) {
+        child_data_size = child_data->buffers[1]->size() / 4;
+      } else if (child_data->type->id() == arrow::Type::INT64) {
+        child_data_size = child_data->buffers[1]->size() / 8;
+      } else if (child_data->type->id() == arrow::Type::FLOAT) {
+        child_data_size = child_data->buffers[1]->size() / 4;
+      } else if (child_data->type->id() == arrow::Type::DOUBLE) {
+        child_data_size = child_data->buffers[1]->size() / 8;
+      }
+      auto new_child_data = arrow::ArrayData::Make(
+          child_data->type, child_data_size, child_data->buffers, child_data->offset);
+      array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
+                                          array_data->buffers, {new_child_data},
+                                          array_data->null_count, array_data->offset);
+    }
+
     output->push_back(arrow::MakeArray(array_data));
   }
   return Status::OK();
@@ -243,6 +362,23 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
     buffers.push_back(std::move(offsets_buffer));
   }
 
+  if (type_id == arrow::Type::LIST) {
+    auto offsets_len = arrow::BitUtil::BytesForBits((num_records + 1) * 32);
+
+    ARROW_ASSIGN_OR_RAISE(auto offsets_buffer, arrow::AllocateBuffer(offsets_len, pool));
+    buffers.push_back(std::move(offsets_buffer));
+
+    if (arrow::is_binary_like(type->field(0)->type()->id())) {
+      // child offsets length is internal data length + 1
+      // offsets element is int32
+      // so here i just allocate extra 32 bit for extra 1 length
+      ARROW_ASSIGN_OR_RAISE(
+          auto child_offsets_buffer,
+          arrow::AllocateResizableBuffer(arrow::BitUtil::BytesForBits(32), pool));
+      buffers.push_back(std::move(child_offsets_buffer));
+    }
+  }
+
   // The output vector always has a data array.
   int64_t data_len;
   if (arrow::is_primitive(type_id) || type_id == arrow::Type::DECIMAL) {
@@ -250,6 +386,8 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
     data_len = arrow::bit_util::BytesForBits(num_records * fw_type.bit_width());
   } else if (arrow::is_binary_like(type_id)) {
     // we don't know the expected size for varlen output vectors.
+    data_len = 0;
+  } else if (type_id == arrow::Type::LIST) {
     data_len = 0;
   } else {
     return Status::Invalid("Unsupported output data type " + type->ToString());
@@ -263,7 +401,24 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   }
   buffers.push_back(std::move(data_buffer));
 
-  *array_data = arrow::ArrayData::Make(type, num_records, std::move(buffers));
+  if (type->id() == arrow::Type::LIST) {
+    auto internal_type = type->field(0)->type();
+    ArrayDataPtr child_data;
+    if (arrow::is_primitive(internal_type->id())) {
+      child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
+                                          {nullptr, std::move(buffers[2])}, 0);
+    }
+    if (arrow::is_binary_like(internal_type->id())) {
+      child_data = arrow::ArrayData::Make(
+          internal_type, 0 /*initialize length*/,
+          {nullptr, std::move(buffers[2]), std::move(buffers[3])}, 0);
+    }
+    *array_data = arrow::ArrayData::Make(
+        type, num_records, {std::move(buffers[0]), std::move(buffers[1])}, {child_data});
+
+  } else {
+    *array_data = arrow::ArrayData::Make(type, num_records, std::move(buffers));
+  }
   return Status::OK();
 }
 
@@ -290,7 +445,7 @@ Status Projector::ValidateArrayDataCapacity(const arrow::ArrayData& array_data,
                       min_bitmap_len, " actual size ", bitmap_len));
 
   auto type_id = field.type()->id();
-  if (arrow::is_binary_like(type_id)) {
+  if (arrow::is_binary_like(type_id) || type_id == arrow::Type::LIST) {
     // validate size of offsets buffer.
     int64_t min_offsets_len = arrow::bit_util::BytesForBits((num_records + 1) * 32);
     int64_t offsets_len = array_data.buffers[1]->capacity();
@@ -338,5 +493,6 @@ std::shared_ptr<arrow::Buffer> Projector::GetSecondaryCacheKey(std::string prima
   std::string key = std::string(Engine::GetCpuIdentifier()) + " | " + primaryKey;
   return arrow::Buffer::FromString(key);
 }
+
 
 }  // namespace gandiva
