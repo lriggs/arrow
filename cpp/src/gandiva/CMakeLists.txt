@@ -61,9 +61,11 @@ set(SRC_FILES
     expression_registry.cc
     exported_funcs_registry.cc
     filter.cc
+    array_ops.cc
     function_ir_builder.cc
     function_registry.cc
     function_registry_arithmetic.cc
+    function_registry_array.cc
     function_registry_datetime.cc
     function_registry_hash.cc
     function_registry_math_ops.cc
@@ -249,7 +251,20 @@ add_gandiva_test(internals-test
                  random_generator_holder_test.cc
                  hash_utils_test.cc
                  gdv_function_stubs_test.cc
+<<<<<<< HEAD
                  interval_holder_test.cc)
+=======
+                 array_ops_test.cc
+                 EXTRA_DEPENDENCIES
+                 LLVM::LLVM_INTERFACE
+                 EXTRA_INCLUDES
+                 $<TARGET_PROPERTY:LLVM::LLVM_INTERFACE,INTERFACE_INCLUDE_DIRECTORIES>
+                 ${GANDIVA_INTERNALS_TEST_ARGUMENTS})
+
+if(ARROW_GANDIVA_JAVA)
+  add_subdirectory(jni)
+endif()
+>>>>>>> cdcde4e08 (add two list type input gandiva function)
 
 add_subdirectory(precompiled)
 add_subdirectory(tests)
