@@ -32,6 +32,7 @@ add_gandiva_test(projector-test
                  null_validity_test.cc
                  projector_build_validation_test.cc
                  projector_test.cc
+                 secondary_cache_test
                  test_util.cc
                  to_string_test.cc
                  utf8_test.cc)
