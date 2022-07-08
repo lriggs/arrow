@@ -341,9 +341,6 @@ Arrow repository, and update the following settings:
   Settings > Build, Execution, Deployment > Compiler > Java Compiler and disable
   "Use '--release' option for cross-compilation (Java 9 and later)". Otherwise
   you will get an error like "package sun.misc does not exist".
-* You may want to disable error-prone entirely if it gives spurious
-  warnings (disable both error-prone profiles in the Maven tool window
-  and "Reload All Maven Projects").
 * If using IntelliJ's Maven integration to build, you may need to change
   ``<fork>`` to ``false`` in the pom.xml files due to an `IntelliJ bug
   <https://youtrack.jetbrains.com/issue/IDEA-278903>`__.
