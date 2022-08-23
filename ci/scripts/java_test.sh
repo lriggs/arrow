@@ -18,9 +18,12 @@
 
 set -ex
 
+if [[ "${ARROW_JAVA_TEST:-ON}" != "ON" ]]; then
+  exit
+fi
+
 arrow_dir=${1}
 source_dir=${1}/java
-cpp_build_dir=${2}/cpp/${ARROW_BUILD_TYPE:-debug}
 java_jni_dist_dir=${3}
 
 # For JNI and Plasma tests
@@ -36,7 +39,7 @@ pushd ${source_dir}
 ${mvn} test
 
 if [ "${ARROW_JNI}" = "ON" ]; then
-  ${mvn} test -Parrow-jni -pl adapter/orc,gandiva,dataset -Darrow.cpp.build.dir=${cpp_build_dir}
+  ${mvn} test -Parrow-jni -pl adapter/orc,gandiva,dataset -Darrow.cpp.build.dir=${java_jni_dist_dir}
 fi
 
 if [ "${ARROW_JAVA_CDATA}" = "ON" ]; then

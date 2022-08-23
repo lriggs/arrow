@@ -28,7 +28,11 @@ jobs:
       {{ macros.github_checkout_arrow()|indent }}
       {{ macros.github_install_archery()|indent }}
       - name: Build C++ Libs
-        run: archery docker run java-jni-manylinux-2014
+        run: |
+          archery docker run \
+            -e ARROW_JAVA_BUILD=OFF \
+            -e ARROW_JAVA_TEST=OFF \
+            java-jni-manylinux-2014
       - name: Compress into single artifact to keep directory structure
         run: tar -cvzf arrow-shared-libs-linux.tar.gz arrow/java-dist/
       - name: Upload Artifacts
@@ -77,6 +81,9 @@ jobs:
           # We uninstall Homebrew's RE2 to ensure using bundled RE2.
           brew uninstall grpc || : # gRPC depends on RE2
           brew uninstall re2 || :
+      - name: Setup ccache
+        run: |
+          arrow/ci/scripts/ccache_setup.sh
       - name: Build C++ Libs
         run: |
           set -e
