@@ -43,43 +43,10 @@ jobs:
         run: archery docker push java-jni-manylinux-2014
     {% endif %}
 
-  build-cpp-macos:
-    name: Build C++ Libs MacOS
-    runs-on: macos-latest
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "10.13"
-    steps:
-      {{ macros.github_checkout_arrow()|indent }}
-      {{ macros.github_install_archery()|indent }}
-      - name: Install Dependencies
-        run: |
-          brew install --overwrite git
-          brew bundle --file=arrow/cpp/Brewfile
-          # We want to link aws-sdk-cpp statically but Homebrew's
-          # aws-sdk-cpp provides only shared library. If we have
-          # Homebrew's aws-sdk-cpp, our build mix Homebrew's
-          # aws-sdk-cpp and bundled aws-sdk-cpp. We uninstall Homebrew's
-          # aws-sdk-cpp to ensure using only bundled aws-sdk-cpp.
-          brew uninstall aws-sdk-cpp
-      - name: Build C++ Libs
-        run: |
-          set -e
-          arrow/ci/scripts/java_jni_macos_build.sh \
-            $GITHUB_WORKSPACE/arrow \
-            $GITHUB_WORKSPACE/arrow/cpp-build \
-            $GITHUB_WORKSPACE/arrow/java-dist
-      - name: Compress into single artifact to keep directory structure
-        run: tar -cvzf arrow-shared-libs-macos.tar.gz arrow/java-dist/
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: macos-shared-lib
-          path: arrow-shared-libs-macos.tar.gz
-
   package-jars:
     name: Build Jar Files
-    runs-on: macos-latest
-    needs: [build-cpp-macos, build-cpp-ubuntu]
+    runs-on: macos-11
+    needs: [build-cpp-ubuntu]
     steps:
       {{ macros.github_checkout_arrow(fetch_depth=0)|indent }}
       - name: Download Linux C++ Libraries
@@ -93,18 +60,23 @@ jobs:
       - name: Descompress artifacts
         run: |
           tar -xvzf arrow-shared-libs-linux.tar.gz
-          tar -xvzf arrow-shared-libs-macos.tar.gz
+      - name: Copy custom dylibs
+        run: |
+          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_cdata_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_dataset_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_orc_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libgandiva_jni.dylib arrow/java-dist/x86_64/
       - name: Test that Shared Libraries Exist
         run: |
           set -x
-          test -f arrow/java-dist/libarrow_cdata_jni.dylib
-          test -f arrow/java-dist/libarrow_dataset_jni.dylib
-          test -f arrow/java-dist/libgandiva_jni.dylib
-          test -f arrow/java-dist/libarrow_orc_jni.dylib
-          test -f arrow/java-dist/libarrow_cdata_jni.so
-          test -f arrow/java-dist/libarrow_dataset_jni.so
-          test -f arrow/java-dist/libarrow_orc_jni.so
-          test -f arrow/java-dist/libgandiva_jni.so
+          test -f arrow/java-dist/x86_64/libarrow_cdata_jni.dylib
+          test -f arrow/java-dist/x86_64/libarrow_dataset_jni.dylib
+          test -f arrow/java-dist/x86_64/libgandiva_jni.dylib
+          test -f arrow/java-dist/x86_64/libarrow_orc_jni.dylib
+          test -f arrow/java-dist/x86_64/libarrow_cdata_jni.so
+          test -f arrow/java-dist/x86_64/libarrow_dataset_jni.so
+          test -f arrow/java-dist/x86_64/libarrow_orc_jni.so
+          test -f arrow/java-dist/x86_64/libgandiva_jni.so
       - name: Build Bundled Jar
         run: |
           set -e
