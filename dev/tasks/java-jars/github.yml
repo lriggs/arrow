@@ -43,10 +43,64 @@ jobs:
         run: archery docker push java-jni-manylinux-2014
     {% endif %}
 
+  build-cpp-macos:
+    name: Build C++ Libs MacOS
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "10.13"
+    steps:
+      {{ macros.github_checkout_arrow()|indent }}
+      {{ macros.github_install_archery()|indent }}
+      - name: Install Dependencies
+        run: |
+          # We want to use llvm@14 to avoid shared z3
+          # dependency. llvm@14 doesn't depend on z3 and llvm depends
+          # on z3. And Homebrew's z3 provides only shared library. It
+          # doesn't provides static z3 because z3's CMake doesn't accept
+          # building both shared and static libraries at once
+          # See also: Z3_BUILD_LIBZ3_SHARED in
+          # https://github.com/Z3Prover/z3/blob/master/README-CMake.md
+          #
+          # If llvm is installed, Apache Arrow C++ uses llvm rather than
+          # llvm@14 because llvm is newer than llvm@14.
+          brew uninstall llvm || :
+            
+          brew bundle --file=arrow/cpp/Brewfile
+          # We want to link aws-sdk-cpp statically but Homebrew's
+          # aws-sdk-cpp provides only shared library. If we have
+          # Homebrew's aws-sdk-cpp, our build mix Homebrew's
+          # aws-sdk-cpp and bundled aws-sdk-cpp. We uninstall Homebrew's
+          # aws-sdk-cpp to ensure using only bundled aws-sdk-cpp.
+          brew uninstall aws-sdk-cpp
+          # We want to use bundled RE2 for static linking. If
+          # Homebrew's RE2 is installed, its header file may be used.
+          # We uninstall Homebrew's RE2 to ensure using bundled RE2.
+          brew uninstall grpc || : # gRPC depends on RE2
+          brew uninstall re2 || :
+      - name: Build C++ Libs
+        run: |
+          set -e
+          # make brew Java available to CMake
+          if [ "x68_64" = "aarch_64" ]; then
+            export JAVA_HOME=$(brew --prefix openjdk@11)/libexec/openjdk.jdk/Contents/Home
+          fi
+          export PATH=/usr/local/opt/llvm@14//bin:$PATH
+          arrow/ci/scripts/java_jni_macos_build.sh \
+            $GITHUB_WORKSPACE/arrow \
+            $GITHUB_WORKSPACE/arrow/cpp-build \
+            $GITHUB_WORKSPACE/arrow/java-dist
+      - name: Compress into single artifact to keep directory structure
+        run: tar -cvzf arrow-shared-libs-macos.tar.gz arrow/java-dist/
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: macos-shared-lib
+          path: arrow-shared-libs-macos.tar.gz
+
   package-jars:
     name: Build Jar Files
     runs-on: macos-11
-    needs: [build-cpp-ubuntu]
+    needs: [build-cpp-macos, build-cpp-ubuntu]
     steps:
       {{ macros.github_checkout_arrow(fetch_depth=0)|indent }}
       - name: Download Linux C++ Libraries
@@ -60,6 +114,7 @@ jobs:
       - name: Descompress artifacts
         run: |
           tar -xvzf arrow-shared-libs-linux.tar.gz
+          tar -xvzf arrow-shared-libs-macos.tar.gz
       - name: Copy custom dylibs
         run: |
           cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_cdata_jni.dylib arrow/java-dist/x86_64/
