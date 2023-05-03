@@ -21,6 +21,28 @@
 
 jobs:
 
+  #build-cpp-ubuntu:
+  #  name: Build C++ Libs Ubuntu
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    {{ macros.github_checkout_arrow()|indent }}
+  #    {{ macros.github_install_archery()|indent }}
+  #    - name: Build C++ Libs
+  #      run: archery docker run java-jni-manylinux-2014
+  #    - name: Compress into single artifact to keep directory structure
+  #      run: tar -cvzf arrow-shared-libs-linux.tar.gz arrow/java-dist/
+  #    - name: Upload Artifacts
+  #      uses: actions/upload-artifact@v2
+  #      with:
+  #        name: ubuntu-shared-lib
+  #        path: arrow-shared-libs-linux.tar.gz
+  #  {% if arrow.branch == 'master' %}
+  #    {{ macros.github_login_dockerhub()|indent }}
+  #    - name: Push Docker Image
+  #      shell: bash
+  #      run: archery docker push java-jni-manylinux-2014
+  #  {% endif %}
+
   build-cpp-macos:
     name: Build C++ Libs MacOS
     runs-on: macos-latest
