@@ -21,27 +21,27 @@
 
 jobs:
 
-  build-cpp-ubuntu:
-    name: Build C++ Libs Ubuntu
-    runs-on: ubuntu-latest
-    steps:
-      {{ macros.github_checkout_arrow()|indent }}
-      {{ macros.github_install_archery()|indent }}
-      - name: Build C++ Libs
-        run: archery docker run java-jni-manylinux-2014
-      - name: Compress into single artifact to keep directory structure
-        run: tar -cvzf arrow-shared-libs-linux.tar.gz arrow/java-dist/
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: ubuntu-shared-lib
-          path: arrow-shared-libs-linux.tar.gz
-    {% if arrow.branch == 'master' %}
-      {{ macros.github_login_dockerhub()|indent }}
-      - name: Push Docker Image
-        shell: bash
-        run: archery docker push java-jni-manylinux-2014
-    {% endif %}
+  #build-cpp-ubuntu:
+  #  name: Build C++ Libs Ubuntu
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    {{ macros.github_checkout_arrow()|indent }}
+  #    {{ macros.github_install_archery()|indent }}
+  #    - name: Build C++ Libs
+  #      run: archery docker run java-jni-manylinux-2014
+  #    - name: Compress into single artifact to keep directory structure
+  #      run: tar -cvzf arrow-shared-libs-linux.tar.gz arrow/java-dist/
+  #    - name: Upload Artifacts
+  #      uses: actions/upload-artifact@v2
+  #      with:
+  #        name: ubuntu-shared-lib
+  #        path: arrow-shared-libs-linux.tar.gz
+  #  {% if arrow.branch == 'master' %}
+  #    {{ macros.github_login_dockerhub()|indent }}
+  #    - name: Push Docker Image
+  #      shell: bash
+  #      run: archery docker push java-jni-manylinux-2014
+  #  {% endif %}
 
   build-cpp-macos:
     name: Build C++ Libs MacOS
@@ -100,7 +100,8 @@ jobs:
   package-jars:
     name: Build Jar Files
     runs-on: macos-11
-    needs: [build-cpp-macos, build-cpp-ubuntu]
+    needs: [build-cpp-macos]
+    #needs: [build-cpp-macos, build-cpp-ubuntu]
     steps:
       {{ macros.github_checkout_arrow(fetch_depth=0)|indent }}
       - name: Download Linux C++ Libraries
@@ -115,12 +116,6 @@ jobs:
         run: |
           tar -xvzf arrow-shared-libs-linux.tar.gz
           tar -xvzf arrow-shared-libs-macos.tar.gz
-      - name: Copy custom dylibs
-        run: |
-          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_cdata_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_dataset_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libarrow_orc_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/cpp/x86_64/libgandiva_jni.dylib arrow/java-dist/x86_64/
       - name: Test that Shared Libraries Exist
         run: |
           set -x
@@ -132,6 +127,12 @@ jobs:
           test -f arrow/java-dist/x86_64/libarrow_dataset_jni.so
           test -f arrow/java-dist/x86_64/libarrow_orc_jni.so
           test -f arrow/java-dist/x86_64/libgandiva_jni.so
+      - name: Copy custom dylibs
+        run: |
+          cp -L $GITHUB_WORKSPACE/arrow/java_dist/x86_64/libarrow_cdata_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/java_dist/x86_64/libarrow_dataset_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/java_dist/x86_64/libarrow_orc_jni.dylib arrow/java-dist/x86_64/
+          cp -L $GITHUB_WORKSPACE/arrow/java_dist/x86_64/libgandiva_jni.dylib arrow/java-dist/x86_64/
       - name: Build Bundled Jar
         run: |
           set -e
