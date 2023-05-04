@@ -96,12 +96,6 @@ jobs:
           test -f arrow/java-dist/x86_64/libarrow_dataset_jni.dylib
           test -f arrow/java-dist/x86_64/libgandiva_jni.dylib
           test -f arrow/java-dist/x86_64/libarrow_orc_jni.dylib
-      - name: Copy custom dylibs
-        run: |
-          cp -L $GITHUB_WORKSPACE/arrow/java-dist/x86_64/libarrow_cdata_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/java-dist/x86_64/libarrow_dataset_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/java-dist/x86_64/libarrow_orc_jni.dylib arrow/java-dist/x86_64/
-          cp -L $GITHUB_WORKSPACE/arrow/java-dist/x86_64/libgandiva_jni.dylib arrow/java-dist/x86_64/
       - name: Build Bundled Jar
         run: |
           set -e
