@@ -91,7 +91,7 @@ class JniLoader {
     return arch;
   }
 
-private static File moveFileFromJarToTemp(final String tmpDir, String libraryToLoad, String libraryName)
+  private static File moveFileFromJarToTemp(final String tmpDir, String libraryToLoad, String libraryName)
           throws IOException, GandivaException {
     final File temp = setupFile(tmpDir, libraryName);
     try (final InputStream is = JniLoader.class.getClassLoader()
