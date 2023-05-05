@@ -105,6 +105,7 @@ jobs:
         env:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
+          echo "sccache is " $SCCACHE_BUCKET
           set -e
           # make brew Java available to CMake
           if [ "{{ arch }}" = "aarch_64" ]; then
@@ -140,8 +141,8 @@ jobs:
         run: arrow/ci/scripts/install_sccache.sh pc-windows-msvc $(pwd)/sccache
       - name: Build C++ libraries
         shell: cmd
-        #env:
-        #{{ macros.github_set_sccache_envvars()|indent(8) }}
+        env:
+        {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
           call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           REM For ORC
