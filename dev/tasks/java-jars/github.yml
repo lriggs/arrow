@@ -99,6 +99,7 @@ jobs:
           # We uninstall Homebrew's RE2 to ensure using bundled RE2.
           brew uninstall grpc || : # gRPC depends on RE2
           brew uninstall re2 || :
+          brew uninstall sccache || :
 
           brew bundle --file=arrow/java/Brewfile
       - name: Build C++ libraries
@@ -106,6 +107,7 @@ jobs:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
           echo "sccache is " $SCCACHE_BUCKET
+          echo "other way is " "${{ secrets.SCCACHE_BUCKET }}"
           set -e
           # make brew Java available to CMake
           if [ "{{ arch }}" = "aarch_64" ]; then
