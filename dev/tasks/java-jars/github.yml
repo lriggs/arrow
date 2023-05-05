@@ -100,6 +100,7 @@ jobs:
           brew uninstall grpc || : # gRPC depends on RE2
           brew uninstall re2 || :
           brew uninstall sccache || :
+          brew install sccache
 
           brew bundle --file=arrow/java/Brewfile
       - name: Build C++ libraries
