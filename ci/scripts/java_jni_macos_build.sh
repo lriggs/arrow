@@ -136,6 +136,7 @@ archery linking check-dependencies \
   --allow libobjc \
   --allow libplasma_java \
   --allow libz \
+  --allow libzstd \
   libarrow_cdata_jni.dylib \
   libarrow_dataset_jni.dylib \
   libarrow_orc_jni.dylib \
