@@ -67,6 +67,7 @@ jobs:
           pip install -e arrow/dev/archery[crossbow] 
           echo GITHUB_WORKSPACE:$GITHUB_WORKSPACE
           echo GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+          cd arrow
           echo pwd
           pwd
           archery crossbow --queue-path $GITHUB_WORKSPACE --queue-remote https://github.com/$GITHUB_REPOSITORY submit java-jars --job-prefix nightly
