@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <ostream>
@@ -59,7 +60,7 @@ void AssertMakeScalar(const Scalar& expected, MakeScalarArgs&&... args) {
   AssertScalarsEqual(expected, *scalar, /*verbose=*/true);
 }
 
-void AssertParseScalar(const std::shared_ptr<DataType>& type, const util::string_view& s,
+void AssertParseScalar(const std::shared_ptr<DataType>& type, const std::string_view& s,
                        const Scalar& expected) {
   ASSERT_OK_AND_ASSIGN(auto scalar, Scalar::Parse(type, s));
   ASSERT_OK(scalar->Validate());
@@ -643,11 +644,11 @@ TEST(TestFixedSizeBinaryScalar, MakeScalar) {
 
   AssertMakeScalar(FixedSizeBinaryScalar(buf, type), type, buf);
 
-  AssertParseScalar(type, util::string_view(data), FixedSizeBinaryScalar(buf, type));
+  AssertParseScalar(type, std::string_view(data), FixedSizeBinaryScalar(buf, type));
 
   // Wrong length
   ASSERT_RAISES(Invalid, MakeScalar(type, Buffer::FromString(data.substr(3))).status());
-  ASSERT_RAISES(Invalid, Scalar::Parse(type, util::string_view(data).substr(3)).status());
+  ASSERT_RAISES(Invalid, Scalar::Parse(type, std::string_view(data).substr(3)).status());
 }
 
 TEST(TestFixedSizeBinaryScalar, ValidateErrors) {
@@ -831,7 +832,7 @@ TEST(TestTimestampScalars, MakeScalar) {
   auto type3 = timestamp(TimeUnit::MICRO);
   auto type4 = timestamp(TimeUnit::NANO);
 
-  util::string_view epoch_plus_1s = "1970-01-01 00:00:01";
+  std::string_view epoch_plus_1s = "1970-01-01 00:00:01";
 
   AssertMakeScalar(TimestampScalar(1, type1), type1, int64_t(1));
   AssertParseScalar(type1, epoch_plus_1s, TimestampScalar(1000, type1));
@@ -912,6 +913,30 @@ TEST(TestDurationScalars, Basics) {
     ASSERT_TRUE(first->Equals(MakeScalar(ty, 5).ValueOrDie()));
     ASSERT_TRUE(last->Equals(MakeScalar(ty, 42).ValueOrDie()));
   }
+
+  EXPECT_EQ(DurationScalar{std::chrono::nanoseconds{1235}},
+            DurationScalar(1235, TimeUnit::NANO));
+
+  EXPECT_EQ(DurationScalar{std::chrono::microseconds{58}},
+            DurationScalar(58, TimeUnit::MICRO));
+
+  EXPECT_EQ(DurationScalar{std::chrono::milliseconds{952}},
+            DurationScalar(952, TimeUnit::MILLI));
+
+  EXPECT_EQ(DurationScalar{std::chrono::seconds{625}},
+            DurationScalar(625, TimeUnit::SECOND));
+
+  EXPECT_EQ(DurationScalar{std::chrono::minutes{2}},
+            DurationScalar(120, TimeUnit::SECOND));
+
+  // finer than nanoseconds; we can't represent this without truncation
+  using picoseconds = std::chrono::duration<int64_t, std::pico>;
+  static_assert(!std::is_constructible_v<DurationScalar, picoseconds>);
+
+  // between seconds and milliseconds; we could represent this as milliseconds safely, but
+  // it's a pain to support
+  using centiseconds = std::chrono::duration<int64_t, std::centi>;
+  static_assert(!std::is_constructible_v<DurationScalar, centiseconds>);
 }
 
 TEST(TestMonthIntervalScalars, Basics) {
@@ -992,7 +1017,7 @@ TEST(TestDayTimeIntervalScalars, Basics) {
 TYPED_TEST(TestNumericScalar, Cast) {
   auto type = TypeTraits<TypeParam>::type_singleton();
 
-  for (util::string_view repr : {"0", "1", "3"}) {
+  for (std::string_view repr : {"0", "1", "3"}) {
     std::shared_ptr<Scalar> scalar;
     ASSERT_OK_AND_ASSIGN(scalar, Scalar::Parse(type, repr));
 
@@ -1015,7 +1040,7 @@ TYPED_TEST(TestNumericScalar, Cast) {
     if (is_integer_type<TypeParam>::value) {
       ASSERT_OK_AND_ASSIGN(auto cast_to_string, scalar->CastTo(utf8()));
       ASSERT_EQ(
-          util::string_view(*checked_cast<const StringScalar&>(*cast_to_string).value),
+          std::string_view(*checked_cast<const StringScalar&>(*cast_to_string).value),
           repr);
     }
   }
@@ -1609,7 +1634,7 @@ class TestExtensionScalar : public ::testing::Test {
   }
 
  protected:
-  ExtensionScalar MakeUuidScalar(util::string_view value) {
+  ExtensionScalar MakeUuidScalar(std::string_view value) {
     return ExtensionScalar(std::make_shared<FixedSizeBinaryScalar>(
                                std::make_shared<Buffer>(value), storage_type_),
                            type_);
@@ -1618,10 +1643,9 @@ class TestExtensionScalar : public ::testing::Test {
   std::shared_ptr<DataType> type_, storage_type_;
   const UuidType* uuid_type_{nullptr};
 
-  const util::string_view uuid_string1_{UUID_STRING1};
-  const util::string_view uuid_string2_{UUID_STRING2};
-  const util::string_view uuid_json_{"[\"" UUID_STRING1 "\", \"" UUID_STRING2
-                                     "\", null]"};
+  const std::string_view uuid_string1_{UUID_STRING1};
+  const std::string_view uuid_string2_{UUID_STRING2};
+  const std::string_view uuid_json_{"[\"" UUID_STRING1 "\", \"" UUID_STRING2 "\", null]"};
 };
 
 #undef UUID_STRING1

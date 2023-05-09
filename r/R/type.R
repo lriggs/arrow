@@ -22,20 +22,30 @@
 #' @format NULL
 #' @docType class
 #'
-#' @section Methods:
+#' @section R6 Methods:
 #'
-#' TODO
+#' - `$ToString()`: String representation of the DataType
+#' - `$Equals(other)`: Is the DataType equal to `other`
+#' - `$fields()`: The children fields associated with this type
+#' - `$code()`: Produces an R call of the data type.
 #'
+#' There are also some active bindings:
+#' - `$id`: integer Arrow type id.
+#' - `$name`: string Arrow type name.
+#' - `$num_fields`: number of child fields.
+#'
+#' @seealso [infer_type()]
 #' @rdname DataType
 #' @name DataType
+#' @seealso [`data-type`]
 DataType <- R6Class("DataType",
   inherit = ArrowObject,
   public = list(
     ToString = function() {
       DataType__ToString(self)
     },
-    Equals = function(other, ...) {
-      inherits(other, "DataType") && DataType__Equals(self, other)
+    Equals = function(other, check_metadata = FALSE, ...) {
+      inherits(other, "DataType") && DataType__Equals(self, other, isTRUE(check_metadata))
     },
     fields = function() {
       DataType__fields(self)
@@ -57,8 +67,6 @@ INTEGER_TYPES <- as.character(outer(c("uint", "int"), c(8, 16, 32, 64), paste0))
 FLOAT_TYPES <- c("float16", "float32", "float64", "halffloat", "float", "double")
 
 #' Infer the arrow Array type from an R object
-#'
-#' Infer the arrow Array type from an R object.
 #'
 #' [type()] is deprecated in favor of [infer_type()].
 #'
@@ -110,6 +118,20 @@ infer_type.default <- function(x, ..., from_array_infer_type = FALSE) {
     }
   } else {
     Array__infer_type(x)
+  }
+}
+
+#' @export
+infer_type.vctrs_list_of <- function(x, ...) {
+  list_of(infer_type(attr(x, "ptype")))
+}
+
+#' @export
+infer_type.blob <- function(x, ...) {
+  if (sum(lengths(x)) > .Machine$integer.max) {
+    large_binary()
+  } else {
+    binary()
   }
 }
 
@@ -356,7 +378,7 @@ NestedType <- R6Class("NestedType", inherit = DataType)
 #' @param ... For `struct()`, a named list of types to define the struct columns
 #'
 #' @name data-type
-#' @return An Arrow type object inheriting from DataType.
+#' @return An Arrow type object inheriting from [DataType].
 #' @export
 #' @seealso [dictionary()] for creating a dictionary (factor-like) type.
 #' @examples

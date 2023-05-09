@@ -88,10 +88,10 @@ Status LikeHolder::Make(const FunctionNode& node, std::shared_ptr<LikeHolder>* h
   if (node.descriptor()->name() == "ilike") {
     regex_op.set_case_sensitive(false);  // set case-insensitive for ilike function.
 
-    return Make(arrow::util::get<std::string>(literal->holder()), holder, regex_op);
+    return Make(std::get<std::string>(literal->holder()), holder, regex_op);
   }
   if (node.children().size() == 2) {
-    return Make(arrow::util::get<std::string>(literal->holder()), holder);
+    return Make(std::get<std::string>(literal->holder()), holder);
   } else {
     auto escape_char = dynamic_cast<LiteralNode*>(node.children().at(2).get());
     ARROW_RETURN_IF(
@@ -103,8 +103,8 @@ Status LikeHolder::Make(const FunctionNode& node, std::shared_ptr<LikeHolder>* h
         !IsArrowStringLiteral(escape_char_type),
         Status::Invalid(
             "'like' function requires a string literal as the third parameter"));
-    return Make(arrow::util::get<std::string>(literal->holder()),
-                arrow::util::get<std::string>(escape_char->holder()), holder);
+    return Make(std::get<std::string>(literal->holder()),
+                std::get<std::string>(escape_char->holder()), holder);
   }
 }
 
@@ -173,7 +173,7 @@ Status ReplaceHolder::Make(const FunctionNode& node,
       Status::Invalid(
           "'replace' function requires a string literal as the second parameter"));
 
-  return Make(arrow::util::get<std::string>(literal->holder()), holder);
+  return Make(std::get<std::string>(literal->holder()), holder);
 }
 
 Status ReplaceHolder::Make(const std::string& sql_pattern,
@@ -203,7 +203,7 @@ Status ExtractHolder::Make(const FunctionNode& node,
       literal == nullptr || !IsArrowStringLiteral(literal->return_type()->id()),
       Status::Invalid("'extract' function requires a literal as the second parameter"));
 
-  return ExtractHolder::Make(arrow::util::get<std::string>(literal->holder()), holder);
+  return ExtractHolder::Make(std::get<std::string>(literal->holder()), holder);
 }
 
 Status ExtractHolder::Make(const std::string& sql_pattern,

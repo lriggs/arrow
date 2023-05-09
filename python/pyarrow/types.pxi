@@ -141,7 +141,9 @@ cdef class DataType(_Weakrefable):
         self.type = type.get()
         self.pep3118_format = _datatype_to_pep3118(self.type)
 
-    cdef Field field(self, int i):
+    cpdef Field field(self, i):
+        if not isinstance(i, int):
+            raise TypeError(f"Expected int index, got type '{type(i)}'")
         cdef int index = <int> _normalize_index(i, self.type.num_fields())
         return pyarrow_wrap_field(self.type.field(index))
 
@@ -156,16 +158,6 @@ cdef class DataType(_Weakrefable):
         if ty == nullptr:
             raise ValueError("Non-fixed width type")
         return ty.bit_width()
-
-    @property
-    def num_children(self):
-        """
-        The number of child fields.
-        """
-        import warnings
-        warnings.warn("num_children is deprecated, use num_fields",
-                      FutureWarning)
-        return self.num_fields
 
     @property
     def num_fields(self):
@@ -200,22 +192,27 @@ cdef class DataType(_Weakrefable):
         except (TypeError, ValueError):
             return NotImplemented
 
-    def equals(self, other):
+    def equals(self, other, *, check_metadata=False):
         """
         Return true if type is equivalent to passed value.
 
         Parameters
         ----------
         other : DataType or string convertible to DataType
+        check_metadata : bool
+            Whether nested Field metadata equality should be checked as well.
 
         Returns
         -------
         is_equal : bool
         """
-        cdef DataType other_type
+        cdef:
+            DataType other_type
+            c_bool c_check_metadata
 
         other_type = ensure_type(other)
-        return self.type.Equals(deref(other_type.type))
+        c_check_metadata = check_metadata
+        return self.type.Equals(deref(other_type.type), c_check_metadata)
 
     def to_pandas_dtype(self):
         """
@@ -429,12 +426,23 @@ cdef class StructType(DataType):
     Examples
     --------
     >>> import pyarrow as pa
+
+    Accessing fields using direct indexing:
+
     >>> struct_type = pa.struct({'x': pa.int32(), 'y': pa.string()})
     >>> struct_type[0]
     pyarrow.Field<x: int32>
     >>> struct_type['y']
     pyarrow.Field<y: string>
 
+    Accessing fields using ``field()``:
+
+    >>> struct_type.field(1)
+    pyarrow.Field<y: string>
+    >>> struct_type.field('x')
+    pyarrow.Field<x: int32>
+
+    # Creating a schema from the struct type's fields:
     >>> pa.schema(list(struct_type))
     x: int32
     y: string
@@ -494,6 +502,41 @@ cdef class StructType(DataType):
         """
         return self.struct_type.GetFieldIndex(tobytes(name))
 
+    cpdef Field field(self, i):
+        """
+        Select a field by its column name or numeric index.
+
+        Parameters
+        ----------
+        i : int or str
+
+        Returns
+        -------
+        pyarrow.Field
+
+        Examples
+        --------
+
+        >>> import pyarrow as pa
+        >>> struct_type = pa.struct({'x': pa.int32(), 'y': pa.string()})
+
+        Select the second field:
+
+        >>> struct_type.field(1)
+        pyarrow.Field<y: string>
+
+        Select the field named 'x':
+
+        >>> struct_type.field('x')
+        pyarrow.Field<x: int32>
+        """
+        if isinstance(i, (bytes, str)):
+            return self.field_by_name(i)
+        elif isinstance(i, int):
+            return DataType.field(self, i)
+        else:
+            raise TypeError('Expected integer or string index')
+
     def get_all_field_indices(self, name):
         """
         Return sorted list of indices for the fields with the given name.
@@ -525,13 +568,10 @@ cdef class StructType(DataType):
     def __getitem__(self, i):
         """
         Return the struct field with the given index or name.
+
+        Alias of ``field``.
         """
-        if isinstance(i, (bytes, str)):
-            return self.field_by_name(i)
-        elif isinstance(i, int):
-            return self.field(i)
-        else:
-            raise TypeError('Expected integer or string index')
+        return self.field(i)
 
     def __reduce__(self):
         return struct, (list(self),)
@@ -579,9 +619,28 @@ cdef class UnionType(DataType):
         for i in range(len(self)):
             yield self[i]
 
+    cpdef Field field(self, i):
+        """
+        Return a child field by its numeric index.
+
+        Parameters
+        ----------
+        i : int
+
+        Returns
+        -------
+        pyarrow.Field
+        """
+        if isinstance(i, int):
+            return DataType.field(self, i)
+        else:
+            raise TypeError('Expected integer')
+
     def __getitem__(self, i):
         """
         Return a child field by its index.
+
+        Alias of ``field``.
         """
         return self.field(i)
 
@@ -816,7 +875,7 @@ cdef class BaseExtensionType(DataType):
                 f"Expected array or chunked array, got {storage.__class__}")
 
         if not c_storage_type.get().Equals(deref(self.ext_type)
-                                           .storage_type()):
+                                           .storage_type(), False):
             raise TypeError(
                 f"Incompatible storage type for {self}: "
                 f"expected {self.storage_type}, got {storage.type}")
@@ -1252,11 +1311,6 @@ cdef class Field(_Weakrefable):
             return wrapped.to_dict()
         else:
             return wrapped
-
-    def add_metadata(self, metadata):
-        warnings.warn("The 'add_metadata' method is deprecated, use "
-                      "'with_metadata' instead", FutureWarning, stacklevel=2)
-        return self.with_metadata(metadata)
 
     def with_metadata(self, metadata):
         """
@@ -2065,7 +2119,7 @@ cdef class Schema(_Weakrefable):
         Write schema to Buffer:
 
         >>> schema.serialize()
-        <pyarrow.lib.Buffer object at ...>
+        <pyarrow.Buffer address=0x... size=... is_cpu=True is_mutable=True>
         """
         cdef:
             shared_ptr[CBuffer] buffer
@@ -2212,6 +2266,8 @@ def unify_schemas(schemas):
         Schema schema
         vector[shared_ptr[CSchema]] c_schemas
     for schema in schemas:
+        if not isinstance(schema, Schema):
+            raise TypeError("Expected Schema, got {}".format(type(schema)))
         c_schemas.push_back(pyarrow_unwrap_schema(schema))
     return pyarrow_wrap_schema(GetResultValue(UnifySchemas(c_schemas)))
 
@@ -3214,10 +3270,12 @@ def schema(fields, metadata=None):
     >>> import pyarrow as pa
     >>> pa.schema([
     ...     ('some_int', pa.int32()),
-    ...     ('some_string', pa.string())
+    ...     ('some_string', pa.string()),
+    ...     pa.field('some_required_string', pa.string(), nullable=False)
     ... ])
     some_int: int32
     some_string: string
+    some_required_string: string not null
     >>> pa.schema([
     ...     pa.field('some_int', pa.int32()),
     ...     pa.field('some_string', pa.string())

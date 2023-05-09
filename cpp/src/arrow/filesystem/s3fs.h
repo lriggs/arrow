@@ -70,7 +70,7 @@ enum class S3CredentialsKind : int8_t {
 };
 
 /// Pure virtual class for describing custom S3 retry strategies
-class S3RetryStrategy {
+class ARROW_EXPORT S3RetryStrategy {
  public:
   virtual ~S3RetryStrategy() = default;
 
@@ -90,6 +90,12 @@ class S3RetryStrategy {
   /// Returns the time in milliseconds the S3 client should sleep for until retrying.
   virtual int64_t CalculateDelayBeforeNextRetry(const AWSErrorDetail& error,
                                                 int64_t attempted_retries) = 0;
+  /// Returns a stock AWS Default retry strategy.
+  static std::shared_ptr<S3RetryStrategy> GetAwsDefaultRetryStrategy(
+      int64_t max_attempts);
+  /// Returns a stock AWS Standard retry strategy.
+  static std::shared_ptr<S3RetryStrategy> GetAwsStandardRetryStrategy(
+      int64_t max_attempts);
 };
 
 /// Options for the S3FileSystem implementation.
@@ -330,9 +336,17 @@ Status InitializeS3(const S3GlobalOptions& options);
 ARROW_EXPORT
 Status EnsureS3Initialized();
 
+/// Whether S3 was initialized, and not finalized.
+ARROW_EXPORT
+bool IsS3Initialized();
+
 /// Shutdown the S3 APIs.
 ARROW_EXPORT
 Status FinalizeS3();
+
+/// Ensure the S3 APIs are shutdown, but only if not already done.
+ARROW_EXPORT
+Status EnsureS3Finalized();
 
 ARROW_EXPORT
 Result<std::string> ResolveS3BucketRegion(const std::string& bucket);

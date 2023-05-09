@@ -21,6 +21,7 @@
 
 from cython.operator cimport dereference as deref
 
+import codecs
 import collections
 import os
 import warnings
@@ -155,6 +156,7 @@ cdef class Dataset(_Weakrefable):
     cdef void init(self, const shared_ptr[CDataset]& sp):
         self.wrapped = sp
         self.dataset = sp.get()
+        self._scan_options = dict()
 
     @staticmethod
     cdef wrap(const shared_ptr[CDataset]& sp):
@@ -199,8 +201,14 @@ cdef class Dataset(_Weakrefable):
             The new dataset schema.
         """
         cdef shared_ptr[CDataset] copy = GetResultValue(
-            self.dataset.ReplaceSchema(pyarrow_unwrap_schema(schema)))
-        return Dataset.wrap(move(copy))
+            self.dataset.ReplaceSchema(pyarrow_unwrap_schema(schema))
+        )
+
+        d = Dataset.wrap(move(copy))
+        if self._scan_options:
+            # Preserve scan options if set.
+            d._scan_options = self._scan_options.copy()
+        return d
 
     def get_fragments(self, Expression filter=None):
         """Returns an iterator over the fragments in this dataset.
@@ -216,6 +224,18 @@ cdef class Dataset(_Weakrefable):
         -------
         fragments : iterator of Fragment
         """
+        if self._scan_options.get("filter") is not None:
+            # Accessing fragments of a filtered dataset is not supported.
+            # It would be unclear if you wanted to filter the fragments
+            # or the rows in those fragments.
+            raise ValueError(
+                "Retrieving fragments of a filtered or projected "
+                "dataset is not allowed. Remove the filtering."
+            )
+
+        return self._get_fragments(filter)
+
+    def _get_fragments(self, Expression filter):
         cdef:
             CExpression c_filter
             CFragmentIterator c_iterator
@@ -230,6 +250,24 @@ cdef class Dataset(_Weakrefable):
         for maybe_fragment in c_fragments:
             yield Fragment.wrap(GetResultValue(move(maybe_fragment)))
 
+    def _scanner_options(self, options):
+        """Returns the default options to create a new Scanner.
+
+        This is automatically invoked by :meth:`Dataset.scanner`
+        and there is no need to use it.
+        """
+        new_options = options.copy()
+
+        # at the moment only support filter
+        requested_filter = options.get("filter")
+        current_filter = self._scan_options.get("filter")
+        if requested_filter is not None and current_filter is not None:
+            new_options["filter"] = current_filter & requested_filter
+        elif current_filter is not None:
+            new_options["filter"] = current_filter
+
+        return new_options
+
     def scanner(self, **kwargs):
         """
         Build a scan operation against the dataset.
@@ -238,7 +276,7 @@ cdef class Dataset(_Weakrefable):
         which exposes further operations (e.g. loading all data as a
         table, counting rows).
 
-        See the `Scanner.from_dataset` method for further information.
+        See the :meth:`Scanner.from_dataset` method for further information.
 
         Parameters
         ----------
@@ -256,7 +294,7 @@ cdef class Dataset(_Weakrefable):
         ...                   'n_legs': [2, 2, 4, 4, 5, 100],
         ...                   'animal': ["Flamingo", "Parrot", "Dog", "Horse",
         ...                              "Brittle stars", "Centipede"]})
-        >>> 
+        >>>
         >>> import pyarrow.parquet as pq
         >>> pq.write_table(table, "dataset_scanner.parquet")
 
@@ -384,6 +422,61 @@ cdef class Dataset(_Weakrefable):
         """The common schema of the full Dataset"""
         return pyarrow_wrap_schema(self.dataset.schema())
 
+    def filter(self, expression not None):
+        """
+        Apply a row filter to the dataset.
+
+        Parameters
+        ----------
+        expression : Expression
+            The filter that should be applied to the dataset.
+
+        Returns
+        -------
+        Dataset
+        """
+        cdef:
+            Dataset filtered_dataset
+
+        new_filter = expression
+        current_filter = self._scan_options.get("filter")
+        if current_filter is not None and new_filter is not None:
+            new_filter = current_filter & new_filter
+
+        filtered_dataset = self.__class__.__new__(self.__class__)
+        filtered_dataset.init(self.wrapped)
+        filtered_dataset._scan_options = dict(filter=new_filter)
+        return filtered_dataset
+
+    def sort_by(self, sorting, **kwargs):
+        """
+        Sort the Dataset by one or multiple columns.
+
+        Parameters
+        ----------
+        sorting : str or list[tuple(name, order)]
+            Name of the column to use to sort (ascending), or
+            a list of multiple sorting conditions where
+            each entry is a tuple with column name
+            and sorting order ("ascending" or "descending")
+        **kwargs : dict, optional
+            Additional sorting options.
+            As allowed by :class:`SortOptions`
+
+        Returns
+        -------
+        InMemoryDataset
+            A new dataset sorted according to the sort keys.
+        """
+        if isinstance(sorting, str):
+            sorting = [(sorting, "ascending")]
+
+        res = _pc()._exec_plan._sort_source(self, output_type=InMemoryDataset,
+                                            sort_options=_pc().SortOptions(
+                                                sort_keys=sorting, **kwargs
+                                            ))
+        return res
+
     def join(self, right_dataset, keys, right_keys=None, join_type="left outer",
              left_suffix=None, right_suffix=None, coalesce_keys=True,
              use_threads=True):
@@ -439,12 +532,12 @@ cdef class InMemoryDataset(Dataset):
 
     Parameters
     ----------
-    source : The data for this dataset.
-        Can be a RecordBatch, Table, list of
-        RecordBatch/Table, iterable of RecordBatch, or a RecordBatchReader.
+    source : RecordBatch, Table, list, tuple
+        The data for this dataset. Can be a RecordBatch, Table, list of
+        RecordBatch/Table, iterable of RecordBatch, or a RecordBatchReader
         If an iterable is provided, the schema must also be provided.
     schema : Schema, optional
-        Only required if passing an iterable as the source.
+        Only required if passing an iterable as the source
     """
 
     cdef:
@@ -823,7 +916,14 @@ cdef class FileFormat(_Weakrefable):
         return Fragment.wrap(move(c_fragment))
 
     def make_write_options(self):
-        return FileWriteOptions.wrap(self.format.DefaultWriteOptions())
+        sp_write_options = self.format.DefaultWriteOptions()
+        if sp_write_options.get() == nullptr:
+            # DefaultWriteOptions() may return `nullptr` which means that
+            # the format does not yet support writing datasets.
+            raise NotImplementedError(
+                "Writing datasets not yet implemented for this file format."
+            )
+        return FileWriteOptions.wrap(sp_write_options)
 
     @property
     def default_extname(self):
@@ -831,8 +931,14 @@ cdef class FileFormat(_Weakrefable):
 
     @property
     def default_fragment_scan_options(self):
-        return FragmentScanOptions.wrap(
+        dfso = FragmentScanOptions.wrap(
             self.wrapped.get().default_fragment_scan_options)
+        # CsvFileFormat stores a Python-specific encoding field that needs
+        # to be restored because it does not exist in the C++ struct
+        if isinstance(self, CsvFileFormat):
+            if self._read_options_py is not None:
+                dfso.read_options = self._read_options_py
+        return dfso
 
     @default_fragment_scan_options.setter
     def default_fragment_scan_options(self, FragmentScanOptions options):
@@ -1046,6 +1152,28 @@ cdef class FileFragment(Fragment):
             self.partition_expression
         )
 
+    def open(self):
+        """
+        Open a NativeFile of the buffer or file viewed by this fragment.
+        """
+        cdef:
+            shared_ptr[CFileSystem] c_filesystem
+            shared_ptr[CRandomAccessFile] opened
+            c_string c_path
+            NativeFile out = NativeFile()
+
+        if self.buffer is not None:
+            return pa.BufferReader(self.buffer)
+
+        c_path = tobytes(self.file_fragment.source().path())
+        with nogil:
+            c_filesystem = self.file_fragment.source().filesystem()
+            opened = GetResultValue(c_filesystem.get().OpenInputFile(c_path))
+
+        out.set_random_access_file(opened)
+        out.is_readable = True
+        return out
+
     @property
     def path(self):
         """
@@ -1133,9 +1261,26 @@ cdef class FragmentScanOptions(_Weakrefable):
 
 
 cdef class IpcFileWriteOptions(FileWriteOptions):
+    cdef:
+        CIpcFileWriteOptions* ipc_options
 
     def __init__(self):
         _forbid_instantiation(self.__class__)
+
+    @property
+    def write_options(self):
+        out = IpcWriteOptions()
+        out.c_options = CIpcWriteOptions(deref(self.ipc_options.options))
+        return out
+
+    @write_options.setter
+    def write_options(self, IpcWriteOptions write_options not None):
+        self.ipc_options.options.reset(
+            new CIpcWriteOptions(write_options.c_options))
+
+    cdef void init(self, const shared_ptr[CFileWriteOptions]& sp):
+        FileWriteOptions.init(self, sp)
+        self.ipc_options = <CIpcFileWriteOptions*> sp.get()
 
 
 cdef class IpcFileFormat(FileFormat):
@@ -1146,12 +1291,25 @@ cdef class IpcFileFormat(FileFormat):
     def equals(self, IpcFileFormat other):
         return True
 
+    def make_write_options(self, **kwargs):
+        cdef IpcFileWriteOptions opts = \
+            <IpcFileWriteOptions> FileFormat.make_write_options(self)
+        opts.write_options = IpcWriteOptions(**kwargs)
+        return opts
+
     @property
     def default_extname(self):
-        return "feather"
+        return "arrow"
 
     def __reduce__(self):
         return IpcFileFormat, tuple()
+
+
+cdef class FeatherFileFormat(IpcFileFormat):
+
+    @property
+    def default_extname(self):
+        return "feather"
 
 
 cdef class CsvFileFormat(FileFormat):
@@ -1162,15 +1320,19 @@ cdef class CsvFileFormat(FileFormat):
     ----------
     parse_options : pyarrow.csv.ParseOptions
         Options regarding CSV parsing.
+    default_fragment_scan_options : CsvFragmentScanOptions
+        Default options for fragments scan.
     convert_options : pyarrow.csv.ConvertOptions
         Options regarding value conversion.
     read_options : pyarrow.csv.ReadOptions
         General read options.
-    default_fragment_scan_options : CsvFragmentScanOptions
-        Default options for fragments scan.
     """
     cdef:
         CCsvFileFormat* csv_format
+        # The encoding field in ReadOptions does not exist in the C++ struct.
+        # We need to store it here and override it when reading
+        # default_fragment_scan_options.read_options
+        public ReadOptions _read_options_py
 
     # Avoid mistakingly creating attributes
     __slots__ = ()
@@ -1198,6 +1360,8 @@ cdef class CsvFileFormat(FileFormat):
             raise TypeError('`default_fragment_scan_options` must be either '
                             'a dictionary or an instance of '
                             'CsvFragmentScanOptions')
+        if read_options is not None:
+            self._read_options_py = read_options
 
     cdef void init(self, const shared_ptr[CFileFormat]& sp):
         FileFormat.init(self, sp)
@@ -1220,6 +1384,8 @@ cdef class CsvFileFormat(FileFormat):
     cdef _set_default_fragment_scan_options(self, FragmentScanOptions options):
         if options.type_name == 'csv':
             self.csv_format.default_fragment_scan_options = options.wrapped
+            self.default_fragment_scan_options.read_options = options.read_options
+            self._read_options_py = options.read_options
         else:
             super()._set_default_fragment_scan_options(options)
 
@@ -1251,6 +1417,9 @@ cdef class CsvFragmentScanOptions(FragmentScanOptions):
 
     cdef:
         CCsvFragmentScanOptions* csv_options
+        # The encoding field in ReadOptions does not exist in the C++ struct.
+        # We need to store it here and override it when reading read_options
+        ReadOptions _read_options_py
 
     # Avoid mistakingly creating attributes
     __slots__ = ()
@@ -1263,6 +1432,7 @@ cdef class CsvFragmentScanOptions(FragmentScanOptions):
             self.convert_options = convert_options
         if read_options is not None:
             self.read_options = read_options
+            self._read_options_py = read_options
 
     cdef void init(self, const shared_ptr[CFragmentScanOptions]& sp):
         FragmentScanOptions.init(self, sp)
@@ -1278,11 +1448,18 @@ cdef class CsvFragmentScanOptions(FragmentScanOptions):
 
     @property
     def read_options(self):
-        return ReadOptions.wrap(self.csv_options.read_options)
+        read_options = ReadOptions.wrap(self.csv_options.read_options)
+        if self._read_options_py is not None:
+            read_options.encoding = self._read_options_py.encoding
+        return read_options
 
     @read_options.setter
     def read_options(self, ReadOptions read_options not None):
         self.csv_options.read_options = deref(read_options.options)
+        self._read_options_py = read_options
+        if codecs.lookup(read_options.encoding).name != 'utf-8':
+            self.csv_options.stream_transform_func = deref(
+                make_streamwrap_func(read_options.encoding, 'utf-8'))
 
     def equals(self, CsvFragmentScanOptions other):
         return (
@@ -2109,6 +2286,9 @@ cdef class RecordBatchIterator(_Weakrefable):
         self.iterator = make_shared[CRecordBatchIterator](move(iterator))
         return self
 
+    cdef inline shared_ptr[CRecordBatchIterator] unwrap(self) nogil:
+        return self.iterator
+
     def __iter__(self):
         return self
 
@@ -2168,11 +2348,14 @@ cdef class TaggedRecordBatchIterator(_Weakrefable):
 
 
 _DEFAULT_BATCH_SIZE = 2**17
-
+_DEFAULT_BATCH_READAHEAD = 16
+_DEFAULT_FRAGMENT_READAHEAD = 4
 
 cdef void _populate_builder(const shared_ptr[CScannerBuilder]& ptr,
                             object columns=None, Expression filter=None,
                             int batch_size=_DEFAULT_BATCH_SIZE,
+                            int batch_readahead=_DEFAULT_BATCH_READAHEAD,
+                            int fragment_readahead=_DEFAULT_FRAGMENT_READAHEAD,
                             bint use_threads=True, MemoryPool memory_pool=None,
                             FragmentScanOptions fragment_scan_options=None)\
         except *:
@@ -2207,9 +2390,10 @@ cdef void _populate_builder(const shared_ptr[CScannerBuilder]& ptr,
             )
 
     check_status(builder.BatchSize(batch_size))
+    check_status(builder.BatchReadahead(batch_readahead))
+    check_status(builder.FragmentReadahead(fragment_readahead))
     check_status(builder.UseThreads(use_threads))
-    if memory_pool:
-        check_status(builder.Pool(maybe_unbox_memory_pool(memory_pool)))
+    check_status(builder.Pool(maybe_unbox_memory_pool(memory_pool)))
     if fragment_scan_options:
         check_status(
             builder.FragmentScanOptions(fragment_scan_options.wrapped))
@@ -2232,17 +2416,17 @@ cdef class Scanner(_Weakrefable):
         projections.
 
         The list of columns or expressions may use the special fields
-        `__batch_index` (the index of the batch within the fragment), 
-        `__fragment_index` (the index of the fragment within the dataset), 
+        `__batch_index` (the index of the batch within the fragment),
+        `__fragment_index` (the index of the fragment within the dataset),
         `__last_in_fragment` (whether the batch is last in fragment), and
-        `__filename` (the name of the source file or a description of the 
+        `__filename` (the name of the source file or a description of the
         source fragment).
 
         The columns will be passed down to Datasets and corresponding data
         fragments to avoid loading, copying, and deserializing columns
         that will not be required further down the compute chain.
-        By default all of the available columns are projected. 
-        Raises an exception if any of the referenced column names does 
+        By default all of the available columns are projected.
+        Raises an exception if any of the referenced column names does
         not exist in the dataset's Schema.
     filter : Expression, default None
         Scan will return only the rows matching the filter.
@@ -2254,6 +2438,13 @@ cdef class Scanner(_Weakrefable):
         The maximum row count for scanned record batches. If scanned
         record batches are overflowing memory then this method can be
         called to reduce their size.
+    batch_readahead : int, default 16
+        The number of batches to read ahead in a file. This might not work
+        for all file formats. Increasing this number will increase
+        RAM usage but could also improve IO utilization.
+    fragment_readahead : int, default 4
+        The number of files to read ahead. Increasing this number will increase
+        RAM usage but could also improve IO utilization.
     use_threads : bool, default True
         If enabled, then maximum parallelism will be used determined by
         the number of available CPU cores.
@@ -2264,10 +2455,6 @@ cdef class Scanner(_Weakrefable):
         For memory allocations, if required. If not specified, uses the
         default pool.
     """
-
-    cdef:
-        shared_ptr[CScanner] wrapped
-        CScanner* scanner
 
     def __init__(self):
         _forbid_instantiation(self.__class__)
@@ -2286,12 +2473,39 @@ cdef class Scanner(_Weakrefable):
         return self.wrapped
 
     @staticmethod
-    def from_dataset(Dataset dataset not None,
-                     bint use_threads=True, object use_async=None,
-                     MemoryPool memory_pool=None,
-                     object columns=None, Expression filter=None,
+    cdef shared_ptr[CScanOptions] _make_scan_options(Dataset dataset, dict py_scanoptions) except *:
+        cdef:
+            shared_ptr[CScannerBuilder] builder = make_shared[CScannerBuilder](dataset.unwrap())
+
+        py_scanoptions = dataset._scanner_options(py_scanoptions)
+
+        # Need to explicitly expand the arguments as Cython doesn't support
+        # keyword expansion in cdef functions.
+        _populate_builder(
+            builder,
+            columns=py_scanoptions.get("columns"),
+            filter=py_scanoptions.get("filter"),
+            batch_size=py_scanoptions.get("batch_size", _DEFAULT_BATCH_SIZE),
+            batch_readahead=py_scanoptions.get(
+                "batch_readahead", _DEFAULT_BATCH_READAHEAD),
+            fragment_readahead=py_scanoptions.get(
+                "fragment_readahead", _DEFAULT_FRAGMENT_READAHEAD),
+            use_threads=py_scanoptions.get("use_threads", True),
+            memory_pool=py_scanoptions.get("memory_pool"),
+            fragment_scan_options=py_scanoptions.get("fragment_scan_options"))
+
+        return GetResultValue(deref(builder).GetScanOptions())
+
+    @staticmethod
+    def from_dataset(Dataset dataset not None, *,
+                     object columns=None,
+                     Expression filter=None,
                      int batch_size=_DEFAULT_BATCH_SIZE,
-                     FragmentScanOptions fragment_scan_options=None):
+                     int batch_readahead=_DEFAULT_BATCH_READAHEAD,
+                     int fragment_readahead=_DEFAULT_FRAGMENT_READAHEAD,
+                     FragmentScanOptions fragment_scan_options=None,
+                     bint use_threads=True, object use_async=None,
+                     MemoryPool memory_pool=None):
         """
         Create Scanner from Dataset,
 
@@ -2306,10 +2520,10 @@ cdef class Scanner(_Weakrefable):
             projections.
 
             The list of columns or expressions may use the special fields
-            `__batch_index` (the index of the batch within the fragment), 
-            `__fragment_index` (the index of the fragment within the dataset), 
+            `__batch_index` (the index of the batch within the fragment),
+            `__fragment_index` (the index of the fragment within the dataset),
             `__last_in_fragment` (whether the batch is last in fragment), and
-            `__filename` (the name of the source file or a description of the 
+            `__filename` (the name of the source file or a description of the
             source fragment).
 
             The columns will be passed down to Datasets and corresponding data
@@ -2328,6 +2542,16 @@ cdef class Scanner(_Weakrefable):
             The maximum row count for scanned record batches. If scanned
             record batches are overflowing memory then this method can be
             called to reduce their size.
+        batch_readahead : int, default 16
+            The number of batches to read ahead in a file. This might not work
+            for all file formats. Increasing this number will increase
+            RAM usage but could also improve IO utilization.
+        fragment_readahead : int, default 4
+            The number of files to read ahead. Increasing this number will increase
+            RAM usage but could also improve IO utilization.
+        fragment_scan_options : FragmentScanOptions, default None
+            Options specific to a particular scan and fragment type, which
+            can change between different scans of the same dataset.
         use_threads : bool, default True
             If enabled, then maximum parallelism will be used determined by
             the number of available CPU cores.
@@ -2338,12 +2562,9 @@ cdef class Scanner(_Weakrefable):
         memory_pool : MemoryPool, default None
             For memory allocations, if required. If not specified, uses the
             default pool.
-        fragment_scan_options : FragmentScanOptions, default None
-            Options specific to a particular scan and fragment type, which
-            can change between different scans of the same dataset.
         """
         cdef:
-            shared_ptr[CScanOptions] options = make_shared[CScanOptions]()
+            shared_ptr[CScanOptions] options
             shared_ptr[CScannerBuilder] builder
             shared_ptr[CScanner] scanner
 
@@ -2352,22 +2573,25 @@ cdef class Scanner(_Weakrefable):
                           'effect.  It will be removed in the next release.',
                           FutureWarning)
 
+        options = Scanner._make_scan_options(
+            dataset,
+            dict(columns=columns, filter=filter, batch_size=batch_size,
+                 batch_readahead=batch_readahead,
+                 fragment_readahead=fragment_readahead, use_threads=use_threads,
+                 memory_pool=memory_pool, fragment_scan_options=fragment_scan_options)
+        )
         builder = make_shared[CScannerBuilder](dataset.unwrap(), options)
-        _populate_builder(builder, columns=columns, filter=filter,
-                          batch_size=batch_size, use_threads=use_threads,
-                          memory_pool=memory_pool,
-                          fragment_scan_options=fragment_scan_options)
-
         scanner = GetResultValue(builder.get().Finish())
         return Scanner.wrap(scanner)
 
     @staticmethod
-    def from_fragment(Fragment fragment not None, Schema schema=None,
-                      bint use_threads=True, object use_async=None,
-                      MemoryPool memory_pool=None,
+    def from_fragment(Fragment fragment not None, *, Schema schema=None,
                       object columns=None, Expression filter=None,
                       int batch_size=_DEFAULT_BATCH_SIZE,
-                      FragmentScanOptions fragment_scan_options=None):
+                      int batch_readahead=_DEFAULT_BATCH_READAHEAD,
+                      FragmentScanOptions fragment_scan_options=None,
+                      bint use_threads=True, object use_async=None,
+                      MemoryPool memory_pool=None,):
         """
         Create Scanner from Fragment,
 
@@ -2384,10 +2608,10 @@ cdef class Scanner(_Weakrefable):
             projections.
 
             The list of columns or expressions may use the special fields
-            `__batch_index` (the index of the batch within the fragment), 
-            `__fragment_index` (the index of the fragment within the dataset), 
+            `__batch_index` (the index of the batch within the fragment),
+            `__fragment_index` (the index of the fragment within the dataset),
             `__last_in_fragment` (whether the batch is last in fragment), and
-            `__filename` (the name of the source file or a description of the 
+            `__filename` (the name of the source file or a description of the
             source fragment).
 
             The columns will be passed down to Datasets and corresponding data
@@ -2406,6 +2630,13 @@ cdef class Scanner(_Weakrefable):
             The maximum row count for scanned record batches. If scanned
             record batches are overflowing memory then this method can be
             called to reduce their size.
+        batch_readahead : int, default 16
+            The number of batches to read ahead in a file. This might not work
+            for all file formats. Increasing this number will increase
+            RAM usage but could also improve IO utilization.
+        fragment_scan_options : FragmentScanOptions, default None
+            Options specific to a particular scan and fragment type, which
+            can change between different scans of the same dataset.
         use_threads : bool, default True
             If enabled, then maximum parallelism will be used determined by
             the number of available CPU cores.
@@ -2416,9 +2647,16 @@ cdef class Scanner(_Weakrefable):
         memory_pool : MemoryPool, default None
             For memory allocations, if required. If not specified, uses the
             default pool.
-        fragment_scan_options : FragmentScanOptions, default None
-            Options specific to a particular scan and fragment type, which
-            can change between different scans of the same dataset.
+        use_threads : bool, default True
+            If enabled, then maximum parallelism will be used determined by
+            the number of available CPU cores.
+        use_async : bool, default True
+            This flag is deprecated and is being kept for this release for
+            backwards compatibility.  It will be removed in the next
+            release.
+        memory_pool : MemoryPool, default None
+            For memory allocations, if required. If not specified, uses the
+            default pool.
         """
         cdef:
             shared_ptr[CScanOptions] options = make_shared[CScanOptions]()
@@ -2435,7 +2673,9 @@ cdef class Scanner(_Weakrefable):
         builder = make_shared[CScannerBuilder](pyarrow_unwrap_schema(schema),
                                                fragment.unwrap(), options)
         _populate_builder(builder, columns=columns, filter=filter,
-                          batch_size=batch_size, use_threads=use_threads,
+                          batch_size=batch_size, batch_readahead=batch_readahead,
+                          fragment_readahead=_DEFAULT_FRAGMENT_READAHEAD,
+                          use_threads=use_threads,
                           memory_pool=memory_pool,
                           fragment_scan_options=fragment_scan_options)
 
@@ -2443,11 +2683,11 @@ cdef class Scanner(_Weakrefable):
         return Scanner.wrap(scanner)
 
     @staticmethod
-    def from_batches(source, Schema schema=None, bint use_threads=True,
-                     object use_async=None, MemoryPool memory_pool=None,
-                     object columns=None, Expression filter=None,
-                     int batch_size=_DEFAULT_BATCH_SIZE,
-                     FragmentScanOptions fragment_scan_options=None):
+    def from_batches(source, *, Schema schema=None, object columns=None,
+                     Expression filter=None, int batch_size=_DEFAULT_BATCH_SIZE,
+                     FragmentScanOptions fragment_scan_options=None,
+                     bint use_threads=True, object use_async=None,
+                     MemoryPool memory_pool=None):
         """
         Create a Scanner from an iterator of batches.
 
@@ -2468,6 +2708,8 @@ cdef class Scanner(_Weakrefable):
             Scan will return only the rows matching the filter.
         batch_size : int, default 128Ki
             The maximum row count for scanned record batches.
+        fragment_scan_options : FragmentScanOptions
+            The fragment scan options.
         use_threads : bool, default True
             If enabled, then maximum parallelism will be used determined by
             the number of available CPU cores.
@@ -2478,8 +2720,6 @@ cdef class Scanner(_Weakrefable):
         memory_pool : MemoryPool, default None
             For memory allocations, if required. If not specified, uses the
             default pool.
-        fragment_scan_options : FragmentScanOptions
-            The fragment scan options.
         """
         cdef:
             shared_ptr[CScanOptions] options = make_shared[CScanOptions]()
@@ -2508,7 +2748,8 @@ cdef class Scanner(_Weakrefable):
                           FutureWarning)
 
         _populate_builder(builder, columns=columns, filter=filter,
-                          batch_size=batch_size, use_threads=use_threads,
+                          batch_size=batch_size, batch_readahead=_DEFAULT_BATCH_READAHEAD,
+                          fragment_readahead=_DEFAULT_FRAGMENT_READAHEAD, use_threads=use_threads,
                           memory_pool=memory_pool,
                           fragment_scan_options=fragment_scan_options)
         scanner = GetResultValue(builder.get().Finish())

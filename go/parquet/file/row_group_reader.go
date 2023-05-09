@@ -18,11 +18,12 @@ package file
 
 import (
 	"fmt"
+	"sync"
 
-	"github.com/apache/arrow/go/v10/internal/utils"
-	"github.com/apache/arrow/go/v10/parquet"
-	"github.com/apache/arrow/go/v10/parquet/internal/encryption"
-	"github.com/apache/arrow/go/v10/parquet/metadata"
+	"github.com/apache/arrow/go/v11/internal/utils"
+	"github.com/apache/arrow/go/v11/parquet"
+	"github.com/apache/arrow/go/v11/parquet/internal/encryption"
+	"github.com/apache/arrow/go/v11/parquet/metadata"
 	"golang.org/x/xerrors"
 )
 
@@ -38,6 +39,8 @@ type RowGroupReader struct {
 	rgMetadata    *metadata.RowGroupMetaData
 	props         *parquet.ReaderProperties
 	fileDecryptor encryption.FileDecryptor
+
+	bufferPool *sync.Pool
 }
 
 // MetaData returns the metadata of the current Row Group
@@ -65,7 +68,7 @@ func (r *RowGroupReader) Column(i int) (ColumnChunkReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parquet: unable to initialize page reader: %w", err)
 	}
-	return NewColumnReader(descr, pageRdr, r.props.Allocator()), nil
+	return NewColumnReader(descr, pageRdr, r.props.Allocator(), r.bufferPool), nil
 }
 
 func (r *RowGroupReader) GetColumnPageReader(i int) (PageReader, error) {

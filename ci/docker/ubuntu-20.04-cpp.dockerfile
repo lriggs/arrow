@@ -68,6 +68,7 @@ RUN apt-get update -y -q && \
         ca-certificates \
         ccache \
         cmake \
+        curl \
         g++ \
         gcc \
         gdb \
@@ -81,12 +82,20 @@ RUN apt-get update -y -q && \
         libcurl4-openssl-dev \
         libgflags-dev \
         libgoogle-glog-dev \
+        libidn2-dev \
+        libkrb5-dev \
+        libldap-dev \
         liblz4-dev \
+        libnghttp2-dev \
         libprotobuf-dev \
         libprotoc-dev \
+        libpsl-dev \
         libradospp-dev \
         libre2-dev \
+        librtmp-dev \
         libsnappy-dev \
+        libssh-dev \
+        libssh2-1-dev \
         libssl-dev \
         libthrift-dev \
         libutf8proc-dev \
@@ -115,6 +124,9 @@ RUN /arrow/ci/scripts/install_gcs_testbench.sh default
 
 COPY ci/scripts/install_ceph.sh /arrow/ci/scripts/
 RUN /arrow/ci/scripts/install_ceph.sh
+
+COPY ci/scripts/install_sccache.sh /arrow/ci/scripts/
+RUN /arrow/ci/scripts/install_sccache.sh unknown-linux-musl /usr/local/bin
 
 # Prioritize system packages and local installation
 # The following dependencies will be downloaded due to missing/invalid packages

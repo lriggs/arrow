@@ -541,7 +541,9 @@ def dataframe_to_types(df, preserve_index, columns=None):
         if _pandas_api.is_categorical(values):
             type_ = pa.array(c, from_pandas=True).type
         elif _pandas_api.is_extension_array_dtype(values):
-            type_ = pa.array(c.head(0), from_pandas=True).type
+            empty = c.head(0) if isinstance(
+                c, _pandas_api.pd.Series) else c[:0]
+            type_ = pa.array(empty, from_pandas=True).type
         else:
             values, type_ = get_datetimetz_type(values, c.dtype, None)
             type_ = pa.lib._ndarray_to_arrow_type(values, type_)
@@ -1087,9 +1089,8 @@ def _pandas_type_to_numpy_type(pandas_type):
 
 
 def _get_multiindex_codes(mi):
-    # compat for pandas < 0.24 (MI labels renamed to codes).
     if isinstance(mi, _pandas_api.pd.MultiIndex):
-        return mi.codes if hasattr(mi, 'codes') else mi.labels
+        return mi.codes
     else:
         return None
 

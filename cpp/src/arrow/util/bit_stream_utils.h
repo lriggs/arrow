@@ -203,9 +203,10 @@ class BitReader {
 };
 
 inline bool BitWriter::PutValue(uint64_t v, int num_bits) {
-  // TODO: revisit this limit if necessary (can be raised to 64 by fixing some edge cases)
-  DCHECK_LE(num_bits, 32);
-  DCHECK_EQ(v >> num_bits, 0) << "v = " << v << ", num_bits = " << num_bits;
+  DCHECK_LE(num_bits, 64);
+  if (num_bits < 64) {
+    DCHECK_EQ(v >> num_bits, 0) << "v = " << v << ", num_bits = " << num_bits;
+  }
 
   if (ARROW_PREDICT_FALSE(byte_offset_ * 8 + bit_offset_ + num_bits > max_bytes_ * 8))
     return false;
@@ -220,7 +221,8 @@ inline bool BitWriter::PutValue(uint64_t v, int num_bits) {
     buffered_values_ = 0;
     byte_offset_ += 8;
     bit_offset_ -= 64;
-    buffered_values_ = v >> (num_bits - bit_offset_);
+    buffered_values_ =
+        (num_bits - bit_offset_ == 64) ? 0 : (v >> (num_bits - bit_offset_));
   }
   DCHECK_LT(bit_offset_, 64);
   return true;
@@ -411,8 +413,16 @@ inline bool BitReader::GetAligned(int num_bytes, T* v) {
 
   // Advance byte_offset to next unread byte and read num_bytes
   byte_offset_ += bytes_read;
-  memcpy(v, buffer_ + byte_offset_, num_bytes);
-  *v = arrow::bit_util::FromLittleEndian(*v);
+  if constexpr (std::is_same_v<T, bool>) {
+    // ARROW-18031: if we're trying to get an aligned bool, just check
+    // the LSB of the next byte and move on. If we memcpy + FromLittleEndian
+    // as usual, we have potential undefined behavior for bools if the value
+    // isn't 0 or 1
+    *v = *(buffer_ + byte_offset_) & 1;
+  } else {
+    memcpy(v, buffer_ + byte_offset_, num_bytes);
+    *v = arrow::bit_util::FromLittleEndian(*v);
+  }
   byte_offset_ += num_bytes;
 
   bit_offset_ = 0;

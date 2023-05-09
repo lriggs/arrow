@@ -31,7 +31,6 @@
 #include "arrow/testing/gtest_util.h"
 #include "arrow/testing/random.h"
 #include "arrow/util/checked_cast.h"
-#include "arrow/util/make_unique.h"
 
 #include "parquet/column_reader.h"
 #include "parquet/column_scanner.h"
@@ -87,6 +86,10 @@ std::string lz4_raw_compressed_larger() {
   return data_file("lz4_raw_compressed_larger.parquet");
 }
 
+std::string overflow_i16_page_oridinal() {
+  return data_file("overflow_i16_page_cnt.parquet");
+}
+
 // TODO: Assert on definition and repetition levels
 template <typename DType, typename ValueType>
 void AssertColumnValues(std::shared_ptr<TypedColumnReader<DType>> col, int64_t batch_size,
@@ -127,6 +130,127 @@ void CheckRowGroupMetadata(const RowGroupMetaData* rg_metadata,
   }
 }
 
+class TestBooleanRLE : public ::testing::Test {
+ public:
+  void SetUp() {
+    reader_ = ParquetFileReader::OpenFile(data_file("rle_boolean_encoding.parquet"));
+  }
+
+  void TearDown() {}
+
+ protected:
+  std::unique_ptr<ParquetFileReader> reader_;
+};
+
+TEST_F(TestBooleanRLE, TestBooleanScanner) {
+  int nvalues = 68;
+  int validation_values = 16;
+
+  auto group = reader_->RowGroup(0);
+
+  // column 0, id
+  auto scanner = std::make_shared<BoolScanner>(group->Column(0));
+
+  bool val = false;
+  bool is_null = false;
+
+  // For this file, 3rd and 16th index value is null
+  std::vector<bool> expected_null = {false, false, true,  false, false, false,
+                                     false, false, false, false, false, false,
+                                     false, false, false, true};
+  std::vector<bool> expected_value = {true,  false, false, true, true,  false,
+                                      false, true,  true,  true, false, false,
+                                      true,  true,  false, false};
+
+  // Assert sizes are same
+  ASSERT_EQ(validation_values, expected_null.size());
+  ASSERT_EQ(validation_values, expected_value.size());
+
+  for (int i = 0; i < validation_values; i++) {
+    ASSERT_TRUE(scanner->HasNext());
+    ASSERT_TRUE(scanner->NextValue(&val, &is_null));
+
+    ASSERT_EQ(expected_null[i], is_null);
+
+    // Only validate val if not null
+    if (!is_null) {
+      ASSERT_EQ(expected_value[i], val);
+    }
+  }
+
+  // Loop through rest of the values to assert data exists
+  for (int i = validation_values; i < nvalues; i++) {
+    ASSERT_TRUE(scanner->HasNext());
+    ASSERT_TRUE(scanner->NextValue(&val, &is_null));
+  }
+
+  // Attempt to read past end of column
+  ASSERT_FALSE(scanner->HasNext());
+  ASSERT_FALSE(scanner->NextValue(&val, &is_null));
+}
+
+TEST_F(TestBooleanRLE, TestBatchRead) {
+  int nvalues = 68;
+  int num_row_groups = 1;
+  int metadata_size = 111;
+
+  auto group = reader_->RowGroup(0);
+
+  // column 0, id
+  auto col = std::dynamic_pointer_cast<BoolReader>(group->Column(0));
+
+  // This file only has 68 rows
+  ASSERT_EQ(nvalues, reader_->metadata()->num_rows());
+  // This file only has 1 row group
+  ASSERT_EQ(num_row_groups, reader_->metadata()->num_row_groups());
+  // Size of the metadata is 111 bytes
+  ASSERT_EQ(metadata_size, reader_->metadata()->size());
+  // This row group must have 68 rows
+  ASSERT_EQ(nvalues, group->metadata()->num_rows());
+
+  // Check if the column is encoded with RLE
+  auto col_chunk = group->metadata()->ColumnChunk(0);
+  ASSERT_TRUE(std::find(col_chunk->encodings().begin(), col_chunk->encodings().end(),
+                        Encoding::RLE) != col_chunk->encodings().end());
+
+  // Assert column has values to be read
+  ASSERT_TRUE(col->HasNext());
+  int64_t curr_batch_read = 0;
+
+  const int16_t batch_size = 17;
+  const int16_t num_nulls = 2;
+  int16_t def_levels[batch_size];
+  int16_t rep_levels[batch_size];
+  bool values[batch_size];
+  std::fill_n(values, batch_size, false);
+
+  auto levels_read =
+      col->ReadBatch(batch_size, def_levels, rep_levels, values, &curr_batch_read);
+  ASSERT_EQ(batch_size, levels_read);
+
+  // Since two value's are null value, expect batches read to be num_nulls less than
+  // indicated batch_size
+  ASSERT_EQ(batch_size - num_nulls, curr_batch_read);
+
+  // 3rd index is null value
+  ASSERT_THAT(def_levels,
+              testing::ElementsAre(1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1));
+
+  // Validate inserted data is as expected
+  ASSERT_THAT(values,
+              testing::ElementsAre(1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0));
+
+  // Loop through rest of the values and assert batch_size read
+  for (int i = batch_size; i < nvalues; i = i + batch_size) {
+    levels_read =
+        col->ReadBatch(batch_size, def_levels, rep_levels, values, &curr_batch_read);
+    ASSERT_EQ(batch_size, levels_read);
+  }
+
+  // Now read past the end of the file
+  ASSERT_FALSE(col->HasNext());
+}
+
 class TestTextDeltaLengthByteArray : public ::testing::Test {
  public:
   void SetUp() {
@@ -153,7 +277,7 @@ TEST_F(TestTextDeltaLengthByteArray, TestTextScanner) {
     ASSERT_FALSE(is_null);
     std::string expected = expected_prefix + std::to_string(i * i);
     ASSERT_TRUE(val.len == expected.length());
-    ASSERT_EQ(::arrow::util::string_view(reinterpret_cast<const char*>(val.ptr), val.len),
+    ASSERT_EQ(::std::string_view(reinterpret_cast<const char*>(val.ptr), val.len),
               expected);
   }
   ASSERT_FALSE(scanner->HasNext());
@@ -200,9 +324,9 @@ TEST_F(TestTextDeltaLengthByteArray, TestBatchRead) {
       auto expected =
           expected_prefix + std::to_string((i + values_read) * (i + values_read));
       ASSERT_TRUE(values[i].len == expected.length());
-      ASSERT_EQ(::arrow::util::string_view(reinterpret_cast<const char*>(values[i].ptr),
-                                           values[i].len),
-                expected);
+      ASSERT_EQ(
+          ::std::string_view(reinterpret_cast<const char*>(values[i].ptr), values[i].len),
+          expected);
     }
     values_read += curr_batch_read;
   }
@@ -427,12 +551,12 @@ Column 1: b (INT32)
 --- Rows: 3 ---
 Column 0
   Values: 18  Statistics Not Set
-  Compression: SNAPPY, Encodings: RLE PLAIN_DICTIONARY
+  Compression: SNAPPY, Encodings: PLAIN_DICTIONARY(DICT_PAGE) PLAIN_DICTIONARY
   Uncompressed Size: 103, Compressed Size: 104
 Column 1
   Values: 3, Null Values: 0, Distinct Values: 0
   Max: 1, Min: 1
-  Compression: SNAPPY, Encodings: BIT_PACKED PLAIN_DICTIONARY
+  Compression: SNAPPY, Encodings: PLAIN_DICTIONARY(DICT_PAGE) PLAIN_DICTIONARY
   Uncompressed Size: 52, Compressed Size: 56
 )###";
   std::string values_output = R"###(--- Values ---
@@ -612,7 +736,7 @@ TEST(TestFileReader, BufferedReadsWithDictionary) {
       row_group->ColumnWithExposeEncoding(0, ExposedEncoding::DICTIONARY));
   EXPECT_EQ(col_reader->GetExposedEncoding(), ExposedEncoding::DICTIONARY);
 
-  auto indices = ::arrow::internal::make_unique<int32_t[]>(num_rows);
+  auto indices = std::make_unique<int32_t[]>(num_rows);
   const double* dict = nullptr;
   int32_t dict_len = 0;
   for (int row_index = 0; row_index < num_rows; ++row_index) {
@@ -894,5 +1018,45 @@ std::vector<TestCodecParam> test_codec_params{
 INSTANTIATE_TEST_SUITE_P(Lz4CodecTests, TestCodec, ::testing::ValuesIn(test_codec_params),
                          testing::PrintToStringParamName());
 #endif  // ARROW_WITH_LZ4
+
+// Test reading a data file with a ColumnChunk contains more than
+// INT16_MAX pages. (GH-15074).
+TEST(TestFileReader, TestOverflowInt16PageOrdinal) {
+  ReaderProperties reader_props;
+  auto file_reader = ParquetFileReader::OpenFile(overflow_i16_page_oridinal(),
+                                                 /*memory_map=*/false, reader_props);
+  auto metadata_ptr = file_reader->metadata();
+  EXPECT_EQ(1, metadata_ptr->num_row_groups());
+  EXPECT_EQ(1, metadata_ptr->num_columns());
+  auto row_group = file_reader->RowGroup(0);
+
+  {
+    auto column_reader =
+        std::dynamic_pointer_cast<TypedColumnReader<BooleanType>>(row_group->Column(0));
+    EXPECT_NE(nullptr, column_reader);
+    constexpr int kBatchLength = 1024;
+    std::array<bool, kBatchLength> boolean_values{};
+    int64_t total_values = 0;
+    int64_t values_read = 0;
+    do {
+      values_read = 0;
+      column_reader->ReadBatch(kBatchLength, nullptr, nullptr, boolean_values.data(),
+                               &values_read);
+      total_values += values_read;
+      for (int i = 0; i < values_read; ++i) {
+        EXPECT_FALSE(boolean_values[i]);
+      }
+    } while (values_read != 0);
+    EXPECT_EQ(40000, total_values);
+  }
+  {
+    auto page_reader = row_group->GetColumnPageReader(0);
+    int32_t page_ordinal = 0;
+    while (page_reader->NextPage() != nullptr) {
+      ++page_ordinal;
+    }
+    EXPECT_EQ(40000, page_ordinal);
+  }
+}
 
 }  // namespace parquet

@@ -81,6 +81,14 @@ TEST(TestArithmeticOps, TestMod) {
   EXPECT_NEAR(mod_float64_float64(reinterpret_cast<gdv_int64>(&context), 9.2, 3.7), 1.8,
               acceptable_abs_error);
   EXPECT_FALSE(context.has_error());
+
+  context.Reset();
+  EXPECT_EQ(mod_uint32_uint32(10, 3), 1);
+  EXPECT_FALSE(context.has_error());
+
+  context.Reset();
+  EXPECT_EQ(mod_uint64_uint64(10, 3), 1);
+  EXPECT_FALSE(context.has_error());
 }
 
 TEST(TestArithmeticOps, TestNegativeDecimal) {
@@ -275,6 +283,14 @@ TEST(TestArithmeticOps, TestDiv) {
 
   EXPECT_EQ(div_float32_float32(reinterpret_cast<gdv_int64>(&context), 1010.1010f, 2.1f),
             481.0f);
+  EXPECT_EQ(context.has_error(), false);
+  context.Reset();
+
+  EXPECT_EQ(div_uint32_uint32(reinterpret_cast<gdv_int64>(&context), 101, 111), 0);
+  EXPECT_EQ(context.has_error(), false);
+  context.Reset();
+
+  EXPECT_EQ(div_uint64_uint64(reinterpret_cast<gdv_int64>(&context), 101, 111), 0);
   EXPECT_EQ(context.has_error(), false);
   context.Reset();
 }
@@ -651,6 +667,35 @@ TEST(TestArithmeticOps, TestFloorFloatDouble) {
   EXPECT_EQ(floor_float64(-999999.99999999999999999999999), -1000000.0);
   EXPECT_EQ(floor_float64(2147483647.7), 2147483647.0);
   EXPECT_EQ(floor_float64(-2147483647), -2147483647.0);
+}
+
+TEST(TestArithmeticOps, TestSqrtIntFloatDouble) {
+  // sqrt from int32
+  EXPECT_EQ(sqrt_int32(36), 6.0);
+  EXPECT_EQ(sqrt_int32(49), 7.0);
+  EXPECT_EQ(sqrt_int32(64), 8.0);
+  EXPECT_EQ(sqrt_int32(81), 9.0);
+
+  // sqrt from int64
+  EXPECT_EQ(sqrt_int64(4), 2.0);
+  EXPECT_EQ(sqrt_int64(9), 3.0);
+  EXPECT_EQ(sqrt_int64(64), 8.0);
+  EXPECT_EQ(sqrt_int64(81), 9.0);
+
+  // sqrt from floats
+  EXPECT_EQ(sqrt_float32(16.0f), 4.0);
+  EXPECT_EQ(sqrt_float32(49.0f), 7.0);
+  EXPECT_EQ(sqrt_float32(36.0f), 6.0);
+  EXPECT_EQ(sqrt_float32(0.0f), 0.0);
+
+  // sqrt from doubles
+  EXPECT_EQ(sqrt_float64(16.0), 4.0);
+  EXPECT_EQ(sqrt_float64(11.0889), 3.33);
+  EXPECT_EQ(sqrt_float64(1.522756), 1.234);
+  EXPECT_EQ(sqrt_float64(49.0), 7.0);
+  EXPECT_EQ(sqrt_float64(36.0), 6.0);
+  EXPECT_EQ(sqrt_float64(0.0), 0.0);
+  EXPECT_TRUE(std::isnan(sqrt_float64(-1.0)));
 }
 
 }  // namespace gandiva

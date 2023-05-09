@@ -38,6 +38,8 @@
 #include <arrow/dataset/type_fwd.h>
 #endif
 
+#include <arrow/compute/exec/options.h>
+
 #include <arrow/filesystem/type_fwd.h>
 #include <arrow/io/type_fwd.h>
 #include <arrow/ipc/type_fwd.h>
@@ -57,6 +59,8 @@ class ExecNode;
 
 }  // namespace compute
 }  // namespace arrow
+
+class ExecPlanReader;
 
 #if defined(ARROW_R_WITH_PARQUET)
 #include <parquet/type_fwd.h>
@@ -92,8 +96,8 @@ class UnwindProtectDetail : public StatusDetail {
   virtual std::string ToString() const { return "R code execution error"; }
 };
 
-static inline Status StatusUnwindProtect(SEXP token) {
-  return Status::Invalid("R code execution error")
+static inline Status StatusUnwindProtect(SEXP token, std::string reason = "") {
+  return Status::Invalid("R code execution error (", reason, ")")
       .WithDetail(std::make_shared<UnwindProtectDetail>(token));
 }
 
@@ -105,9 +109,14 @@ static inline void StopIfNotOk(const Status& status) {
     if (unwind_detail) {
       throw cpp11::unwind_exception(unwind_detail->token);
     } else {
-      // ARROW-13039: be careful not to interpret our error message as a %-format string
+      // We need to translate this to "native" encoding for the error to be
+      // displayed properly using cpp11::stop()
       std::string s = status.ToString();
-      cpp11::stop("%s", s.c_str());
+      cpp11::strings s_utf8 = cpp11::as_sexp(s);
+      const char* s_native = cpp11::safe[Rf_translateChar](s_utf8[0]);
+
+      // ARROW-13039: be careful not to interpret our error message as a %-format string
+      cpp11::stop("%s", s_native);
     }
   }
 }

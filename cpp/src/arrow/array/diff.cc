@@ -23,6 +23,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -43,7 +44,6 @@
 #include "arrow/util/logging.h"
 #include "arrow/util/range.h"
 #include "arrow/util/string.h"
-#include "arrow/util/string_view.h"
 #include "arrow/vendored/datetime.h"
 #include "arrow/visit_type_inline.h"
 
@@ -399,8 +399,8 @@ class MakeFormatterImpl {
   }
 
  private:
-  template <typename VISITOR>
-  friend Status VisitTypeInline(const DataType&, VISITOR*);
+  template <typename VISITOR, typename... ARGS>
+  friend Status VisitTypeInline(const DataType&, VISITOR*, ARGS&&... args);
 
   // factory implementation
   Status Visit(const BooleanType&) {

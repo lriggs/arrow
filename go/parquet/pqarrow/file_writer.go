@@ -22,12 +22,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/apache/arrow/go/v10/arrow"
-	"github.com/apache/arrow/go/v10/arrow/flight"
-	"github.com/apache/arrow/go/v10/internal/utils"
-	"github.com/apache/arrow/go/v10/parquet"
-	"github.com/apache/arrow/go/v10/parquet/file"
-	"github.com/apache/arrow/go/v10/parquet/metadata"
+	"github.com/apache/arrow/go/v11/arrow"
+	"github.com/apache/arrow/go/v11/arrow/flight"
+	"github.com/apache/arrow/go/v11/internal/utils"
+	"github.com/apache/arrow/go/v11/parquet"
+	"github.com/apache/arrow/go/v11/parquet/file"
+	"github.com/apache/arrow/go/v11/parquet/metadata"
 	"golang.org/x/xerrors"
 )
 
@@ -73,11 +73,11 @@ func NewFileWriter(arrschema *arrow.Schema, w io.Writer, props *parquet.WriterPr
 	}
 
 	meta := make(metadata.KeyValueMetadata, 0)
-	if arrprops.storeSchema {
-		for i := 0; i < arrschema.Metadata().Len(); i++ {
-			meta.Append(arrschema.Metadata().Keys()[i], arrschema.Metadata().Values()[i])
-		}
+	for i := 0; i < arrschema.Metadata().Len(); i++ {
+		meta.Append(arrschema.Metadata().Keys()[i], arrschema.Metadata().Values()[i])
+	}
 
+	if arrprops.storeSchema {
 		serializedSchema := flight.SerializeSchema(arrschema, props.Allocator())
 		meta.Append("ARROW:schema", base64.StdEncoding.EncodeToString(serializedSchema))
 	}
@@ -263,6 +263,10 @@ func (fw *FileWriter) Close() error {
 				return err
 			}
 		}
+
+		writeCtx := arrowCtxFromContext(fw.ctx)
+		writeCtx.dataBuffer.Release()
+
 		return fw.wr.Close()
 	}
 	return nil

@@ -22,13 +22,13 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "arrow/compute/type_fwd.h"
 #include "arrow/datum.h"
 #include "arrow/type_fwd.h"
 #include "arrow/util/small_vector.h"
-#include "arrow/util/variant.h"
 
 namespace arrow {
 namespace compute {
@@ -100,6 +100,8 @@ class ARROW_EXPORT Expression {
   // XXX someday
   // Result<PipelineGraph> GetPipelines();
 
+  bool is_valid() const { return impl_ != NULLPTR; }
+
   /// Access a Call or return nullptr if this expression is not a call
   const Call* call() const;
   /// Access a Datum or return nullptr if this expression is not a literal
@@ -127,16 +129,16 @@ class ARROW_EXPORT Expression {
   explicit Expression(Parameter parameter);
 
  private:
-  using Impl = util::Variant<Datum, Parameter, Call>;
+  using Impl = std::variant<Datum, Parameter, Call>;
   std::shared_ptr<Impl> impl_;
 
-  ARROW_EXPORT friend bool Identical(const Expression& l, const Expression& r);
-
-  ARROW_EXPORT friend void PrintTo(const Expression&, std::ostream*);
+  ARROW_FRIEND_EXPORT friend bool Identical(const Expression& l, const Expression& r);
 };
 
 inline bool operator==(const Expression& l, const Expression& r) { return l.Equals(r); }
 inline bool operator!=(const Expression& l, const Expression& r) { return !l.Equals(r); }
+
+ARROW_EXPORT void PrintTo(const Expression&, std::ostream*);
 
 // Factories
 
@@ -217,6 +219,12 @@ Result<Expression> ReplaceFieldsWithKnownValues(const KnownFieldValues& known_va
 ARROW_EXPORT
 Result<Expression> SimplifyWithGuarantee(Expression,
                                          const Expression& guaranteed_true_predicate);
+
+/// Replace all named field refs (e.g. "x" or "x.y") with field paths (e.g. [0] or [1,3])
+///
+/// This isn't usually needed and does not offer any simplification by itself.  However,
+/// it can be useful to normalize an expression to paths to make it simpler to work with.
+ARROW_EXPORT Result<Expression> RemoveNamedRefs(Expression expression);
 
 /// @}
 

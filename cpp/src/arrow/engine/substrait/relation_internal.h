@@ -19,30 +19,32 @@
 
 #pragma once
 
-#include "arrow/compute/exec/exec_plan.h"
-#include "arrow/engine/substrait/extension_types.h"
-#include "arrow/engine/substrait/options.h"
-#include "arrow/engine/substrait/serde.h"
+#include <memory>
+
+#include "arrow/compute/type_fwd.h"
+#include "arrow/engine/substrait/relation.h"
+#include "arrow/engine/substrait/type_fwd.h"
 #include "arrow/engine/substrait/visibility.h"
-#include "arrow/type_fwd.h"
+#include "arrow/result.h"
 
 #include "substrait/algebra.pb.h"  // IWYU pragma: export
 
 namespace arrow {
 namespace engine {
 
-/// Information resulting from converting a Substrait relation.
-struct DeclarationInfo {
-  /// The compute declaration produced thus far.
-  compute::Declaration declaration;
-
-  /// The number of columns returned by the declaration.
-  int num_columns;
-};
-
+/// \brief Convert a Substrait Rel object to an Acero declaration
 ARROW_ENGINE_EXPORT
 Result<DeclarationInfo> FromProto(const substrait::Rel&, const ExtensionSet&,
                                   const ConversionOptions&);
+
+/// \brief Convert an Acero Declaration to a Substrait Rel
+///
+/// Note that, in order to provide a generic interface for ToProto,
+/// the ExecNode or ExecPlan are not used in this context as Declaration
+/// is preferred in the Substrait space rather than internal components of
+/// Acero execution engine.
+ARROW_ENGINE_EXPORT Result<std::unique_ptr<substrait::Rel>> ToProto(
+    const compute::Declaration&, ExtensionSet*, const ConversionOptions&);
 
 }  // namespace engine
 }  // namespace arrow

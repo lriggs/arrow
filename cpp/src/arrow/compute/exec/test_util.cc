@@ -25,6 +25,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -46,7 +47,6 @@
 #include "arrow/util/async_generator.h"
 #include "arrow/util/iterator.h"
 #include "arrow/util/logging.h"
-#include "arrow/util/optional.h"
 #include "arrow/util/unreachable.h"
 #include "arrow/util/vector.h"
 
@@ -142,8 +142,7 @@ ExecNode* MakeDummyNode(ExecPlan* plan, std::string label, std::vector<ExecNode*
   return node;
 }
 
-ExecBatch ExecBatchFromJSON(const std::vector<TypeHolder>& types,
-                            util::string_view json) {
+ExecBatch ExecBatchFromJSON(const std::vector<TypeHolder>& types, std::string_view json) {
   auto fields = ::arrow::internal::MapVector(
       [](const TypeHolder& th) { return field("", th.GetSharedPtr()); }, types);
 
@@ -153,7 +152,7 @@ ExecBatch ExecBatchFromJSON(const std::vector<TypeHolder>& types,
 }
 
 ExecBatch ExecBatchFromJSON(const std::vector<TypeHolder>& types,
-                            const std::vector<ArgShape>& shapes, util::string_view json) {
+                            const std::vector<ArgShape>& shapes, std::string_view json) {
   DCHECK_EQ(types.size(), shapes.size());
 
   ExecBatch batch = ExecBatchFromJSON(types, json);
@@ -180,17 +179,17 @@ Future<> StartAndFinish(ExecPlan* plan) {
 }
 
 Future<std::vector<ExecBatch>> StartAndCollect(
-    ExecPlan* plan, AsyncGenerator<util::optional<ExecBatch>> gen) {
+    ExecPlan* plan, AsyncGenerator<std::optional<ExecBatch>> gen) {
   RETURN_NOT_OK(plan->Validate());
   RETURN_NOT_OK(plan->StartProducing());
 
   auto collected_fut = CollectAsyncGenerator(gen);
 
-  return AllComplete({plan->finished(), Future<>(collected_fut)})
+  return AllFinished({plan->finished(), Future<>(collected_fut)})
       .Then([collected_fut]() -> Result<std::vector<ExecBatch>> {
         ARROW_ASSIGN_OR_RAISE(auto collected, collected_fut.result());
         return ::arrow::internal::MapVector(
-            [](util::optional<ExecBatch> batch) { return std::move(*batch); },
+            [](std::optional<ExecBatch> batch) { return batch.value_or(ExecBatch()); },
             std::move(collected));
       });
 }
@@ -219,25 +218,25 @@ BatchesWithSchema MakeNestedBatches() {
 }
 
 BatchesWithSchema MakeRandomBatches(const std::shared_ptr<Schema>& schema,
-                                    int num_batches, int batch_size) {
+                                    int num_batches, int batch_size, int64_t alignment,
+                                    MemoryPool* memory_pool) {
   BatchesWithSchema out;
 
   random::RandomArrayGenerator rng(42);
   out.batches.resize(num_batches);
 
   for (int i = 0; i < num_batches; ++i) {
-    out.batches[i] = ExecBatch(*rng.BatchOf(schema->fields(), batch_size));
-    // add a tag scalar to ensure the batches are unique
-    out.batches[i].values.emplace_back(i);
+    out.batches[i] =
+        ExecBatch(*rng.BatchOf(schema->fields(), batch_size, alignment, memory_pool));
   }
 
   out.schema = schema;
   return out;
 }
 
-BatchesWithSchema MakeBatchesFromString(
-    const std::shared_ptr<Schema>& schema,
-    const std::vector<util::string_view>& json_strings, int multiplicity) {
+BatchesWithSchema MakeBatchesFromString(const std::shared_ptr<Schema>& schema,
+                                        const std::vector<std::string_view>& json_strings,
+                                        int multiplicity) {
   BatchesWithSchema out_batches{{}, schema};
 
   std::vector<TypeHolder> types;
@@ -259,18 +258,61 @@ BatchesWithSchema MakeBatchesFromString(
   return out_batches;
 }
 
+Result<std::vector<std::shared_ptr<ArrayVector>>> ToArrayVectors(
+    const BatchesWithSchema& batches_with_schema) {
+  std::vector<std::shared_ptr<ArrayVector>> arrayvecs;
+  for (auto batch : batches_with_schema.batches) {
+    ARROW_ASSIGN_OR_RAISE(auto record_batch,
+                          batch.ToRecordBatch(batches_with_schema.schema));
+    arrayvecs.push_back(std::make_shared<ArrayVector>(record_batch->columns()));
+  }
+  return arrayvecs;
+}
+
+Result<std::vector<std::shared_ptr<ExecBatch>>> ToExecBatches(
+    const BatchesWithSchema& batches_with_schema) {
+  std::vector<std::shared_ptr<ExecBatch>> exec_batches;
+  for (auto batch : batches_with_schema.batches) {
+    exec_batches.push_back(std::make_shared<ExecBatch>(batch));
+  }
+  return exec_batches;
+}
+
+Result<std::vector<std::shared_ptr<RecordBatch>>> ToRecordBatches(
+    const BatchesWithSchema& batches_with_schema) {
+  std::vector<std::shared_ptr<RecordBatch>> record_batches;
+  for (auto batch : batches_with_schema.batches) {
+    ARROW_ASSIGN_OR_RAISE(auto record_batch,
+                          batch.ToRecordBatch(batches_with_schema.schema));
+    record_batches.push_back(std::move(record_batch));
+  }
+  return record_batches;
+}
+
+Result<std::shared_ptr<RecordBatchReader>> ToRecordBatchReader(
+    const BatchesWithSchema& batches_with_schema) {
+  std::vector<std::shared_ptr<RecordBatch>> record_batches;
+  for (auto batch : batches_with_schema.batches) {
+    ARROW_ASSIGN_OR_RAISE(auto record_batch,
+                          batch.ToRecordBatch(batches_with_schema.schema));
+    record_batches.push_back(std::move(record_batch));
+  }
+  ARROW_ASSIGN_OR_RAISE(auto table, Table::FromRecordBatches(std::move(record_batches)));
+  return std::make_shared<arrow::TableBatchReader>(std::move(table));
+}
+
 Result<std::shared_ptr<Table>> SortTableOnAllFields(const std::shared_ptr<Table>& tab) {
   std::vector<SortKey> sort_keys;
-  for (auto&& f : tab->schema()->fields()) {
-    sort_keys.emplace_back(f->name());
+  for (int i = 0; i < tab->num_columns(); i++) {
+    sort_keys.emplace_back(i);
   }
   ARROW_ASSIGN_OR_RAISE(auto sort_ids, SortIndices(tab, SortOptions(sort_keys)));
   ARROW_ASSIGN_OR_RAISE(auto tab_sorted, Take(tab, sort_ids));
   return tab_sorted.table();
 }
 
-void AssertTablesEqual(const std::shared_ptr<Table>& exp,
-                       const std::shared_ptr<Table>& act) {
+void AssertTablesEqualIgnoringOrder(const std::shared_ptr<Table>& exp,
+                                    const std::shared_ptr<Table>& act) {
   ASSERT_EQ(exp->num_columns(), act->num_columns());
   if (exp->num_rows() == 0) {
     ASSERT_EQ(exp->num_rows(), act->num_rows());
@@ -283,12 +325,12 @@ void AssertTablesEqual(const std::shared_ptr<Table>& exp,
   }
 }
 
-void AssertExecBatchesEqual(const std::shared_ptr<Schema>& schema,
-                            const std::vector<ExecBatch>& exp,
-                            const std::vector<ExecBatch>& act) {
+void AssertExecBatchesEqualIgnoringOrder(const std::shared_ptr<Schema>& schema,
+                                         const std::vector<ExecBatch>& exp,
+                                         const std::vector<ExecBatch>& act) {
   ASSERT_OK_AND_ASSIGN(auto exp_tab, TableFromExecBatches(schema, exp));
   ASSERT_OK_AND_ASSIGN(auto act_tab, TableFromExecBatches(schema, act));
-  AssertTablesEqual(exp_tab, act_tab);
+  AssertTablesEqualIgnoringOrder(exp_tab, act_tab);
 }
 
 template <typename T>
@@ -424,7 +466,7 @@ void PrintTo(const Declaration& decl, std::ostream* os) {
 
   *os << "{";
   for (const auto& input : decl.inputs) {
-    if (auto decl = util::get_if<Declaration>(&input)) {
+    if (auto decl = std::get_if<Declaration>(&input)) {
       PrintTo(*decl, os);
     }
   }

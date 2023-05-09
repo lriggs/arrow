@@ -27,10 +27,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/arrow/go/v10/arrow"
-	"github.com/apache/arrow/go/v10/arrow/bitutil"
-	"github.com/apache/arrow/go/v10/arrow/internal/debug"
-	"github.com/apache/arrow/go/v10/arrow/memory"
+	"github.com/apache/arrow/go/v11/arrow"
+	"github.com/apache/arrow/go/v11/arrow/bitutil"
+	"github.com/apache/arrow/go/v11/arrow/internal/debug"
+	"github.com/apache/arrow/go/v11/arrow/memory"
 	"github.com/goccy/go-json"
 )
 
@@ -2278,7 +2278,7 @@ func (b *TimestampBuilder) unmarshalOne(dec *json.Decoder) error {
 		b.AppendNull()
 	case string:
 		loc, _ := b.dtype.GetZone()
-		tm, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
+		tm, _, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
 
 		if err != nil {
 			return &json.UnmarshalTypeError{

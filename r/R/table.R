@@ -134,6 +134,11 @@ Table$create <- function(..., schema = NULL) {
   if (is.null(names(dots))) {
     names(dots) <- rep_len("", length(dots))
   }
+
+  if (length(dots) == 0 && inherits(schema, "Schema")) {
+    return(Table__from_schema(schema))
+  }
+
   stopifnot(length(dots) > 0)
 
   if (all_record_batches(dots)) {
@@ -327,16 +332,27 @@ as_arrow_table.RecordBatchReader <- function(x, ...) {
 
 #' @rdname as_arrow_table
 #' @export
+as_arrow_table.Dataset <- function(x, ...) {
+  Scanner$create(x)$ToTable()
+}
+
+#' @rdname as_arrow_table
+#' @export
 as_arrow_table.arrow_dplyr_query <- function(x, ...) {
-  # See query-engine.R for ExecPlan/Nodes
-  plan <- ExecPlan$create()
-  final_node <- plan$Build(x)
+  reader <- as_record_batch_reader(x)
+  on.exit(reader$.unsafe_delete())
 
-  run_with_event_loop <- identical(
-    Sys.getenv("R_ARROW_COLLECT_WITH_UDF", ""),
-    "true"
+  out <- as_arrow_table(reader)
+  # arrow_dplyr_query holds group_by information. Set it on the table metadata.
+  set_group_attributes(
+    out,
+    dplyr::group_vars(x),
+    dplyr::group_by_drop_default(x)
   )
+}
 
-  result <- plan$Run(final_node, as_table = run_with_event_loop)
-  as_arrow_table(result)
+#' @rdname as_arrow_table
+#' @export
+as_arrow_table.Schema <- function(x, ...) {
+  Table__from_schema(x)
 }

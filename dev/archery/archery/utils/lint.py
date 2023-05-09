@@ -149,6 +149,7 @@ def cmake_linter(src, fix=False):
         include_patterns=[
             'ci/**/*.cmake',
             'cpp/CMakeLists.txt',
+            'cpp/src/**/*.cmake.in',
             'cpp/src/**/CMakeLists.txt',
             'cpp/examples/**/CMakeLists.txt',
             'cpp/cmake_modules/*.cmake',
@@ -190,6 +191,7 @@ def python_linter(src, fix=False):
                 "python/pyarrow/**/*.pxd",
                 "python/pyarrow/**/*.pxi",
                 "python/examples/**/*.py",
+                "dev/*.py",
                 "dev/archery/**/*.py",
                 "dev/release/**/*.py"]
     files = [setup_py]
@@ -228,6 +230,7 @@ def python_linter(src, fix=False):
 
     yield LintResult.from_cmd(
         flake8("--extend-exclude=" + ','.join(flake8_exclude),
+               "--config=" + os.path.join(src.python, "setup.cfg"),
                setup_py, src.pyarrow, os.path.join(src.python, "examples"),
                src.dev, check=False))
 

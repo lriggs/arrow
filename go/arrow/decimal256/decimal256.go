@@ -21,15 +21,20 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
 
-	"github.com/apache/arrow/go/v10/arrow/decimal128"
-	"github.com/apache/arrow/go/v10/arrow/internal/debug"
+	"github.com/apache/arrow/go/v11/arrow/decimal128"
+	"github.com/apache/arrow/go/v11/arrow/internal/debug"
 )
 
 const (
 	MaxPrecision = 76
 	MaxScale     = 76
 )
+
+func GetMaxValue(prec int32) Num {
+	return scaleMultipliers[prec].Sub(FromU64(1))
+}
 
 type Num struct {
 	// arr[0] is the lowest bits, arr[3] is the highest bits
@@ -84,8 +89,104 @@ func (n Num) Negate() Num {
 	return n
 }
 
+func (n Num) Add(rhs Num) Num {
+	var carry uint64
+	for i, v := range n.arr {
+		n.arr[i], carry = bits.Add64(v, rhs.arr[i], carry)
+	}
+	return n
+}
+
+func (n Num) Sub(rhs Num) Num {
+	return n.Add(rhs.Negate())
+}
+
+func (n Num) Mul(rhs Num) Num {
+	b := n.BigInt()
+	return FromBigInt(b.Mul(b, rhs.BigInt()))
+}
+
+func (n Num) Div(rhs Num) (res, rem Num) {
+	b := n.BigInt()
+	out, remainder := b.QuoRem(b, rhs.BigInt(), &big.Int{})
+	return FromBigInt(out), FromBigInt(remainder)
+}
+
+var pt5 = big.NewFloat(0.5)
+
+func FromString(v string, prec, scale int32) (n Num, err error) {
+	// time for some math!
+	// Our input precision means "number of digits of precision" but the
+	// math/big library refers to precision in floating point terms
+	// where it refers to the "number of bits of precision in the mantissa".
+	// So we need to figure out how many bits we should use for precision,
+	// based on the input precision. Too much precision and we're not rounding
+	// when we should. Too little precision and we round when we shouldn't.
+	//
+	// In general, the number of decimal digits you get from a given number
+	// of bits will be:
+	//
+	//	digits = log[base 10](2^nbits)
+	//
+	// it thus follows that:
+	//
+	//	digits = nbits * log[base 10](2)
+	//  nbits = digits / log[base 10](2)
+	//
+	// So we need to account for our scale since we're going to be multiplying
+	// by 10^scale in order to get the integral value we're actually going to use
+	// So to get our number of bits we do:
+	//
+	// 	(prec + scale + 1) / log[base10](2)
+	//
+	// Finally, we still have a sign bit, so we -1 to account for the sign bit.
+	// Aren't floating point numbers fun?
+	var precInBits = uint(math.Round(float64(prec+scale+1)/math.Log10(2))) + 1
+
+	var out *big.Float
+	out, _, err = big.ParseFloat(v, 10, 255, big.ToNearestEven)
+	if err != nil {
+		return
+	}
+
+	out.Mul(out, big.NewFloat(math.Pow10(int(scale)))).SetPrec(precInBits)
+	// Since we're going to truncate this to get an integer, we need to round
+	// the value instead because of edge cases so that we match how other implementations
+	// (e.g. C++) handles Decimal values. So if we're negative we'll subtract 0.5 and if
+	// we're positive we'll add 0.5.
+	if out.Signbit() {
+		out.Sub(out, pt5)
+	} else {
+		out.Add(out, pt5)
+	}
+
+	var tmp big.Int
+	val, _ := out.Int(&tmp)
+	if val.BitLen() > 255 {
+		return Num{}, errors.New("bitlen too large for decimal256")
+	}
+	n = FromBigInt(val)
+	if !n.FitsInPrecision(prec) {
+		err = fmt.Errorf("value %v doesn't fit in precision %d", n, prec)
+	}
+	return
+}
+
 func FromFloat32(v float32, prec, scale int32) (Num, error) {
-	return FromFloat64(float64(v), prec, scale)
+	debug.Assert(prec > 0 && prec <= 76, "invalid precision for converting to decimal256")
+
+	if math.IsInf(float64(v), 0) {
+		return Num{}, fmt.Errorf("cannot convert %f to decimal256", v)
+	}
+
+	if v < 0 {
+		dec, err := fromPositiveFloat32(-v, prec, scale)
+		if err != nil {
+			return dec, err
+		}
+		return dec.Negate(), nil
+	}
+	return fromPositiveFloat32(v, prec, scale)
 }
 
 func FromFloat64(v float64, prec, scale int32) (Num, error) {
@@ -105,7 +206,48 @@ func FromFloat64(v float64, prec, scale int32) (Num, error) {
 	return fromPositiveFloat64(v, prec, scale)
 }
 
-func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
+// this has to exist despite sharing some code with fromPositiveFloat64
+// because if we don't do the casts back to float32 in between each
+// step, we end up with a significantly different answer!
+// Aren't floating point values so much fun?
+//
+// example value to use:
+//    v := float32(1.8446746e+15)
+//
+// You'll end up with a different values if you do:
+// 	  FromFloat64(float64(v), 20, 4)
+// vs
+//    FromFloat32(v, 20, 4)
+//
+// because float64(v) == 1844674629206016 rather than 1844674600000000
+func fromPositiveFloat32(v float32, prec, scale int32) (Num, error) {
+	val, err := scalePositiveFloat64(float64(v), prec, scale)
+	if err != nil {
+		return Num{}, err
+	}
+
+	v = float32(val)
+	var arr [4]float32
+	arr[3] = float32(math.Floor(math.Ldexp(float64(v), -192)))
+	v -= float32(math.Ldexp(float64(arr[3]), 192))
+	arr[2] = float32(math.Floor(math.Ldexp(float64(v), -128)))
+	v -= float32(math.Ldexp(float64(arr[2]), 128))
+	arr[1] = float32(math.Floor(math.Ldexp(float64(v), -64)))
+	v -= float32(math.Ldexp(float64(arr[1]), 64))
+	arr[0] = v
+
+	debug.Assert(arr[3] >= 0, "bad conversion float64 to decimal256")
+	debug.Assert(arr[3] < 1.8446744073709552e+19, "bad conversion float64 to decimal256") // 2**64
+	debug.Assert(arr[2] >= 0, "bad conversion float64 to decimal256")
+	debug.Assert(arr[2] < 1.8446744073709552e+19, "bad conversion float64 to decimal256") // 2**64
+	debug.Assert(arr[1] >= 0, "bad conversion float64 to decimal256")
+	debug.Assert(arr[1] < 1.8446744073709552e+19, "bad conversion float64 to decimal256") // 2**64
+	debug.Assert(arr[0] >= 0, "bad conversion float64 to decimal256")
+	debug.Assert(arr[0] < 1.8446744073709552e+19, "bad conversion float64 to decimal256") // 2**64
+	return Num{[4]uint64{uint64(arr[0]), uint64(arr[1]), uint64(arr[2]), uint64(arr[3])}}, nil
+}
+
+func scalePositiveFloat64(v float64, prec, scale int32) (float64, error) {
 	var pscale float64
 	if scale >= -76 && scale <= 76 {
 		pscale = float64PowersOfTen[scale+76]
@@ -117,18 +259,26 @@ func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
 	v = math.RoundToEven(v)
 	maxabs := float64PowersOfTen[prec+76]
 	if v <= -maxabs || v >= maxabs {
-		return Num{}, fmt.Errorf("cannot convert %f to decimal256(precision=%d, scale=%d): overflow",
+		return 0, fmt.Errorf("cannot convert %f to decimal256(precision=%d, scale=%d): overflow",
 			v, prec, scale)
+	}
+	return v, nil
+}
+
+func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
+	val, err := scalePositiveFloat64(v, prec, scale)
+	if err != nil {
+		return Num{}, err
 	}
 
 	var arr [4]float64
-	arr[3] = math.Floor(math.Ldexp(v, -192))
-	v -= math.Ldexp(arr[3], 192)
-	arr[2] = math.Floor(math.Ldexp(v, -128))
-	v -= math.Ldexp(arr[2], 128)
-	arr[1] = math.Floor(math.Ldexp(v, -64))
-	v -= math.Ldexp(arr[1], 64)
-	arr[0] = v
+	arr[3] = math.Floor(math.Ldexp(val, -192))
+	val -= math.Ldexp(arr[3], 192)
+	arr[2] = math.Floor(math.Ldexp(val, -128))
+	val -= math.Ldexp(arr[2], 128)
+	arr[1] = math.Floor(math.Ldexp(val, -64))
+	val -= math.Ldexp(arr[1], 64)
+	arr[0] = val
 
 	debug.Assert(arr[3] >= 0, "bad conversion float64 to decimal256")
 	debug.Assert(arr[3] < 1.8446744073709552e+19, "bad conversion float64 to decimal256") // 2**64
@@ -206,10 +356,18 @@ func (n Num) BigInt() *big.Int {
 	return toBigIntPositive(n)
 }
 
+func (n Num) Greater(other Num) bool {
+	return other.Less(n)
+}
+
+func (n Num) GreaterEqual(other Num) bool {
+	return !n.Less(other)
+}
+
 func (n Num) Less(other Num) bool {
 	switch {
 	case n.arr[3] != other.arr[3]:
-		return n.arr[3] < other.arr[3]
+		return int64(n.arr[3]) < int64(other.arr[3])
 	case n.arr[2] != other.arr[2]:
 		return n.arr[2] < other.arr[2]
 	case n.arr[1] != other.arr[1]:
@@ -246,22 +404,17 @@ func (n Num) ReduceScaleBy(reduce int32, round bool) Num {
 }
 
 func (n Num) rescaleWouldCauseDataLoss(deltaScale int32, multiplier Num) (out Num, loss bool) {
-	var (
-		value, result, remainder *big.Int
-	)
-	value = n.BigInt()
 	if deltaScale < 0 {
-		result, remainder = new(big.Int).QuoRem(value, multiplier.BigInt(), new(big.Int))
-		return FromBigInt(result), remainder.Cmp(big.NewInt(0)) != 0
+		var remainder Num
+		out, remainder = n.Div(multiplier)
+		return out, remainder != Num{}
 	}
 
-	result = (&big.Int{}).Mul(value, multiplier.BigInt())
-	out = FromBigInt(result)
-	cmp := result.Cmp(value)
+	out = n.Mul(multiplier)
 	if n.Sign() < 0 {
-		loss = cmp == 1
+		loss = n.Less(out)
 	} else {
-		loss = cmp == -1
+		loss = out.Less(n)
 	}
 	return
 }
@@ -296,6 +449,16 @@ func (n Num) FitsInPrecision(prec int32) bool {
 	debug.Assert(prec <= 76, "precision must be <= 76")
 	return n.Abs().Less(scaleMultipliers[prec])
 }
+
+func (n Num) ToString(scale int32) string {
+	f := (&big.Float{}).SetInt(n.BigInt())
+	f.Quo(f, (&big.Float{}).SetInt(scaleMultipliers[scale].BigInt()))
+	return f.Text('f', int(scale))
+}
+
+func GetScaleMultiplier(pow int) Num { return scaleMultipliers[pow] }
+
+func GetHalfScaleMultiplier(pow int) Num { return scaleMultipliersHalf[pow] }
 
 var (
 	scaleMultipliers = [...]Num{

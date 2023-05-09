@@ -18,14 +18,21 @@
 #include "arrow/compute/exec/aggregate.h"
 
 #include <mutex>
+#include <thread>
+#include <unordered_map>
 
 #include "arrow/compute/exec_internal.h"
 #include "arrow/compute/registry.h"
 #include "arrow/compute/row/grouper.h"
 #include "arrow/util/checked_cast.h"
+#include "arrow/util/logging.h"
+#include "arrow/util/string.h"
 #include "arrow/util/task_group.h"
 
 namespace arrow {
+
+using internal::ToChars;
+
 namespace compute {
 namespace internal {
 
@@ -147,7 +154,7 @@ Result<Datum> GroupBy(const std::vector<Datum>& arguments, const std::vector<Dat
 
   int i = 0;
   for (const TypeHolder& key_type : key_types) {
-    out_fields.push_back(field("key_" + std::to_string(i++), key_type.GetSharedPtr()));
+    out_fields.push_back(field("key_" + ToChars(i++), key_type.GetSharedPtr()));
   }
 
   ExecSpanIterator key_iterator;

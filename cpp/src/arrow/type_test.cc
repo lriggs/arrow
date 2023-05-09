@@ -128,6 +128,12 @@ TEST(TestField, Equals) {
   AssertFieldEqual(f0, f0_with_meta1);
   AssertFieldEqual(f0, f0_with_meta2);
   AssertFieldEqual(f0_with_meta1, f0_with_meta2);
+
+  // operator==(), where check_metadata == false
+  ASSERT_EQ(f0, f0_other);
+  ASSERT_NE(f0, f0_nn);
+  ASSERT_EQ(f0, f0_with_meta1);
+  ASSERT_EQ(f0_with_meta1, f0_with_meta2);
 }
 
 #define ASSERT_COMPATIBLE_IMPL(NAME, TYPE, PLURAL)                        \
@@ -408,10 +414,24 @@ TEST(TestFieldRef, FromDotPath) {
 
   ASSERT_OK_AND_EQ(FieldRef(R"([y]\tho.\)"), FieldRef::FromDotPath(R"(.\[y\]\\tho\.\)"));
 
-  ASSERT_RAISES(Invalid, FieldRef::FromDotPath(R"()"));
+  ASSERT_OK_AND_EQ(FieldRef(), FieldRef::FromDotPath(R"()"));
+
   ASSERT_RAISES(Invalid, FieldRef::FromDotPath(R"(alpha)"));
   ASSERT_RAISES(Invalid, FieldRef::FromDotPath(R"([134234)"));
   ASSERT_RAISES(Invalid, FieldRef::FromDotPath(R"([1stuf])"));
+}
+
+TEST(TestFieldRef, DotPathRoundTrip) {
+  auto check_roundtrip = [](const FieldRef& ref) {
+    auto dot_path = ref.ToDotPath();
+    ASSERT_OK_AND_EQ(ref, FieldRef::FromDotPath(dot_path));
+  };
+
+  check_roundtrip(FieldRef());
+  check_roundtrip(FieldRef("foo"));
+  check_roundtrip(FieldRef("foo", 1, "bar", 2, 3));
+  check_roundtrip(FieldRef(1, 2, 3));
+  check_roundtrip(FieldRef("foo", 1, FieldRef("bar", 2, 3), FieldRef()));
 }
 
 TEST(TestFieldPath, Nested) {
@@ -450,6 +470,42 @@ TEST(TestFieldRef, Nested) {
               ElementsAre(FieldPath{2, 1, 0}, FieldPath{2, 1, 1}));
 }
 
+TEST(TestFieldRef, Flatten) {
+  FieldRef ref;
+
+  auto assert_name = [](const FieldRef& ref, const std::string& expected) {
+    ASSERT_TRUE(ref.IsName());
+    ASSERT_EQ(*ref.name(), expected);
+  };
+
+  auto assert_path = [](const FieldRef& ref, const std::vector<int>& expected) {
+    ASSERT_TRUE(ref.IsFieldPath());
+    ASSERT_EQ(ref.field_path()->indices(), expected);
+  };
+
+  auto assert_nested = [](const FieldRef& ref, const std::vector<FieldRef>& expected) {
+    ASSERT_TRUE(ref.IsNested());
+    ASSERT_EQ(*ref.nested_refs(), expected);
+  };
+
+  assert_path(FieldRef(), {});
+  assert_path(FieldRef(1, 2, 3), {1, 2, 3});
+  // If all leaves are field paths, they are fully flattened
+  assert_path(FieldRef(1, FieldRef(2, 3)), {1, 2, 3});
+  assert_path(FieldRef(1, FieldRef(2, 3), FieldRef(), FieldRef(FieldRef(4), FieldRef(5))),
+              {1, 2, 3, 4, 5});
+  assert_path(FieldRef(FieldRef(), FieldRef(FieldRef(), FieldRef())), {});
+
+  assert_name(FieldRef("foo"), "foo");
+
+  // Nested empty field refs are optimized away
+  assert_nested(FieldRef("foo", 1, FieldRef(), FieldRef(FieldRef(), "bar")),
+                {FieldRef("foo"), FieldRef(1), FieldRef("bar")});
+  // For now, subsequences of indices are not concatenated
+  assert_nested(FieldRef("foo", FieldRef("bar"), FieldRef(1, 2), FieldRef(3)),
+                {FieldRef("foo"), FieldRef("bar"), FieldRef(1, 2), FieldRef(3)});
+}
+
 using TestSchema = ::testing::Test;
 
 TEST_F(TestSchema, Basics) {
@@ -472,6 +528,8 @@ TEST_F(TestSchema, Basics) {
   auto schema3 = std::make_shared<Schema>(fields3);
   AssertSchemaEqual(schema, schema2);
   AssertSchemaNotEqual(schema, schema3);
+  ASSERT_EQ(*schema, *schema2);
+  ASSERT_NE(*schema, *schema3);
 
   ASSERT_EQ(schema->fingerprint(), schema2->fingerprint());
   ASSERT_NE(schema->fingerprint(), schema3->fingerprint());
@@ -1204,6 +1262,8 @@ TEST(TestLargeListType, Basics) {
 }
 
 TEST(TestMapType, Basics) {
+  auto md = key_value_metadata({"foo"}, {"foo value"});
+
   std::shared_ptr<DataType> kt = std::make_shared<StringType>();
   std::shared_ptr<DataType> it = std::make_shared<UInt8Type>();
 
@@ -1236,6 +1296,41 @@ TEST(TestMapType, Basics) {
           "some_entries",
           struct_({field("some_key", kt, false), field("some_value", mt)}), false)));
   AssertTypeEqual(mt3, *mt5);
+  // ...unless we explicitly ask about them.
+  ASSERT_FALSE(mt3.Equals(mt5, /*check_metadata=*/true));
+
+  // nullability of value type matters in comparisons
+  MapType map_type_non_nullable(kt, field("value", it, /*nullable=*/false));
+  AssertTypeNotEqual(map_type, map_type_non_nullable);
+}
+
+TEST(TestMapType, Metadata) {
+  auto md1 = key_value_metadata({"foo", "bar"}, {"foo value", "bar value"});
+  auto md2 = key_value_metadata({"foo", "bar"}, {"foo value", "bar value"});
+  auto md3 = key_value_metadata({"foo"}, {"foo value"});
+
+  auto t1 = map(utf8(), field("value", int32(), md1));
+  auto t2 = map(utf8(), field("value", int32(), md2));
+  auto t3 = map(utf8(), field("value", int32(), md3));
+  auto t4 =
+      std::make_shared<MapType>(field("key", utf8(), md1), field("value", int32(), md2));
+  ASSERT_OK_AND_ASSIGN(auto t5,
+                       MapType::Make(field("some_entries",
+                                           struct_({field("some_key", utf8(), false),
+                                                    field("some_value", int32(), md2)}),
+                                           false, md2)));
+
+  AssertTypeEqual(*t1, *t2);
+  AssertTypeEqual(*t1, *t2, /*check_metadata=*/true);
+
+  AssertTypeEqual(*t1, *t3);
+  AssertTypeNotEqual(*t1, *t3, /*check_metadata=*/true);
+
+  AssertTypeEqual(*t1, *t4);
+  AssertTypeNotEqual(*t1, *t4, /*check_metadata=*/true);
+
+  AssertTypeEqual(*t1, *t5);
+  AssertTypeNotEqual(*t1, *t5, /*check_metadata=*/true);
 }
 
 TEST(TestFixedSizeListType, Basics) {
@@ -1420,15 +1515,26 @@ TEST(TestListType, Equals) {
   auto t1 = list(utf8());
   auto t2 = list(utf8());
   auto t3 = list(binary());
-  auto t4 = large_list(binary());
-  auto t5 = large_list(binary());
-  auto t6 = large_list(float64());
+  auto t4 = list(field("item", utf8(), /*nullable=*/false));
+  auto tl1 = large_list(binary());
+  auto tl2 = large_list(binary());
+  auto tl3 = large_list(float64());
 
   AssertTypeEqual(*t1, *t2);
   AssertTypeNotEqual(*t1, *t3);
-  AssertTypeNotEqual(*t3, *t4);
-  AssertTypeEqual(*t4, *t5);
-  AssertTypeNotEqual(*t5, *t6);
+  AssertTypeNotEqual(*t1, *t4);
+  AssertTypeNotEqual(*t3, *tl1);
+  AssertTypeEqual(*tl1, *tl2);
+  AssertTypeNotEqual(*tl2, *tl3);
+
+  std::shared_ptr<DataType> vt = std::make_shared<UInt8Type>();
+  std::shared_ptr<Field> inner_field = std::make_shared<Field>("non_default_name", vt);
+
+  ListType list_type(vt);
+  ListType list_type_named(inner_field);
+
+  AssertTypeEqual(list_type, list_type_named);
+  ASSERT_FALSE(list_type.Equals(list_type_named, /*check_metadata=*/true));
 }
 
 TEST(TestListType, Metadata) {
@@ -1820,5 +1926,48 @@ TEST(TypesTest, TestDecimalEquals) {
   AssertTypeNotEqual(t5, t8);
   AssertTypeNotEqual(t5, t10);
 }
+
+#define TEST_PREDICATE(all_types, type_predicate)                 \
+  for (auto type : all_types) {                                   \
+    ASSERT_EQ(type_predicate(type->id()), type_predicate(*type)); \
+  }
+
+TEST(TypesTest, TestMembership) {
+  std::vector<std::shared_ptr<DataType>> all_types;
+  for (auto type : NumericTypes()) {
+    all_types.push_back(type);
+  }
+  for (auto type : TemporalTypes()) {
+    all_types.push_back(type);
+  }
+  for (auto type : IntervalTypes()) {
+    all_types.push_back(type);
+  }
+  for (auto type : PrimitiveTypes()) {
+    all_types.push_back(type);
+  }
+  TEST_PREDICATE(all_types, is_integer);
+  TEST_PREDICATE(all_types, is_signed_integer);
+  TEST_PREDICATE(all_types, is_unsigned_integer);
+  TEST_PREDICATE(all_types, is_floating);
+  TEST_PREDICATE(all_types, is_numeric);
+  TEST_PREDICATE(all_types, is_decimal);
+  TEST_PREDICATE(all_types, is_primitive);
+  TEST_PREDICATE(all_types, is_base_binary_like);
+  TEST_PREDICATE(all_types, is_binary_like);
+  TEST_PREDICATE(all_types, is_large_binary_like);
+  TEST_PREDICATE(all_types, is_binary);
+  TEST_PREDICATE(all_types, is_string);
+  TEST_PREDICATE(all_types, is_temporal);
+  TEST_PREDICATE(all_types, is_interval);
+  TEST_PREDICATE(all_types, is_dictionary);
+  TEST_PREDICATE(all_types, is_fixed_size_binary);
+  TEST_PREDICATE(all_types, is_fixed_width);
+  TEST_PREDICATE(all_types, is_list_like);
+  TEST_PREDICATE(all_types, is_nested);
+  TEST_PREDICATE(all_types, is_union);
+}
+
+#undef TEST_PREDICATE
 
 }  // namespace arrow

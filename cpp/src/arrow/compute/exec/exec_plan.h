@@ -17,26 +17,30 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "arrow/compute/exec.h"
-#include "arrow/compute/exec/util.h"
 #include "arrow/compute/type_fwd.h"
 #include "arrow/type_fwd.h"
-#include "arrow/util/async_util.h"
-#include "arrow/util/cancel.h"
-#include "arrow/util/key_value_metadata.h"
+#include "arrow/util/future.h"
 #include "arrow/util/macros.h"
-#include "arrow/util/optional.h"
 #include "arrow/util/tracing.h"
+#include "arrow/util/type_fwd.h"
 #include "arrow/util/visibility.h"
 
 namespace arrow {
 
 namespace compute {
+
+/// \addtogroup execnode-components
+/// @{
 
 class ARROW_EXPORT ExecPlan : public std::enable_shared_from_this<ExecPlan> {
  public:
@@ -46,11 +50,23 @@ class ARROW_EXPORT ExecPlan : public std::enable_shared_from_this<ExecPlan> {
 
   virtual ~ExecPlan() = default;
 
-  ExecContext* exec_context() const { return exec_context_; }
+  QueryContext* query_context();
 
   /// Make an empty exec plan
   static Result<std::shared_ptr<ExecPlan>> Make(
-      ExecContext* = default_exec_context(),
+      QueryOptions options, ExecContext exec_context = *threaded_exec_context(),
+      std::shared_ptr<const KeyValueMetadata> metadata = NULLPTR);
+
+  static Result<std::shared_ptr<ExecPlan>> Make(
+      ExecContext exec_context = *threaded_exec_context(),
+      std::shared_ptr<const KeyValueMetadata> metadata = NULLPTR);
+
+  static Result<std::shared_ptr<ExecPlan>> Make(
+      QueryOptions options, ExecContext* exec_context,
+      std::shared_ptr<const KeyValueMetadata> metadata = NULLPTR);
+
+  static Result<std::shared_ptr<ExecPlan>> Make(
+      ExecContext* exec_context,
       std::shared_ptr<const KeyValueMetadata> metadata = NULLPTR);
 
   ExecNode* AddNode(std::unique_ptr<ExecNode> node);
@@ -62,60 +78,6 @@ class ARROW_EXPORT ExecPlan : public std::enable_shared_from_this<ExecPlan> {
     AddNode(std::move(node));
     return out;
   }
-
-  /// \brief Returns the index of the current thread.
-  size_t GetThreadIndex();
-  /// \brief Returns the maximum number of threads that the plan could use.
-  ///
-  /// GetThreadIndex will always return something less than this, so it is safe to
-  /// e.g. make an array of thread-locals off this.
-  size_t max_concurrency() const;
-
-  /// \brief Start an external task
-  ///
-  /// This should be avoided if possible.  It is kept in for now for legacy
-  /// purposes.  This should be called before the external task is started.  If
-  /// a valid future is returned then it should be marked complete when the
-  /// external task has finished.
-  ///
-  /// \return an invalid future if the plan has already ended, otherwise this
-  ///         returns a future that must be completed when the external task
-  ///         finishes.
-  Result<Future<>> BeginExternalTask();
-
-  /// \brief Add a single function as a task to the plan's task group.
-  ///
-  /// \param fn The task to run. Takes no arguments and returns a Status.
-  Status ScheduleTask(std::function<Status()> fn);
-
-  /// \brief Add a single function as a task to the plan's task group.
-  ///
-  /// \param fn The task to run. Takes the thread index and returns a Status.
-  Status ScheduleTask(std::function<Status(size_t)> fn);
-  // Register/Start TaskGroup is a way of performing a "Parallel For" pattern:
-  // - The task function takes the thread index and the index of the task
-  // - The on_finished function takes the thread index
-  // Returns an integer ID that will be used to reference the task group in
-  // StartTaskGroup. At runtime, call StartTaskGroup with the ID and the number of times
-  // you'd like the task to be executed. The need to register a task group before use will
-  // be removed after we rewrite the scheduler.
-  /// \brief Register a "parallel for" task group with the scheduler
-  ///
-  /// \param task The function implementing the task. Takes the thread_index and
-  ///             the task index.
-  /// \param on_finished The function that gets run once all tasks have been completed.
-  /// Takes the thread_index.
-  ///
-  /// Must be called inside of ExecNode::Init.
-  int RegisterTaskGroup(std::function<Status(size_t, int64_t)> task,
-                        std::function<Status(size_t)> on_finished);
-
-  /// \brief Start the task group with the specified ID. This can only
-  ///        be called once per task_group_id.
-  ///
-  /// \param task_group_id The ID  of the task group to run
-  /// \param num_tasks The number of times to run the task
-  Status StartTaskGroup(int task_group_id, int64_t num_tasks);
 
   /// The initial inputs
   const NodeVector& sources() const;
@@ -146,25 +108,7 @@ class ARROW_EXPORT ExecPlan : public std::enable_shared_from_this<ExecPlan> {
   /// \brief Return the plan's attached metadata
   std::shared_ptr<const KeyValueMetadata> metadata() const;
 
-  /// \brief Should the plan use a legacy batching strategy
-  ///
-  /// This is currently in place only to support the Scanner::ToTable
-  /// method.  This method relies on batch indices from the scanner
-  /// remaining consistent.  This is impractical in the ExecPlan which
-  /// might slice batches as needed (e.g. for a join)
-  ///
-  /// However, it still works for simple plans and this is the only way
-  /// we have at the moment for maintaining implicit order.
-  bool UseLegacyBatching() const { return use_legacy_batching_; }
-  // For internal use only, see above comment
-  void SetUseLegacyBatching(bool value) { use_legacy_batching_ = value; }
-
   std::string ToString() const;
-
- protected:
-  ExecContext* exec_context_;
-  bool use_legacy_batching_ = false;
-  explicit ExecPlan(ExecContext* exec_context) : exec_context_(exec_context) {}
 };
 
 class ARROW_EXPORT ExecNode {
@@ -364,48 +308,6 @@ class ARROW_EXPORT ExecNode {
   util::tracing::Span span_;
 };
 
-/// \brief MapNode is an ExecNode type class which process a task like filter/project
-/// (See SubmitTask method) to each given ExecBatch object, which have one input, one
-/// output, and are pure functions on the input
-///
-/// A simple parallel runner is created with a "map_fn" which is just a function that
-/// takes a batch in and returns a batch.  This simple parallel runner also needs an
-/// executor (use simple synchronous runner if there is no executor)
-
-class ARROW_EXPORT MapNode : public ExecNode {
- public:
-  MapNode(ExecPlan* plan, std::vector<ExecNode*> inputs,
-          std::shared_ptr<Schema> output_schema, bool async_mode);
-
-  void ErrorReceived(ExecNode* input, Status error) override;
-
-  void InputFinished(ExecNode* input, int total_batches) override;
-
-  Status StartProducing() override;
-
-  void PauseProducing(ExecNode* output, int32_t counter) override;
-
-  void ResumeProducing(ExecNode* output, int32_t counter) override;
-
-  void StopProducing(ExecNode* output) override;
-
-  void StopProducing() override;
-
- protected:
-  void SubmitTask(std::function<Result<ExecBatch>(ExecBatch)> map_fn, ExecBatch batch);
-
-  virtual void Finish(Status finish_st = Status::OK());
-
- protected:
-  // Counter for the number of batches received
-  AtomicCounter input_counter_;
-
-  ::arrow::internal::Executor* executor_;
-
-  // Variable used to cancel remaining tasks in the executor
-  StopSource stop_source_;
-};
-
 /// \brief An extensible registry for factories of ExecNodes
 class ARROW_EXPORT ExecFactoryRegistry {
  public:
@@ -444,7 +346,9 @@ inline Result<ExecNode*> MakeExecNode(
 /// inputs may also be Declarations). The node can be constructed and added to a plan
 /// with Declaration::AddToPlan, which will recursively construct any inputs as necessary.
 struct ARROW_EXPORT Declaration {
-  using Input = util::Variant<ExecNode*, Declaration>;
+  using Input = std::variant<ExecNode*, Declaration>;
+
+  Declaration() {}
 
   Declaration(std::string factory_name, std::vector<Input> inputs,
               std::shared_ptr<ExecNodeOptions> options, std::string label)
@@ -509,18 +413,165 @@ struct ARROW_EXPORT Declaration {
   Result<ExecNode*> AddToPlan(ExecPlan* plan, ExecFactoryRegistry* registry =
                                                   default_exec_factory_registry()) const;
 
+  // Validate a declaration
+  bool IsValid(ExecFactoryRegistry* registry = default_exec_factory_registry()) const;
+
   std::string factory_name;
   std::vector<Input> inputs;
   std::shared_ptr<ExecNodeOptions> options;
   std::string label;
 };
 
+/// \brief Utility method to run a declaration and collect the results into a table
+///
+/// \param declaration A declaration describing the plan to run
+/// \param use_threads If `use_threads` is false then all CPU work will be done on the
+///                    calling thread.  I/O tasks will still happen on the I/O executor
+///                    and may be multi-threaded (but should not use significant CPU
+///                    resources).
+/// \param memory_pool The memory pool to use for allocations made while running the plan.
+/// \param function_registry The function registry to use for function execution.  If null
+///                          then the default function registry will be used.
+///
+/// This method will add a sink node to the declaration to collect results into a
+/// table.  It will then create an ExecPlan from the declaration, start the exec plan,
+/// block until the plan has finished, and return the created table.
+ARROW_EXPORT Result<std::shared_ptr<Table>> DeclarationToTable(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Asynchronous version of \see DeclarationToTable
+///
+/// \param declaration A declaration describing the plan to run
+/// \param use_threads The behavior of use_threads is slightly different than the
+///                    synchronous version since we cannot run synchronously on the
+///                    calling thread. Instead, if use_threads=false then a new thread
+///                    pool will be created with a single thread and this will be used for
+///                    all compute work.
+/// \param memory_pool The memory pool to use for allocations made while running the plan.
+/// \param function_registry The function registry to use for function execution. If null
+///                          then the default function registry will be used.
+ARROW_EXPORT Future<std::shared_ptr<Table>> DeclarationToTableAsync(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Overload of \see DeclarationToTableAsync accepting a custom exec context
+///
+/// The executor must be specified (cannot be null) and must be kept alive until the
+/// returned future finishes.
+ARROW_EXPORT Future<std::shared_ptr<Table>> DeclarationToTableAsync(
+    Declaration declaration, ExecContext custom_exec_context);
+
+/// \brief a collection of exec batches with a common schema
+struct BatchesWithCommonSchema {
+  std::vector<ExecBatch> batches;
+  std::shared_ptr<Schema> schema;
+};
+
+/// \brief Utility method to run a declaration and collect the results into ExecBatch
+/// vector
+///
+/// \see DeclarationToTable for details on threading & execution
+ARROW_EXPORT Result<BatchesWithCommonSchema> DeclarationToExecBatches(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Asynchronous version of \see DeclarationToExecBatches
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<BatchesWithCommonSchema> DeclarationToExecBatchesAsync(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Overload of \see DeclarationToExecBatchesAsync accepting a custom exec context
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<BatchesWithCommonSchema> DeclarationToExecBatchesAsync(
+    Declaration declaration, ExecContext custom_exec_context);
+
+/// \brief Utility method to run a declaration and collect the results into a vector
+///
+/// \see DeclarationToTable for details on threading & execution
+ARROW_EXPORT Result<std::vector<std::shared_ptr<RecordBatch>>> DeclarationToBatches(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Asynchronous version of \see DeclarationToBatches
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<std::vector<std::shared_ptr<RecordBatch>>> DeclarationToBatchesAsync(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Overload of \see DeclarationToBatchesAsync accepting a custom exec context
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<std::vector<std::shared_ptr<RecordBatch>>> DeclarationToBatchesAsync(
+    Declaration declaration, ExecContext exec_context);
+
+/// \brief Utility method to run a declaration and return results as a RecordBatchReader
+///
+/// If an exec context is not provided then a default exec context will be used based
+/// on the value of `use_threads`.  If `use_threads` is false then the CPU exeuctor will
+/// be a serial executor and all CPU work will be done on the calling thread.  I/O tasks
+/// will still happen on the I/O executor and may be multi-threaded.
+///
+/// If `use_threads` is false then all CPU work will happen during the calls to
+/// RecordBatchReader::Next and no CPU work will happen in the background.  If
+/// `use_threads` is true then CPU work will happen on the CPU thread pool and tasks may
+/// run in between calls to RecordBatchReader::Next.  If the returned reader is not
+/// consumed quickly enough then the plan will eventually pause as the backpressure queue
+/// fills up.
+///
+/// If a custom exec context is provided then the value of `use_threads` will be ignored.
+ARROW_EXPORT Result<std::unique_ptr<RecordBatchReader>> DeclarationToReader(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Overload of \see DeclarationToReader accepting a custom exec context
+ARROW_EXPORT Result<std::unique_ptr<RecordBatchReader>> DeclarationToReader(
+    Declaration declaration, ExecContext exec_context);
+
+/// \brief Utility method to run a declaration and ignore results
+///
+/// This can be useful when the data are consumed as part of the plan itself, for
+/// example, when the plan ends with a write node.
+///
+/// \see DeclarationToTable for details on threading & execution
+ARROW_EXPORT Status DeclarationToStatus(Declaration declaration, bool use_threads = true,
+                                        MemoryPool* memory_pool = default_memory_pool(),
+                                        FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Asynchronous version of \see DeclarationToStatus
+///
+/// This can be useful when the data are consumed as part of the plan itself, for
+/// example, when the plan ends with a write node.
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<> DeclarationToStatusAsync(
+    Declaration declaration, bool use_threads = true,
+    MemoryPool* memory_pool = default_memory_pool(),
+    FunctionRegistry* function_registry = NULLPTR);
+
+/// \brief Overload of \see DeclarationToStatusAsync accepting a custom exec context
+///
+/// \see DeclarationToTableAsync for details on threading & execution
+ARROW_EXPORT Future<> DeclarationToStatusAsync(Declaration declaration,
+                                               ExecContext exec_context);
+
 /// \brief Wrap an ExecBatch generator in a RecordBatchReader.
 ///
 /// The RecordBatchReader does not impose any ordering on emitted batches.
 ARROW_EXPORT
 std::shared_ptr<RecordBatchReader> MakeGeneratorReader(
-    std::shared_ptr<Schema>, std::function<Future<util::optional<ExecBatch>>()>,
+    std::shared_ptr<Schema>, std::function<Future<std::optional<ExecBatch>>()>,
     MemoryPool*);
 
 constexpr int kDefaultBackgroundMaxQ = 32;
@@ -530,9 +581,11 @@ constexpr int kDefaultBackgroundQRestart = 16;
 ///
 /// Useful as a source node for an Exec plan
 ARROW_EXPORT
-Result<std::function<Future<util::optional<ExecBatch>>()>> MakeReaderGenerator(
+Result<std::function<Future<std::optional<ExecBatch>>()>> MakeReaderGenerator(
     std::shared_ptr<RecordBatchReader> reader, arrow::internal::Executor* io_executor,
     int max_q = kDefaultBackgroundMaxQ, int q_restart = kDefaultBackgroundQRestart);
+
+/// @}
 
 }  // namespace compute
 }  // namespace arrow

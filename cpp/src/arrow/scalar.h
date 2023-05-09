@@ -22,7 +22,9 @@
 
 #include <iosfwd>
 #include <memory>
+#include <ratio>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,7 +37,6 @@
 #include "arrow/type_traits.h"
 #include "arrow/util/compare.h"
 #include "arrow/util/decimal.h"
-#include "arrow/util/string_view.h"
 #include "arrow/util/visibility.h"
 #include "arrow/visit_type_inline.h"
 
@@ -95,12 +96,10 @@ struct ARROW_EXPORT Scalar : public std::enable_shared_from_this<Scalar>,
   Status ValidateFull() const;
 
   static Result<std::shared_ptr<Scalar>> Parse(const std::shared_ptr<DataType>& type,
-                                               util::string_view repr);
+                                               std::string_view repr);
 
   // TODO(bkietz) add compute::CastOptions
   Result<std::shared_ptr<Scalar>> CastTo(std::shared_ptr<DataType> to) const;
-
-  ARROW_EXPORT friend void PrintTo(const Scalar& scalar, std::ostream* os);
 
   /// \brief Apply the ScalarVisitor::Visit() method specialized to the scalar type
   Status Accept(ScalarVisitor* visitor) const;
@@ -115,6 +114,8 @@ struct ARROW_EXPORT Scalar : public std::enable_shared_from_this<Scalar>,
   Scalar(std::shared_ptr<DataType> type, bool is_valid)
       : type(std::move(type)), is_valid(is_valid) {}
 };
+
+ARROW_EXPORT void PrintTo(const Scalar& scalar, std::ostream* os);
 
 /// \defgroup concrete-scalar-classes Concrete Scalar subclasses
 ///
@@ -140,7 +141,7 @@ struct ARROW_EXPORT PrimitiveScalarBase : public Scalar {
   /// \brief Get a mutable pointer to the value of this scalar. May be null.
   virtual void* mutable_data() = 0;
   /// \brief Get an immutable view of the value of this scalar as bytes.
-  virtual util::string_view view() const = 0;
+  virtual std::string_view view() const = 0;
 };
 
 template <typename T, typename CType = typename T::c_type>
@@ -159,8 +160,8 @@ struct ARROW_EXPORT PrimitiveScalar : public PrimitiveScalarBase {
   ValueType value{};
 
   void* mutable_data() override { return &value; }
-  util::string_view view() const override {
-    return util::string_view(reinterpret_cast<const char*>(&value), sizeof(ValueType));
+  std::string_view view() const override {
+    return std::string_view(reinterpret_cast<const char*>(&value), sizeof(ValueType));
   };
 };
 
@@ -245,8 +246,8 @@ struct ARROW_EXPORT BaseBinaryScalar : public internal::PrimitiveScalarBase {
   void* mutable_data() override {
     return value ? reinterpret_cast<void*>(value->mutable_data()) : NULLPTR;
   }
-  util::string_view view() const override {
-    return value ? util::string_view(*value) : util::string_view();
+  std::string_view view() const override {
+    return value ? std::string_view(*value) : std::string_view();
   }
 
  protected:
@@ -323,7 +324,7 @@ struct ARROW_EXPORT FixedSizeBinaryScalar : public BinaryScalar {
 template <typename T>
 struct TemporalScalar : internal::PrimitiveScalar<T> {
   using internal::PrimitiveScalar<T>::PrimitiveScalar;
-  using ValueType = typename TemporalScalar<T>::ValueType;
+  using ValueType = typename internal::PrimitiveScalar<T>::ValueType;
 
   TemporalScalar(ValueType value, std::shared_ptr<DataType> type)
       : internal::PrimitiveScalar<T>(std::move(value), type) {}
@@ -369,6 +370,9 @@ struct ARROW_EXPORT TimestampScalar : public TemporalScalar<TimestampType> {
   TimestampScalar(typename TemporalScalar<TimestampType>::ValueType value,
                   TimeUnit::type unit, std::string tz = "")
       : TimestampScalar(std::move(value), timestamp(unit, std::move(tz))) {}
+
+  static Result<TimestampScalar> FromISO8601(std::string_view iso8601,
+                                             TimeUnit::type unit);
 };
 
 template <typename T>
@@ -400,6 +404,27 @@ struct ARROW_EXPORT DurationScalar : public TemporalScalar<DurationType> {
   DurationScalar(typename TemporalScalar<DurationType>::ValueType value,
                  TimeUnit::type unit)
       : DurationScalar(std::move(value), duration(unit)) {}
+
+  // Convenience constructors for a DurationScalar from std::chrono::nanoseconds
+  template <template <typename, typename> class StdDuration, typename Rep>
+  explicit DurationScalar(StdDuration<Rep, std::nano> d)
+      : DurationScalar{DurationScalar(d.count(), duration(TimeUnit::NANO))} {}
+
+  // Convenience constructors for a DurationScalar from std::chrono::microseconds
+  template <template <typename, typename> class StdDuration, typename Rep>
+  explicit DurationScalar(StdDuration<Rep, std::micro> d)
+      : DurationScalar{DurationScalar(d.count(), duration(TimeUnit::MICRO))} {}
+
+  // Convenience constructors for a DurationScalar from std::chrono::milliseconds
+  template <template <typename, typename> class StdDuration, typename Rep>
+  explicit DurationScalar(StdDuration<Rep, std::milli> d)
+      : DurationScalar{DurationScalar(d.count(), duration(TimeUnit::MILLI))} {}
+
+  // Convenience constructors for a DurationScalar from std::chrono::seconds
+  // or from units which are whole numbers of seconds
+  template <template <typename, typename> class StdDuration, typename Rep, intmax_t Num>
+  explicit DurationScalar(StdDuration<Rep, std::ratio<Num, 1>> d)
+      : DurationScalar{DurationScalar(d.count() * Num, duration(TimeUnit::SECOND))} {}
 };
 
 template <typename TYPE_CLASS, typename VALUE_TYPE>
@@ -415,9 +440,9 @@ struct ARROW_EXPORT DecimalScalar : public internal::PrimitiveScalarBase {
     return reinterpret_cast<void*>(value.mutable_native_endian_bytes());
   }
 
-  util::string_view view() const override {
-    return util::string_view(reinterpret_cast<const char*>(value.native_endian_bytes()),
-                             ValueType::kByteWidth);
+  std::string_view view() const override {
+    return std::string_view(reinterpret_cast<const char*>(value.native_endian_bytes()),
+                            ValueType::kByteWidth);
   }
 
   ValueType value;
@@ -561,7 +586,7 @@ struct ARROW_EXPORT DictionaryScalar : public internal::PrimitiveScalarBase {
     return internal::checked_cast<internal::PrimitiveScalarBase&>(*value.index)
         .mutable_data();
   }
-  util::string_view view() const override {
+  std::string_view view() const override {
     return internal::checked_cast<const internal::PrimitiveScalarBase&>(*value.index)
         .view();
   }

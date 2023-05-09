@@ -1159,6 +1159,7 @@ cdef class ParquetReader(_Weakrefable):
         CMemoryPool* pool
         unique_ptr[FileReader] reader
         FileMetaData _metadata
+        shared_ptr[CRandomAccessFile] rd_handle
 
     cdef public:
         _column_idx_map
@@ -1175,7 +1176,6 @@ cdef class ParquetReader(_Weakrefable):
              thrift_string_size_limit=None,
              thrift_container_size_limit=None):
         cdef:
-            shared_ptr[CRandomAccessFile] rd_handle
             shared_ptr[CFileMetaData] c_metadata
             CReaderProperties properties = default_reader_properties()
             ArrowReaderProperties arrow_props = (
@@ -1221,10 +1221,10 @@ cdef class ParquetReader(_Weakrefable):
                 string_to_timeunit(coerce_int96_timestamp_unit))
 
         self.source = source
+        get_reader(source, use_memory_map, &self.rd_handle)
 
-        get_reader(source, use_memory_map, &rd_handle)
         with nogil:
-            check_status(builder.Open(rd_handle, properties, c_metadata))
+            check_status(builder.Open(self.rd_handle, properties, c_metadata))
 
         # Set up metadata
         with nogil:
@@ -1435,6 +1435,19 @@ cdef class ParquetReader(_Weakrefable):
                          .ReadColumn(column_index, &out))
         return pyarrow_wrap_chunked_array(out)
 
+    def close(self):
+        if not self.closed:
+            with nogil:
+                check_status(self.rd_handle.get().Close())
+
+    @property
+    def closed(self):
+        if self.rd_handle == NULL:
+            return True
+        with nogil:
+            closed = self.rd_handle.get().closed()
+        return closed
+
 
 cdef shared_ptr[WriterProperties] _create_writer_properties(
         use_dictionary=None,
@@ -1593,7 +1606,8 @@ cdef shared_ptr[ArrowWriterProperties] _create_arrow_writer_properties(
         coerce_timestamps=None,
         allow_truncated_timestamps=False,
         writer_engine_version=None,
-        use_compliant_nested_type=False) except *:
+        use_compliant_nested_type=False,
+        store_schema=True) except *:
     """Arrow writer properties"""
     cdef:
         shared_ptr[ArrowWriterProperties] arrow_properties
@@ -1601,7 +1615,8 @@ cdef shared_ptr[ArrowWriterProperties] _create_arrow_writer_properties(
 
     # Store the original Arrow schema so things like dictionary types can
     # be automatically reconstructed
-    arrow_props.store_schema()
+    if store_schema:
+        arrow_props.store_schema()
 
     # int96 support
 
@@ -1673,6 +1688,7 @@ cdef class ParquetWriter(_Weakrefable):
         FileEncryptionProperties encryption_properties
         int64_t write_batch_size
         int64_t dictionary_pagesize_limit
+        object store_schema
 
     def __cinit__(self, where, Schema schema, use_dictionary=None,
                   compression=None, version=None,
@@ -1690,7 +1706,8 @@ cdef class ParquetWriter(_Weakrefable):
                   use_compliant_nested_type=False,
                   encryption_properties=None,
                   write_batch_size=None,
-                  dictionary_pagesize_limit=None):
+                  dictionary_pagesize_limit=None,
+                  store_schema=True):
         cdef:
             shared_ptr[WriterProperties] properties
             shared_ptr[ArrowWriterProperties] arrow_properties
@@ -1727,15 +1744,15 @@ cdef class ParquetWriter(_Weakrefable):
             coerce_timestamps=coerce_timestamps,
             allow_truncated_timestamps=allow_truncated_timestamps,
             writer_engine_version=writer_engine_version,
-            use_compliant_nested_type=use_compliant_nested_type
+            use_compliant_nested_type=use_compliant_nested_type,
+            store_schema=store_schema,
         )
 
         pool = maybe_unbox_memory_pool(memory_pool)
         with nogil:
-            check_status(
+            self.writer = move(GetResultValue(
                 FileWriter.Open(deref(schema.schema), pool,
-                                self.sink, properties, arrow_properties,
-                                &self.writer))
+                                self.sink, properties, arrow_properties)))
 
     def close(self):
         with nogil:

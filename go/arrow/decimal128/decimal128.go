@@ -21,13 +21,18 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
 
-	"github.com/apache/arrow/go/v10/arrow/internal/debug"
+	"github.com/apache/arrow/go/v11/arrow/internal/debug"
 )
 
 var (
 	MaxDecimal128 = New(542101086242752217, 687399551400673280-1)
 )
+
+func GetMaxValue(prec int32) Num {
+	return scaleMultipliers[prec].Sub(FromU64(1))
+}
 
 // Num represents a signed 128-bit integer in two's complement.
 // Calculations wrap around and overflow is ignored.
@@ -101,7 +106,35 @@ func (n Num) Negate() Num {
 	return n
 }
 
-func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
+func (n Num) Add(rhs Num) Num {
+	n.hi += rhs.hi
+	var carry uint64
+	n.lo, carry = bits.Add64(n.lo, rhs.lo, 0)
+	n.hi += int64(carry)
+	return n
+}
+
+func (n Num) Sub(rhs Num) Num {
+	n.hi -= rhs.hi
+	var borrow uint64
+	n.lo, borrow = bits.Sub64(n.lo, rhs.lo, 0)
+	n.hi -= int64(borrow)
+	return n
+}
+
+func (n Num) Mul(rhs Num) Num {
+	hi, lo := bits.Mul64(n.lo, rhs.lo)
+	hi += (uint64(n.hi) * rhs.lo) + (n.lo * uint64(rhs.hi))
+	return Num{hi: int64(hi), lo: lo}
+}
+
+func (n Num) Div(rhs Num) (res, rem Num) {
+	b := n.BigInt()
+	out, remainder := b.QuoRem(b, rhs.BigInt(), &big.Int{})
+	return FromBigInt(out), FromBigInt(remainder)
+}
+
+func scalePositiveFloat64(v float64, prec, scale int32) (float64, error) {
 	var pscale float64
 	if scale >= -38 && scale <= 38 {
 		pscale = float64PowersOfTen[scale+38]
@@ -113,11 +146,44 @@ func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
 	v = math.RoundToEven(v)
 	maxabs := float64PowersOfTen[prec+38]
 	if v <= -maxabs || v >= maxabs {
-		return Num{}, fmt.Errorf("cannot convert %f to decimal128(precision=%d, scale=%d): overflow", v, prec, scale)
+		return 0, fmt.Errorf("cannot convert %f to decimal128(precision=%d, scale=%d): overflow", v, prec, scale)
+	}
+	return v, nil
+}
+
+func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
+	v, err := scalePositiveFloat64(v, prec, scale)
+	if err != nil {
+		return Num{}, err
 	}
 
-	hi := math.Floor(math.Ldexp(float64(v), -64))
+	hi := math.Floor(math.Ldexp(v, -64))
 	low := v - math.Ldexp(hi, 64)
+	return Num{hi: int64(hi), lo: uint64(low)}, nil
+}
+
+// this has to exist despite sharing some code with fromPositiveFloat64
+// because if we don't do the casts back to float32 in between each
+// step, we end up with a significantly different answer!
+// Aren't floating point values so much fun?
+//
+// example value to use:
+//    v := float32(1.8446746e+15)
+//
+// You'll end up with a different values if you do:
+// 	  FromFloat64(float64(v), 20, 4)
+// vs
+//    FromFloat32(v, 20, 4)
+//
+// because float64(v) == 1844674629206016 rather than 1844674600000000
+func fromPositiveFloat32(v float32, prec, scale int32) (Num, error) {
+	val, err := scalePositiveFloat64(float64(v), prec, scale)
+	if err != nil {
+		return Num{}, err
+	}
+
+	hi := float32(math.Floor(math.Ldexp(float64(float32(val)), -64)))
+	low := float32(val) - float32(math.Ldexp(float64(hi), 64))
 	return Num{hi: int64(hi), lo: uint64(low)}, nil
 }
 
@@ -125,7 +191,14 @@ func fromPositiveFloat64(v float64, prec, scale int32) (Num, error) {
 // value using the provided precision and scale. Will return an error if the
 // value cannot be accurately represented with the desired precision and scale.
 func FromFloat32(v float32, prec, scale int32) (Num, error) {
-	return FromFloat64(float64(v), prec, scale)
+	if v < 0 {
+		dec, err := fromPositiveFloat32(-v, prec, scale)
+		if err != nil {
+			return dec, err
+		}
+		return dec.Negate(), nil
+	}
+	return fromPositiveFloat32(v, prec, scale)
 }
 
 // FromFloat64 returns a new decimal128.Num constructed from the given float64
@@ -140,6 +213,53 @@ func FromFloat64(v float64, prec, scale int32) (Num, error) {
 		return dec.Negate(), nil
 	}
 	return fromPositiveFloat64(v, prec, scale)
+}
+
+func FromString(v string, prec, scale int32) (n Num, err error) {
+	// time for some math!
+	// Our input precision means "number of digits of precision" but the
+	// math/big library refers to precision in floating point terms
+	// where it refers to the "number of bits of precision in the mantissa".
+	// So we need to figure out how many bits we should use for precision,
+	// based on the input precision. Too much precision and we're not rounding
+	// when we should. Too little precision and we round when we shouldn't.
+	//
+	// In general, the number of decimal digits you get from a given number
+	// of bits will be:
+	//
+	//	digits = log[base 10](2^nbits)
+	//
+	// it thus follows that:
+	//
+	//	digits = nbits * log[base 10](2)
+	//  nbits = digits / log[base 10](2)
+	//
+	// So we need to account for our scale since we're going to be multiplying
+	// by 10^scale in order to get the integral value we're actually going to use
+	// So to get our number of bits we do:
+	//
+	// 	(prec + scale + 1) / log[base10](2)
+	//
+	// Finally, we still have a sign bit, so we -1 to account for the sign bit.
+	// Aren't floating point numbers fun?
+	var precInBits = uint(math.Round(float64(prec+scale+1)/math.Log10(2))) + 1
+
+	var out *big.Float
+	out, _, err = big.ParseFloat(v, 10, 127, big.ToNearestEven)
+	if err != nil {
+		return
+	}
+
+	var tmp big.Int
+	val, _ := out.Mul(out, big.NewFloat(math.Pow10(int(scale)))).SetPrec(precInBits).Int(&tmp)
+	if val.BitLen() > 127 {
+		return Num{}, errors.New("bitlen too large for decimal128")
+	}
+	n = FromBigInt(val)
+	if !n.FitsInPrecision(prec) {
+		err = fmt.Errorf("val %v doesn't fit in precision %d", n, prec)
+	}
+	return
 }
 
 // ToFloat32 returns a float32 value representative of this decimal128.Num,
@@ -199,6 +319,14 @@ func (n Num) BigInt() *big.Int {
 		return b.Neg(b)
 	}
 	return toBigIntPositive(n)
+}
+
+func (n Num) Greater(other Num) bool {
+	return other.Less(n)
+}
+
+func (n Num) GreaterEqual(other Num) bool {
+	return !n.Less(other)
 }
 
 // Less returns true if the value represented by n is < other
@@ -302,6 +430,16 @@ func (n Num) FitsInPrecision(prec int32) bool {
 	return n.Abs().Less(scaleMultipliers[prec])
 }
 
+func (n Num) ToString(scale int32) string {
+	f := (&big.Float{}).SetInt(n.BigInt())
+	f.Quo(f, (&big.Float{}).SetInt(scaleMultipliers[scale].BigInt()))
+	return f.Text('f', int(scale))
+}
+
+func GetScaleMultiplier(pow int) Num { return scaleMultipliers[pow] }
+
+func GetHalfScaleMultiplier(pow int) Num { return scaleMultipliersHalf[pow] }
+
 var (
 	scaleMultipliers = [...]Num{
 		FromU64(1),
@@ -323,7 +461,6 @@ var (
 		FromU64(10000000000000000),
 		FromU64(100000000000000000),
 		FromU64(1000000000000000000),
-		FromU64(10000000000000000000),
 		New(0, 10000000000000000000),
 		New(5, 7766279631452241920),
 		New(54, 3875820019684212736),

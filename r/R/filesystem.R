@@ -154,6 +154,10 @@ FileSelector$create <- function(base_dir, allow_not_found = FALSE, recursive = F
 #'    buckets if `$CreateDir()` is called on the bucket level (default `FALSE`).
 #' - `allow_bucket_deletion`: logical, if TRUE, the filesystem will delete
 #'    buckets if`$DeleteDir()` is called on the bucket level (default `FALSE`).
+#' - `request_timeout`: Socket read time on Windows and MacOS in seconds. If
+#'    negative, the AWS SDK default (typically 3 seconds).
+#' - `connect_timeout`: Socket connection timeout in seconds. If negative, AWS
+#'    SDK default is used (typically 1 second).
 #'
 #' `GcsFileSystem$create()` optionally takes arguments:
 #'
@@ -431,7 +435,9 @@ default_s3_options <- list(
   proxy_options = "",
   background_writes = TRUE,
   allow_bucket_creation = FALSE,
-  allow_bucket_deletion = FALSE
+  allow_bucket_deletion = FALSE,
+  connect_timeout = -1,
+  request_timeout = -1
 )
 
 #' Connect to an AWS S3 bucket
@@ -497,7 +503,9 @@ gs_bucket <- function(bucket, ...) {
 GcsFileSystem <- R6Class("GcsFileSystem",
   inherit = FileSystem
 )
-GcsFileSystem$create <- function(anonymous = FALSE, ...) {
+GcsFileSystem$create <- function(anonymous = FALSE, retry_limit_seconds = 15, ...) {
+  # The default retry limit in C++ is 15 minutes, but that is experienced as
+  # hanging in an interactive context, so default is set here to 15 seconds.
   options <- list(...)
 
   # Validate options
@@ -525,8 +533,7 @@ GcsFileSystem$create <- function(anonymous = FALSE, ...) {
 
   valid_opts <- c(
     "access_token", "expiration", "json_credentials", "endpoint_override",
-    "scheme", "default_bucket_location", "retry_limit_seconds",
-    "default_metadata"
+    "scheme", "default_bucket_location", "default_metadata"
   )
 
   invalid_opts <- setdiff(names(options), valid_opts)
@@ -537,6 +544,8 @@ GcsFileSystem$create <- function(anonymous = FALSE, ...) {
       call. = FALSE
     )
   }
+
+  options$retry_limit_seconds <- retry_limit_seconds
 
   fs___GcsFileSystem__Make(anonymous, options)
 }
@@ -615,7 +624,7 @@ copy_files <- function(from, to, chunk_size = 1024L * 1024L) {
 
 clean_path_abs <- function(path) {
   # Make sure we have a valid, absolute, forward-slashed path for passing to Arrow
-  normalizePath(path, winslash = "/", mustWork = FALSE)
+  enc2utf8(normalizePath(path, winslash = "/", mustWork = FALSE))
 }
 
 clean_path_rel <- function(path) {

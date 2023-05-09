@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "arrow/array/builder_base.h"
@@ -30,7 +31,7 @@
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/decimal.h"
 #include "arrow/util/range.h"
-#include "arrow/util/string_view.h"
+#include "arrow/util/string.h"
 #include "arrow/visit_data_inline.h"
 
 #include "orc/Exceptions.hh"
@@ -43,6 +44,7 @@ namespace liborc = orc;
 namespace arrow {
 
 using internal::checked_cast;
+using internal::ToChars;
 
 namespace adapters {
 namespace orc {
@@ -462,7 +464,7 @@ struct Appender<DataType, liborc::StringVectorBatch> {
     running_arrow_offset++;
     return Status::OK();
   }
-  Status VisitValue(util::string_view v) {
+  Status VisitValue(std::string_view v) {
     batch->notNull[running_orc_offset] = true;
     COffsetType data_length = 0;
     batch->data[running_orc_offset] = reinterpret_cast<char*>(
@@ -486,7 +488,7 @@ struct Appender<Decimal128Type, liborc::Decimal64VectorBatch> {
     running_arrow_offset++;
     return Status::OK();
   }
-  Status VisitValue(util::string_view v) {
+  Status VisitValue(std::string_view v) {
     batch->notNull[running_orc_offset] = true;
     const Decimal128 dec_value(array.GetValue(running_arrow_offset));
     batch->values[running_orc_offset] = static_cast<int64_t>(dec_value.low_bits());
@@ -507,7 +509,7 @@ struct Appender<Decimal128Type, liborc::Decimal128VectorBatch> {
     running_arrow_offset++;
     return Status::OK();
   }
-  Status VisitValue(util::string_view v) {
+  Status VisitValue(std::string_view v) {
     batch->notNull[running_orc_offset] = true;
     const Decimal128 dec_value(array.GetValue(running_arrow_offset));
     batch->values[running_orc_offset] =
@@ -557,7 +559,7 @@ struct FixedSizeBinaryAppender {
     running_arrow_offset++;
     return Status::OK();
   }
-  Status VisitValue(util::string_view v) {
+  Status VisitValue(std::string_view v) {
     batch->notNull[running_orc_offset] = true;
     batch->data[running_orc_offset] = reinterpret_cast<char*>(
         const_cast<uint8_t*>(array.GetValue(running_arrow_offset)));
@@ -1020,7 +1022,7 @@ Result<std::shared_ptr<DataType>> GetArrowType(const liborc::Type* type) {
       std::vector<int8_t> type_codes(subtype_count);
       for (int child = 0; child < subtype_count; ++child) {
         ARROW_ASSIGN_OR_RAISE(auto elem_type, GetArrowType(type->getSubtype(child)));
-        fields[child] = field("_union_" + std::to_string(child), std::move(elem_type));
+        fields[child] = field("_union_" + ToChars(child), std::move(elem_type));
         type_codes[child] = static_cast<int8_t>(child);
       }
       return sparse_union(std::move(fields), std::move(type_codes));

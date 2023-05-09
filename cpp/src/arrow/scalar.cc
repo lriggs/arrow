@@ -646,6 +646,15 @@ std::shared_ptr<DictionaryScalar> DictionaryScalar::Make(std::shared_ptr<Scalar>
                                             std::move(type), is_valid);
 }
 
+Result<TimestampScalar> TimestampScalar::FromISO8601(std::string_view iso8601,
+                                                     TimeUnit::type unit) {
+  ValueType value;
+  if (internal::ParseTimestampISO8601(iso8601.data(), iso8601.size(), unit, &value)) {
+    return TimestampScalar{value, timestamp(unit)};
+  }
+  return Status::Invalid("Couldn't parse ", iso8601, " as a timestamp");
+}
+
 SparseUnionScalar::SparseUnionScalar(ValueType value, int8_t type_code,
                                      std::shared_ptr<DataType> type)
     : UnionScalar(std::move(type), type_code, /*is_valid=*/true),
@@ -839,16 +848,16 @@ struct ScalarParseImpl {
     return std::move(out_);
   }
 
-  ScalarParseImpl(std::shared_ptr<DataType> type, util::string_view s)
+  ScalarParseImpl(std::shared_ptr<DataType> type, std::string_view s)
       : type_(std::move(type)), s_(s) {}
 
   std::shared_ptr<DataType> type_;
-  util::string_view s_;
+  std::string_view s_;
   std::shared_ptr<Scalar> out_;
 };
 
 Result<std::shared_ptr<Scalar>> Scalar::Parse(const std::shared_ptr<DataType>& type,
-                                              util::string_view s) {
+                                              std::string_view s) {
   return ScalarParseImpl{type, s}.Finish();
 }
 
@@ -871,9 +880,8 @@ std::shared_ptr<Buffer> FormatToBuffer(Formatter&& formatter, const ScalarType& 
   if (!from.is_valid) {
     return Buffer::FromString("null");
   }
-  return formatter(from.value, [&](util::string_view v) {
-    return Buffer::FromString(std::string(v));
-  });
+  return formatter(
+      from.value, [&](std::string_view v) { return Buffer::FromString(std::string(v)); });
 }
 
 // error fallback
@@ -993,8 +1001,7 @@ Status CastImpl(const DateScalar<D>& from, TimestampScalar* to) {
 // string to any
 template <typename ScalarType>
 Status CastImpl(const StringScalar& from, ScalarType* to) {
-  ARROW_ASSIGN_OR_RAISE(auto out,
-                        Scalar::Parse(to->type, util::string_view(*from.value)));
+  ARROW_ASSIGN_OR_RAISE(auto out, Scalar::Parse(to->type, std::string_view(*from.value)));
   to->value = std::move(checked_cast<ScalarType&>(*out).value);
   return Status::OK();
 }

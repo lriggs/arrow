@@ -366,7 +366,7 @@ cdef class ChunkedArray(_PandasConvertible):
 
         Parameters
         ----------
-        fill_value
+        fill_value : any
             The replacement value for null entries.
 
         Returns
@@ -530,7 +530,7 @@ cdef class ChunkedArray(_PandasConvertible):
 
         Parameters
         ----------
-        null_encoding
+        null_encoding : str, default "mask"
             How to handle null entries.
 
         Returns
@@ -853,7 +853,7 @@ cdef class ChunkedArray(_PandasConvertible):
         ----------
         mask : Array or array-like
             The boolean mask to filter the chunked array with.
-        null_selection_behavior
+        null_selection_behavior : str, default "drop"
             How nulls in the mask should be handled.
 
         Returns
@@ -1038,6 +1038,29 @@ cdef class ChunkedArray(_PandasConvertible):
         ]
         """
         return _pc().drop_null(self)
+
+    def sort(self, order="ascending", **kwargs):
+        """
+        Sort the ChunkedArray
+
+        Parameters
+        ----------
+        order : str, default "ascending"
+            Which order to sort values in.
+            Accepted values are "ascending", "descending".
+        **kwargs : dict, optional
+            Additional sorting options.
+            As allowed by :class:`SortOptions`
+
+        Returns
+        -------
+        result : ChunkedArray
+        """
+        indices = _pc().sort_indices(
+            self,
+            options=_pc().SortOptions(sort_keys=[("", order)], **kwargs)
+        )
+        return self.take(indices)
 
     def unify_dictionaries(self, MemoryPool memory_pool=None):
         """
@@ -1303,7 +1326,8 @@ def chunked_array(arrays, type=None):
     cdef:
         Array arr
         vector[shared_ptr[CArray]] c_arrays
-        shared_ptr[CChunkedArray] sp_chunked_array
+        shared_ptr[CChunkedArray] c_result
+        shared_ptr[CDataType] c_type
 
     type = ensure_type(type, allow_none=True)
 
@@ -1318,25 +1342,13 @@ def chunked_array(arrays, type=None):
             # subsequent arrays to the firstly inferred array type
             # it also spares the inference overhead after the first chunk
             type = arr.type
-        else:
-            if arr.type != type:
-                raise TypeError(
-                    "All array chunks must have type {}".format(type)
-                )
 
         c_arrays.push_back(arr.sp_array)
 
-    if c_arrays.size() == 0 and type is None:
-        raise ValueError("When passing an empty collection of arrays "
-                         "you must also pass the data type")
-
-    sp_chunked_array.reset(
-        new CChunkedArray(c_arrays, pyarrow_unwrap_data_type(type))
-    )
+    c_type = pyarrow_unwrap_data_type(type)
     with nogil:
-        check_status(sp_chunked_array.get().Validate())
-
-    return pyarrow_wrap_chunked_array(sp_chunked_array)
+        c_result = GetResultValue(CChunkedArray.Make(c_arrays, c_type))
+    return pyarrow_wrap_chunked_array(c_result)
 
 
 cdef _schema_from_arrays(arrays, names, metadata, shared_ptr[CSchema]* schema):
@@ -2013,7 +2025,7 @@ cdef class RecordBatch(_PandasConvertible):
         >>> batch = pa.RecordBatch.from_arrays([n_legs, animals],
         ...                                     names=["n_legs", "animals"])
         >>> batch.serialize()
-        <pyarrow.lib.Buffer object at ...>
+        <pyarrow.Buffer address=0x... size=... is_cpu=True is_mutable=True>
         """
         cdef shared_ptr[CBuffer] buffer
         cdef CIpcWriteOptions options = CIpcWriteOptions.Defaults()
@@ -2091,7 +2103,7 @@ cdef class RecordBatch(_PandasConvertible):
         ----------
         mask : Array or array-like
             The boolean mask to filter the record batch with.
-        null_selection_behavior
+        null_selection_behavior : str, default "drop"
             How nulls in the mask should be handled.
 
         Returns
@@ -2241,6 +2253,35 @@ cdef class RecordBatch(_PandasConvertible):
         4     100  Centipede
         """
         return _pc().drop_null(self)
+
+    def sort_by(self, sorting, **kwargs):
+        """
+        Sort the RecordBatch by one or multiple columns.
+
+        Parameters
+        ----------
+        sorting : str or list[tuple(name, order)]
+            Name of the column to use to sort (ascending), or
+            a list of multiple sorting conditions where
+            each entry is a tuple with column name
+            and sorting order ("ascending" or "descending")
+        **kwargs : dict, optional
+            Additional sorting options.
+            As allowed by :class:`SortOptions`
+
+        Returns
+        -------
+        RecordBatch
+            A new record batch sorted according to the sort keys.
+        """
+        if isinstance(sorting, str):
+            sorting = [(sorting, "ascending")]
+
+        indices = _pc().sort_indices(
+            self,
+            options=_pc().SortOptions(sort_keys=sorting, **kwargs)
+        )
+        return self.take(indices)
 
     def to_pydict(self):
         """
@@ -2820,6 +2861,36 @@ cdef class Table(_PandasConvertible):
 
         return self.column(key)
 
+    # ----------------------------------------------------------------------
+    def __dataframe__(self, nan_as_null: bool = False, allow_copy: bool = True):
+        """
+        Return the dataframe interchange object implementing the interchange protocol.
+        Parameters
+        ----------
+        nan_as_null : bool, default False
+            Whether to tell the DataFrame to overwrite null values in the data
+            with ``NaN`` (or ``NaT``).
+        allow_copy : bool, default True
+            Whether to allow memory copying when exporting. If set to False
+            it would cause non-zero-copy exports to fail.
+        Returns
+        -------
+        DataFrame interchange object
+            The object which consuming library can use to ingress the dataframe.
+        Notes
+        -----
+        Details on the interchange protocol:
+        https://data-apis.org/dataframe-protocol/latest/index.html
+        `nan_as_null` currently has no effect; once support for nullable extension
+        dtypes is added, this value should be propagated to columns.
+        """
+
+        from pyarrow.interchange.dataframe import _PyArrowDataFrame
+
+        return _PyArrowDataFrame(self, nan_as_null, allow_copy)
+
+    # ----------------------------------------------------------------------
+
     def slice(self, offset=0, length=None):
         """
         Compute zero-copy slice of this Table.
@@ -2897,7 +2968,7 @@ cdef class Table(_PandasConvertible):
         ----------
         mask : Array or array-like or .Expression
             The boolean mask or the :class:`.Expression` to filter the table with.
-        null_selection_behavior
+        null_selection_behavior : str, default "drop"
             How nulls in the mask should be handled, does nothing if
             an :class:`.Expression` is used.
 
@@ -3412,6 +3483,9 @@ cdef class Table(_PandasConvertible):
                              .format(self.schema.names, target_schema.names))
 
         for column, field in zip(self.itercolumns(), target_schema):
+            if not field.nullable and column.null_count > 0:
+                raise ValueError("Casting field {!r} with null values to non-nullable"
+                                 .format(field.name))
             casted = column.cast(field.type, safe=safe, options=options)
             newcols.append(casted)
 
@@ -4672,7 +4746,7 @@ cdef class Table(_PandasConvertible):
         """
         return TableGroupBy(self, keys)
 
-    def sort_by(self, sorting):
+    def sort_by(self, sorting, **kwargs):
         """
         Sort the table by one or multiple columns.
 
@@ -4683,6 +4757,9 @@ cdef class Table(_PandasConvertible):
             a list of multiple sorting conditions where
             each entry is a tuple with column name
             and sorting order ("ascending" or "descending")
+        **kwargs : dict, optional
+            Additional sorting options.
+            As allowed by :class:`SortOptions`
 
         Returns
         -------
@@ -4713,7 +4790,7 @@ cdef class Table(_PandasConvertible):
 
         indices = _pc().sort_indices(
             self,
-            sort_keys=sorting
+            options=_pc().SortOptions(sort_keys=sorting, **kwargs)
         )
         return self.take(indices)
 
@@ -4743,16 +4820,16 @@ cdef class Table(_PandasConvertible):
             ("left semi", "right semi", "left anti", "right anti",
             "inner", "left outer", "right outer", "full outer")
         left_suffix : str, default None
-            Which suffix to add to right column names. This prevents confusion
+            Which suffix to add to left column names. This prevents confusion
             when the columns in left and right tables have colliding names.
         right_suffix : str, default None
-            Which suffic to add to the left column names. This prevents confusion
+            Which suffix to add to the right column names. This prevents confusion
             when the columns in left and right tables have colliding names.
         coalesce_keys : bool, default True
             If the duplicated keys should be omitted from one of the sides
             in the join result.
         use_threads : bool, default True
-            Whenever to use multithreading or not.
+            Whether to use multithreading or not.
 
         Returns
         -------
@@ -5290,6 +5367,7 @@ class TableGroupBy:
 list[tuple(str, str, FunctionOptions)]
             List of tuples made of aggregation column names followed
             by function names and optionally aggregation function options.
+            Pass empty list to get a single row for each group.
 
         Returns
         -------
@@ -5309,6 +5387,11 @@ list[tuple(str, str, FunctionOptions)]
         keys: string
         ----
         values_sum: [[3,7,5]]
+        keys: [["a","b","c"]]
+        >>> t.group_by("keys").aggregate([])
+        pyarrow.Table
+        keys: string
+        ----
         keys: [["a","b","c"]]
         """
         columns = [a[0] for a in aggregations]

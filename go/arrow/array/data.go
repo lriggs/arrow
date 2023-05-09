@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/apache/arrow/go/v10/arrow"
-	"github.com/apache/arrow/go/v10/arrow/internal/debug"
-	"github.com/apache/arrow/go/v10/arrow/memory"
+	"github.com/apache/arrow/go/v11/arrow"
+	"github.com/apache/arrow/go/v11/arrow/internal/debug"
+	"github.com/apache/arrow/go/v11/arrow/memory"
 )
 
 // Data represents the memory and metadata of an Arrow array.
@@ -158,6 +158,8 @@ func (d *Data) Release() {
 
 // DataType returns the DataType of the data.
 func (d *Data) DataType() arrow.DataType { return d.dtype }
+
+func (d *Data) SetNullN(n int) { d.nulls = n }
 
 // NullN returns the number of nulls.
 func (d *Data) NullN() int { return d.nulls }

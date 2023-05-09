@@ -21,10 +21,10 @@ project('arrow-glib', 'c', 'cpp',
         license: 'Apache-2.0',
         default_options: [
           'c_std=c99',
-          'cpp_std=c++11',
+          'cpp_std=c++17',
         ])
 
-version = '10.0.0-SNAPSHOT'
+version = '11.0.0'
 if version.endswith('-SNAPSHOT')
   version_numbers = version.split('-')[0].split('.')
   version_tag = version.split('-')[1]

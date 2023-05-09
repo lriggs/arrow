@@ -121,6 +121,15 @@ cdef class NativeFile(_Weakrefable):
     def __exit__(self, exc_type, exc_value, tb):
         self.close()
 
+    def __repr__(self):
+        name = f"pyarrow.{self.__class__.__name__}"
+        return (f"<{name} "
+                f"closed={self.closed} "
+                f"own_file={self.own_file} "
+                f"is_seekable={self.is_seekable} "
+                f"is_writable={self.is_writable} "
+                f"is_readable={self.is_readable}>")
+
     @property
     def mode(self):
         """
@@ -766,6 +775,13 @@ cdef class PythonFile(NativeFile):
     As a downside, there is a non-zero redirection cost in translating
     Arrow stream calls to Python method calls.  Furthermore, Python's
     Global Interpreter Lock may limit parallelism in some situations.
+
+    Examples
+    --------
+    >>> import io
+    >>> import pyarrow as pa
+    >>> pa.PythonFile(io.BytesIO())
+    <pyarrow.PythonFile closed=False own_file=False is_seekable=False is_writable=True is_readable=False>
     """
     cdef:
         object handle
@@ -1052,6 +1068,14 @@ cdef class Buffer(_Weakrefable):
 
     def __len__(self):
         return self.size
+
+    def __repr__(self):
+        name = f"pyarrow.{self.__class__.__name__}"
+        return (f"<{name} "
+                f"address={hex(self.address)} "
+                f"size={self.size} "
+                f"is_cpu={self.is_cpu} "
+                f"is_mutable={self.is_mutable}>")
 
     @property
     def size(self):
@@ -1583,6 +1607,33 @@ class Transcoder:
         return self._encoder.encode(self._decoder.decode(buf, final), final)
 
 
+cdef shared_ptr[function[StreamWrapFunc]] make_streamwrap_func(
+        src_encoding, dest_encoding) except *:
+    """
+    Create a function that will add a transcoding transformation to a stream.
+    Data from that stream will be decoded according to ``src_encoding`` and
+    then re-encoded according to ``dest_encoding``.
+    The created function can be used to wrap streams.
+
+    Parameters
+    ----------
+    src_encoding : str
+        The codec to use when reading data.
+    dest_encoding : str
+        The codec to use for emitted data.
+    """
+    cdef:
+        shared_ptr[function[StreamWrapFunc]] empty_func
+        CTransformInputStreamVTable vtable
+
+    vtable.transform = _cb_transform
+    src_codec = codecs.lookup(src_encoding)
+    dest_codec = codecs.lookup(dest_encoding)
+    return MakeStreamTransformFunc(move(vtable),
+                                   Transcoder(src_codec.incrementaldecoder(),
+                                   dest_codec.incrementalencoder()))
+
+
 def transcoding_input_stream(stream, src_encoding, dest_encoding):
     """
     Add a transcoding transformation to the stream.
@@ -1594,7 +1645,7 @@ def transcoding_input_stream(stream, src_encoding, dest_encoding):
     stream : NativeFile
         The stream to which the transformation should be applied.
     src_encoding : str
-        The codec to use when reading data data.
+        The codec to use when reading data.
     dest_encoding : str
         The codec to use for emitted data.
     """
@@ -1843,6 +1894,17 @@ cdef class Codec(_Weakrefable):
     ------
     ValueError
         If invalid compression value is passed.
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> pa.Codec.is_available('gzip')
+    True
+    >>> codec = pa.Codec('gzip')
+    >>> codec.name
+    'gzip'
+    >>> codec.compression_level
+    9
     """
 
     def __init__(self, str compression not None, compression_level=None):
@@ -1964,7 +2026,9 @@ cdef class Codec(_Weakrefable):
     @property
     def compression_level(self):
         """Returns the compression level parameter of the codec"""
-        return frombytes(self.unwrap().compression_level())
+        if self.name == 'snappy':
+            return None
+        return self.unwrap().compression_level()
 
     def compress(self, object buf, asbytes=False, memory_pool=None):
         """
@@ -2033,8 +2097,7 @@ cdef class Codec(_Weakrefable):
         ----------
         buf : pyarrow.Buffer, bytes, or memoryview-compatible object
         decompressed_size : int, default None
-            If not specified, will be computed if the codec is able to
-            determine the uncompressed buffer size.
+            Size of the decompressed result
         asbytes : boolean, default False
             Return result as Python bytes object, otherwise Buffer
         memory_pool : MemoryPool, default None
@@ -2056,7 +2119,7 @@ cdef class Codec(_Weakrefable):
 
         if decompressed_size is None:
             raise ValueError(
-                "Must pass decompressed_size for {} codec".format(self)
+                "Must pass decompressed_size"
             )
 
         output_size = decompressed_size
@@ -2079,6 +2142,12 @@ cdef class Codec(_Weakrefable):
             )
 
         return pybuf if asbytes else out_buf
+
+    def __repr__(self):
+        name = f"pyarrow.{self.__class__.__name__}"
+        return (f"<{name} "
+                f"name={self.name} "
+                f"compression_level={self.compression_level}>")
 
 
 def compress(object buf, codec='lz4', asbytes=False, memory_pool=None):
@@ -2114,8 +2183,7 @@ def decompress(object buf, decompressed_size=None, codec='lz4',
     buf : pyarrow.Buffer, bytes, or memoryview-compatible object
         Input object to decompress data from.
     decompressed_size : int, default None
-        If not specified, will be computed if the codec is able to determine
-        the uncompressed buffer size.
+        Size of the decompressed result
     codec : str, default 'lz4'
         Compression codec.
         Supported types: {'brotli, 'gzip', 'lz4', 'lz4_raw', 'snappy', 'zstd'}
@@ -2139,7 +2207,7 @@ def input_stream(source, compression='detect', buffer_size=None):
 
     Parameters
     ----------
-    source : str, Path, buffer, file-like object, ...
+    source : str, Path, buffer, or file-like object
         The source to open for reading.
     compression : str optional, default 'detect'
         The compression algorithm to use for on-the-fly decompression.
@@ -2191,7 +2259,7 @@ def output_stream(source, compression='detect', buffer_size=None):
 
     Parameters
     ----------
-    source : str, Path, buffer, file-like object, ...
+    source : str, Path, buffer, file-like object
         The source to open for writing.
     compression : str optional, default 'detect'
         The compression algorithm to use for on-the-fly compression.

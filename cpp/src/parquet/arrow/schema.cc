@@ -30,6 +30,7 @@
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/key_value_metadata.h"
 #include "arrow/util/logging.h"
+#include "arrow/util/string.h"
 #include "arrow/util/value_parsing.h"
 
 #include "parquet/arrow/schema_internal.h"
@@ -44,6 +45,8 @@ using arrow::FieldVector;
 using arrow::KeyValueMetadata;
 using arrow::Status;
 using arrow::internal::checked_cast;
+using arrow::internal::EndsWith;
+using arrow::internal::ToChars;
 
 using ArrowType = arrow::DataType;
 using ArrowTypeId = arrow::Type;
@@ -242,7 +245,7 @@ static constexpr char FIELD_ID_KEY[] = "PARQUET:field_id";
 
 std::shared_ptr<::arrow::KeyValueMetadata> FieldIdMetadata(int field_id) {
   if (field_id >= 0) {
-    return ::arrow::key_value_metadata({FIELD_ID_KEY}, {std::to_string(field_id)});
+    return ::arrow::key_value_metadata({FIELD_ID_KEY}, {ToChars(field_id)});
   } else {
     return nullptr;
   }
@@ -351,11 +354,15 @@ Status FieldToNode(const std::string& name, const std::shared_ptr<Field>& field,
     } break;
     case ArrowTypeId::DECIMAL128:
     case ArrowTypeId::DECIMAL256: {
-      type = ParquetType::FIXED_LEN_BYTE_ARRAY;
       const auto& decimal_type = static_cast<const ::arrow::DecimalType&>(*field->type());
       precision = decimal_type.precision();
       scale = decimal_type.scale();
-      length = DecimalType::DecimalSize(precision);
+      if (properties.integer_annotate_decimal() && 1 <= precision && precision <= 18) {
+        type = precision <= 9 ? ParquetType ::INT32 : ParquetType ::INT64;
+      } else {
+        type = ParquetType::FIXED_LEN_BYTE_ARRAY;
+        length = DecimalType::DecimalSize(precision);
+      }
       PARQUET_CATCH_NOT_OK(logical_type = LogicalType::Decimal(precision, scale));
     } break;
     case ArrowTypeId::DATE32:
@@ -496,8 +503,8 @@ Status PopulateLeaf(int column_index, const std::shared_ptr<Field>& field,
 //   If the name is array or ends in _tuple, this should be a list of struct
 //   even for single child elements.
 bool HasStructListName(const GroupNode& node) {
-  ::arrow::util::string_view name{node.name()};
-  return name == "array" || name.ends_with("_tuple");
+  ::std::string_view name{node.name()};
+  return name == "array" || EndsWith(name, "_tuple");
 }
 
 Status GroupToStruct(const GroupNode& node, LevelInfo current_levels,
@@ -763,7 +770,7 @@ Status NodeToSchemaField(const Node& node, LevelInfo current_levels,
                                   /*nullable=*/false, FieldIdMetadata(node.field_id()));
       out->level_info = current_levels;
       // At this point current_levels has consider this list the ancestor so restore
-      // the actual ancenstor.
+      // the actual ancestor.
       out->level_info.repeated_ancestor_def_level = repeated_ancestor_def_level;
       return Status::OK();
     } else {

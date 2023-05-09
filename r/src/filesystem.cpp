@@ -16,6 +16,7 @@
 // under the License.
 
 #include "./arrow_types.h"
+#include "./safe-call-into-r.h"
 
 #include <arrow/filesystem/filesystem.h>
 #include <arrow/filesystem/localfs.h>
@@ -239,7 +240,7 @@ std::string fs___FileSystem__type_name(
 // [[arrow::export]]
 std::shared_ptr<fs::LocalFileSystem> fs___LocalFileSystem__create() {
   // Affects OpenInputFile/OpenInputStream
-  auto io_context = arrow::io::IOContext(gc_memory_pool());
+  auto io_context = MainRThread::GetInstance().CancellableIOContext();
   return std::make_shared<fs::LocalFileSystem>(io_context);
 }
 
@@ -292,7 +293,8 @@ std::shared_ptr<fs::S3FileSystem> fs___S3FileSystem__create(
     std::string session_name = "", std::string external_id = "", int load_frequency = 900,
     std::string region = "", std::string endpoint_override = "", std::string scheme = "",
     std::string proxy_options = "", bool background_writes = true,
-    bool allow_bucket_creation = false, bool allow_bucket_deletion = false) {
+    bool allow_bucket_creation = false, bool allow_bucket_deletion = false,
+    double connect_timeout = -1, double request_timeout = -1) {
   // We need to ensure that S3 is initialized before we start messing with the
   // options
   StopIfNotOk(fs::EnsureS3Initialized());
@@ -334,7 +336,10 @@ std::shared_ptr<fs::S3FileSystem> fs___S3FileSystem__create(
   s3_opts.allow_bucket_creation = allow_bucket_creation;
   s3_opts.allow_bucket_deletion = allow_bucket_deletion;
 
-  auto io_context = arrow::io::IOContext(gc_memory_pool());
+  s3_opts.request_timeout = request_timeout;
+  s3_opts.connect_timeout = connect_timeout;
+
+  auto io_context = MainRThread::GetInstance().CancellableIOContext();
   return ValueOrStop(fs::S3FileSystem::Make(s3_opts, io_context));
 }
 
@@ -412,7 +417,7 @@ std::shared_ptr<fs::GcsFileSystem> fs___GcsFileSystem__Make(bool anonymous,
     gcs_opts.default_metadata = strings_to_kvm(options["default_metadata"]);
   }
 
-  auto io_context = arrow::io::IOContext(gc_memory_pool());
+  auto io_context = MainRThread::GetInstance().CancellableIOContext();
   // TODO(ARROW-16884): update when this returns Result
   return fs::GcsFileSystem::Make(gcs_opts, io_context);
 }

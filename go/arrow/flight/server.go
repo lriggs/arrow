@@ -17,13 +17,14 @@
 package flight
 
 import (
-	context "context"
+	"context"
 	"net"
 	"os"
 	"os/signal"
 
-	"github.com/apache/arrow/go/v10/arrow/flight/internal/flight"
+	"github.com/apache/arrow/go/v11/arrow/flight/internal/flight"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 type (
@@ -52,6 +53,17 @@ type (
 	Empty                           = flight.Empty
 )
 
+// FlightService_ServiceDesc is the grpc.ServiceDesc for the FlightService
+// server. It should only be used for direct call of grpc.RegisterService,
+// and not introspected or modified (even as a copy).
+var FlightService_ServiceDesc = flight.FlightService_ServiceDesc
+
+// RegisterFlightServiceServer registers an existing flight server onto an
+// existing grpc server, or anything that is a grpc service registrar.
+func RegisterFlightServiceServer(s grpc.ServiceRegistrar, srv FlightServer) {
+	flight.RegisterFlightServiceServer(s, srv)
+}
+
 // Server is an interface for hiding some of the grpc specifics to make
 // it slightly easier to manage a flight service, slightly modeled after
 // the C++ implementation
@@ -79,6 +91,12 @@ type Server interface {
 	// RegisterFlightService sets up the handler for the Flight Endpoints as per
 	// normal Grpc setups
 	RegisterFlightService(FlightServer)
+	// ServiceRegistrar wraps a single method that supports service registration.
+	// For example, it may be used to register health check provided by grpc-go.
+	grpc.ServiceRegistrar
+	// ServiceInfoProvider is an interface used to retrieve metadata about the services to expose.
+	// If reflection is enabled on the server, all the endpoints can be invoked using grpcurl.
+	reflection.ServiceInfoProvider
 }
 
 // BaseFlightServer is the base flight server implementation and must be
@@ -249,4 +267,12 @@ func (s *server) RegisterFlightService(svc FlightServer) {
 
 func (s *server) Shutdown() {
 	s.server.GracefulStop()
+}
+
+func (s *server) RegisterService(sd *grpc.ServiceDesc, ss interface{}) {
+	s.server.RegisterService(sd, ss)
+}
+
+func (s *server) GetServiceInfo() map[string]grpc.ServiceInfo {
+	return s.server.GetServiceInfo()
 }

@@ -25,6 +25,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "arrow/result.h"
@@ -32,7 +33,6 @@
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/endian.h"
 #include "arrow/util/macros.h"
-#include "arrow/util/variant.h"
 #include "arrow/util/visibility.h"
 #include "arrow/visitor.h"  // IWYU pragma: keep
 
@@ -127,7 +127,8 @@ struct ARROW_EXPORT DataTypeLayout {
 /// Simple datatypes may be entirely described by their Type::type id, but
 /// complex datatypes are usually parametric.
 class ARROW_EXPORT DataType : public std::enable_shared_from_this<DataType>,
-                              public detail::Fingerprintable {
+                              public detail::Fingerprintable,
+                              public util::EqualityComparable<DataType> {
  public:
   explicit DataType(Type::type id) : detail::Fingerprintable(), id_(id) {}
   ~DataType() override;
@@ -139,7 +140,7 @@ class ARROW_EXPORT DataType : public std::enable_shared_from_this<DataType>,
   bool Equals(const DataType& other, bool check_metadata = false) const;
 
   /// \brief Return whether the types are equal
-  bool Equals(const std::shared_ptr<DataType>& other) const;
+  bool Equals(const std::shared_ptr<DataType>& other, bool check_metadata = false) const;
 
   /// \brief Return the child field at index i.
   const std::shared_ptr<Field>& field(int i) const { return children_[i]; }
@@ -235,7 +236,7 @@ struct ARROW_EXPORT TypeHolder {
 
   const DataType& operator*() const { return *this->type; }
 
-  operator bool() { return this->type != NULLPTR; }
+  operator bool() const { return this->type != NULLPTR; }
 
   bool operator==(const TypeHolder& other) const {
     if (type == other.type) return true;
@@ -270,13 +271,6 @@ std::ostream& operator<<(std::ostream& os, const DataType& type);
 
 ARROW_EXPORT
 std::ostream& operator<<(std::ostream& os, const TypeHolder& type);
-
-inline bool operator==(const DataType& lhs, const DataType& rhs) {
-  return lhs.Equals(rhs);
-}
-inline bool operator!=(const DataType& lhs, const DataType& rhs) {
-  return !lhs.Equals(rhs);
-}
 
 /// \brief Return the compatible physical data type
 ///
@@ -338,7 +332,8 @@ class ARROW_EXPORT NestedType : public DataType, public ParametricType {
 ///
 /// A field's metadata is represented by a KeyValueMetadata instance,
 /// which holds arbitrary key-value pairs.
-class ARROW_EXPORT Field : public detail::Fingerprintable {
+class ARROW_EXPORT Field : public detail::Fingerprintable,
+                           public util::EqualityComparable<Field> {
  public:
   Field(std::string name, std::shared_ptr<DataType> type, bool nullable = true,
         std::shared_ptr<const KeyValueMetadata> metadata = NULLPTR)
@@ -443,8 +438,6 @@ class ARROW_EXPORT Field : public detail::Fingerprintable {
   std::string ComputeFingerprint() const override;
   std::string ComputeMetadataFingerprint() const override;
 
-  ARROW_EXPORT friend void PrintTo(const Field& field, std::ostream* os);
-
   // Field name
   std::string name_;
 
@@ -459,6 +452,8 @@ class ARROW_EXPORT Field : public detail::Fingerprintable {
 
   ARROW_DISALLOW_COPY_AND_ASSIGN(Field);
 };
+
+ARROW_EXPORT void PrintTo(const Field& field, std::ostream* os);
 
 namespace detail {
 
@@ -1631,6 +1626,9 @@ class ARROW_EXPORT FieldPath {
   Result<std::shared_ptr<Field>> Get(const DataType& type) const;
   Result<std::shared_ptr<Field>> Get(const FieldVector& fields) const;
 
+  static Result<std::shared_ptr<Schema>> GetAll(const Schema& schema,
+                                                const std::vector<FieldPath>& paths);
+
   /// \brief Retrieve the referenced column from a RecordBatch or Table
   Result<std::shared_ptr<Array>> Get(const RecordBatch& batch) const;
 
@@ -1675,7 +1673,7 @@ class ARROW_EXPORT FieldPath {
 /// matching children:
 ///     auto maybe_match = FieldRef("struct", "field_i32").FindOneOrNone(schema);
 ///     auto maybe_column = FieldRef("struct", "field_i32").GetOne(some_table);
-class ARROW_EXPORT FieldRef {
+class ARROW_EXPORT FieldRef : public util::EqualityComparable<FieldRef> {
  public:
   FieldRef() = default;
 
@@ -1729,8 +1727,6 @@ class ARROW_EXPORT FieldRef {
   std::string ToDotPath() const;
 
   bool Equals(const FieldRef& other) const { return impl_ == other.impl_; }
-  bool operator==(const FieldRef& other) const { return Equals(other); }
-  bool operator!=(const FieldRef& other) const { return !Equals(other); }
 
   std::string ToString() const;
 
@@ -1742,23 +1738,23 @@ class ARROW_EXPORT FieldRef {
   explicit operator bool() const { return Equals(FieldPath{}); }
   bool operator!() const { return !Equals(FieldPath{}); }
 
-  bool IsFieldPath() const { return util::holds_alternative<FieldPath>(impl_); }
-  bool IsName() const { return util::holds_alternative<std::string>(impl_); }
+  bool IsFieldPath() const { return std::holds_alternative<FieldPath>(impl_); }
+  bool IsName() const { return std::holds_alternative<std::string>(impl_); }
   bool IsNested() const {
     if (IsName()) return false;
-    if (IsFieldPath()) return util::get<FieldPath>(impl_).indices().size() > 1;
+    if (IsFieldPath()) return std::get<FieldPath>(impl_).indices().size() > 1;
     return true;
   }
 
   const FieldPath* field_path() const {
-    return IsFieldPath() ? &util::get<FieldPath>(impl_) : NULLPTR;
+    return IsFieldPath() ? &std::get<FieldPath>(impl_) : NULLPTR;
   }
   const std::string* name() const {
-    return IsName() ? &util::get<std::string>(impl_) : NULLPTR;
+    return IsName() ? &std::get<std::string>(impl_) : NULLPTR;
   }
   const std::vector<FieldRef>* nested_refs() const {
-    return util::holds_alternative<std::vector<FieldRef>>(impl_)
-               ? &util::get<std::vector<FieldRef>>(impl_)
+    return std::holds_alternative<std::vector<FieldRef>>(impl_)
+               ? &std::get<std::vector<FieldRef>>(impl_)
                : NULLPTR;
   }
 
@@ -1850,10 +1846,13 @@ class ARROW_EXPORT FieldRef {
  private:
   void Flatten(std::vector<FieldRef> children);
 
-  util::Variant<FieldPath, std::string, std::vector<FieldRef>> impl_;
-
-  ARROW_EXPORT friend void PrintTo(const FieldRef& ref, std::ostream* os);
+  std::variant<FieldPath, std::string, std::vector<FieldRef>> impl_;
 };
+
+ARROW_EXPORT void PrintTo(const FieldRef& ref, std::ostream* os);
+
+ARROW_EXPORT
+std::ostream& operator<<(std::ostream& os, const FieldRef&);
 
 // ----------------------------------------------------------------------
 // Schema
@@ -1962,11 +1961,11 @@ class ARROW_EXPORT Schema : public detail::Fingerprintable,
   std::string ComputeMetadataFingerprint() const override;
 
  private:
-  ARROW_EXPORT friend void PrintTo(const Schema& s, std::ostream* os);
-
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+ARROW_EXPORT void PrintTo(const Schema& s, std::ostream* os);
 
 ARROW_EXPORT
 std::string EndiannessToString(Endianness endianness);
@@ -2123,31 +2122,40 @@ std::string ToString(TimeUnit::type unit);
 
 // Helpers to get instances of data types based on general categories
 
+/// \brief Signed integer types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& SignedIntTypes();
+/// \brief Unsigned integer types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& UnsignedIntTypes();
+/// \brief Signed and unsigned integer types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& IntTypes();
+/// \brief Floating point types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& FloatingPointTypes();
-// Number types without boolean
+/// \brief Number types without boolean - integer and floating point types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& NumericTypes();
-// Binary and string-like types (except fixed-size binary)
+/// \brief Binary and string-like types (except fixed-size binary)
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& BaseBinaryTypes();
+/// \brief Binary and large-binary types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& BinaryTypes();
+/// \brief String and large-string types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& StringTypes();
-// Temporal types including time and timestamps for each unit
+/// \brief Temporal types including date, time and timestamps for each unit
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& TemporalTypes();
-// Interval types
+/// \brief Interval types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& IntervalTypes();
-// Integer, floating point, base binary, and temporal
+/// \brief Duration types for each unit
+ARROW_EXPORT
+const std::vector<std::shared_ptr<DataType>>& DurationTypes();
+/// \brief Numeric, base binary, date, boolean and null types
 ARROW_EXPORT
 const std::vector<std::shared_ptr<DataType>>& PrimitiveTypes();
 

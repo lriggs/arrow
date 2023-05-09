@@ -23,13 +23,14 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/apache/arrow/go/v10/arrow"
-	"github.com/apache/arrow/go/v10/arrow/array"
-	"github.com/apache/arrow/go/v10/arrow/bitutil"
-	"github.com/apache/arrow/go/v10/arrow/endian"
-	"github.com/apache/arrow/go/v10/arrow/internal/dictutils"
-	"github.com/apache/arrow/go/v10/arrow/internal/flatbuf"
-	"github.com/apache/arrow/go/v10/arrow/memory"
+	"github.com/apache/arrow/go/v11/arrow"
+	"github.com/apache/arrow/go/v11/arrow/array"
+	"github.com/apache/arrow/go/v11/arrow/bitutil"
+	"github.com/apache/arrow/go/v11/arrow/endian"
+	"github.com/apache/arrow/go/v11/arrow/internal"
+	"github.com/apache/arrow/go/v11/arrow/internal/dictutils"
+	"github.com/apache/arrow/go/v11/arrow/internal/flatbuf"
+	"github.com/apache/arrow/go/v11/arrow/memory"
 )
 
 // FileReader is an Arrow file reader.
@@ -512,7 +513,7 @@ func (ctx *arrayLoaderContext) loadCommon(typ arrow.Type, nbufs int) (*flatbuf.F
 
 	var buf *memory.Buffer
 
-	if hasValidityBitmap(typ, ctx.version) {
+	if internal.HasValidityBitmap(typ, flatbuf.MetadataVersion(ctx.version)) {
 		switch field.NullCount() {
 		case 0:
 			ctx.ibuffer++

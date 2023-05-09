@@ -17,10 +17,10 @@
 package array
 
 import (
-	"github.com/apache/arrow/go/v10/arrow"
-	"github.com/apache/arrow/go/v10/arrow/bitutil"
-	"github.com/apache/arrow/go/v10/arrow/internal/debug"
-	"github.com/apache/arrow/go/v10/arrow/memory"	
+	"github.com/apache/arrow/go/v11/arrow"
+	"github.com/apache/arrow/go/v11/arrow/bitutil"
+	"github.com/apache/arrow/go/v11/arrow/internal/debug"
+	"github.com/apache/arrow/go/v11/arrow/memory"	
 	"github.com/goccy/go-json"
 )
 
@@ -221,7 +221,7 @@ func (b *{{.Name}}Builder) unmarshalOne(dec *json.Decoder) error {
 	case string:
 {{if (eq .Name "Timestamp") -}}
 		loc, _ := b.dtype.GetZone()
-		tm, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
+		tm, _, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
 {{else -}}
 		tm, err := {{.QualifiedType}}FromString(v, b.dtype.Unit)
 {{end}}

@@ -19,7 +19,9 @@
 #include "arrow/compute/exec.h"
 #include "arrow/compute/exec/exec_plan.h"
 #include "arrow/compute/exec/expression.h"
+#include "arrow/compute/exec/map_node.h"
 #include "arrow/compute/exec/options.h"
+#include "arrow/compute/exec/query_context.h"
 #include "arrow/datum.h"
 #include "arrow/result.h"
 #include "arrow/util/checked_cast.h"
@@ -37,8 +39,8 @@ namespace {
 class FilterNode : public MapNode {
  public:
   FilterNode(ExecPlan* plan, std::vector<ExecNode*> inputs,
-             std::shared_ptr<Schema> output_schema, Expression filter, bool async_mode)
-      : MapNode(plan, std::move(inputs), std::move(output_schema), async_mode),
+             std::shared_ptr<Schema> output_schema, Expression filter)
+      : MapNode(plan, std::move(inputs), std::move(output_schema)),
         filter_(std::move(filter)) {}
 
   static Result<ExecNode*> Make(ExecPlan* plan, std::vector<ExecNode*> inputs,
@@ -50,8 +52,9 @@ class FilterNode : public MapNode {
 
     auto filter_expression = filter_options.filter_expression;
     if (!filter_expression.IsBound()) {
-      ARROW_ASSIGN_OR_RAISE(filter_expression,
-                            filter_expression.Bind(*schema, plan->exec_context()));
+      ARROW_ASSIGN_OR_RAISE(
+          filter_expression,
+          filter_expression.Bind(*schema, plan->query_context()->exec_context()));
     }
 
     if (filter_expression.type()->id() != Type::BOOL) {
@@ -60,8 +63,7 @@ class FilterNode : public MapNode {
                                filter_expression.type()->ToString());
     }
     return plan->EmplaceNode<FilterNode>(plan, std::move(inputs), std::move(schema),
-                                         std::move(filter_expression),
-                                         filter_options.async_mode);
+                                         std::move(filter_expression));
   }
 
   const char* kind_name() const override { return "FilterNode"; }
@@ -76,8 +78,9 @@ class FilterNode : public MapNode {
                         {"filter.expression.simplified", simplified_filter.ToString()},
                         {"filter.length", target.length}});
 
-    ARROW_ASSIGN_OR_RAISE(Datum mask, ExecuteScalarExpression(simplified_filter, target,
-                                                              plan()->exec_context()));
+    ARROW_ASSIGN_OR_RAISE(
+        Datum mask, ExecuteScalarExpression(simplified_filter, target,
+                                            plan()->query_context()->exec_context()));
 
     if (mask.is_scalar()) {
       const auto& mask_scalar = mask.scalar_as<BooleanScalar>();

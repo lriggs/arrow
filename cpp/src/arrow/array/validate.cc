@@ -54,7 +54,7 @@ struct UTF8DataValidator {
     int64_t i = 0;
     return VisitArraySpanInline<StringType>(
         data,
-        [&](util::string_view v) {
+        [&](std::string_view v) {
           if (ARROW_PREDICT_FALSE(!util::ValidateUTF8(v))) {
             return Status::Invalid("Invalid UTF8 sequence at string index ", i);
           }
@@ -459,14 +459,17 @@ struct ValidateArrayImpl {
       if (buffer == nullptr) {
         continue;
       }
-      int64_t min_buffer_size = -1;
+      int64_t min_buffer_size = 0;
       switch (spec.kind) {
         case DataTypeLayout::BITMAP:
-          min_buffer_size = bit_util::BytesForBits(length_plus_offset);
+          // If length == 0, buffer size can be 0 regardless of offset
+          if (data.length > 0) {
+            min_buffer_size = bit_util::BytesForBits(length_plus_offset);
+          }
           break;
         case DataTypeLayout::FIXED_WIDTH:
-          if (MultiplyWithOverflow(length_plus_offset, spec.byte_width,
-                                   &min_buffer_size)) {
+          if (data.length > 0 && MultiplyWithOverflow(length_plus_offset, spec.byte_width,
+                                                      &min_buffer_size)) {
             return Status::Invalid("Array of type ", type.ToString(),
                                    " has impossibly large length and offset");
           }
@@ -675,7 +678,7 @@ struct ValidateArrayImpl {
       const int32_t precision = type.precision();
       return VisitArraySpanInline<DecimalType>(
           data,
-          [&](util::string_view bytes) {
+          [&](std::string_view bytes) {
             DCHECK_EQ(bytes.size(), DecimalType::kByteWidth);
             CType value(reinterpret_cast<const uint8_t*>(bytes.data()));
             if (!value.FitsInPrecision(precision)) {

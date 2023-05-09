@@ -26,6 +26,7 @@
 #include <arrow-glib/datum.hpp>
 #include <arrow-glib/enums.h>
 #include <arrow-glib/error.hpp>
+#include <arrow-glib/expression.hpp>
 #include <arrow-glib/reader.hpp>
 #include <arrow-glib/record-batch.hpp>
 #include <arrow-glib/scalar.hpp>
@@ -109,7 +110,6 @@ namespace {
     return
       (sort_key.target == other_sort_key.target) &&
       (sort_key.order == other_sort_key.order);
-
   }
 }
 
@@ -135,6 +135,8 @@ G_BEGIN_DECLS
  * options classes such as #GArrowSourceNodeOptions.
  *
  * #GArrowSourceNodeOptions is a class to customize a source node.
+ *
+ * #GArrowProjectNodeOptions is a class to customize a project node.
  *
  * #GArrowAggregation is a class to specify how to aggregate.
  *
@@ -938,7 +940,7 @@ garrow_source_node_options_new_record_batch_reader(
     arrow_reader->schema(),
     [arrow_reader]() {
       using ExecBatch = arrow::compute::ExecBatch;
-      using ExecBatchOptional = arrow::util::optional<ExecBatch>;
+      using ExecBatchOptional = std::optional<ExecBatch>;
       auto arrow_record_batch_result = arrow_reader->Next();
       if (!arrow_record_batch_result.ok()) {
         return arrow::AsyncGeneratorEnd<ExecBatchOptional>();
@@ -979,7 +981,7 @@ garrow_source_node_options_new_record_batch(GArrowRecordBatch *record_batch)
     state->record_batch->schema(),
     [state]() {
       using ExecBatch = arrow::compute::ExecBatch;
-      using ExecBatchOptional = arrow::util::optional<ExecBatch>;
+      using ExecBatchOptional = std::optional<ExecBatch>;
       if (!state->generated) {
         state->generated = true;
         return arrow::Future<ExecBatchOptional>::MakeFinished(
@@ -1011,6 +1013,61 @@ garrow_source_node_options_new_table(GArrowTable *table)
     GARROW_RECORD_BATCH_READER(reader));
   g_object_unref(reader);
   return options;
+}
+
+
+G_DEFINE_TYPE(GArrowProjectNodeOptions,
+              garrow_project_node_options,
+              GARROW_TYPE_EXECUTE_NODE_OPTIONS)
+
+static void
+garrow_project_node_options_init(GArrowProjectNodeOptions *object)
+{
+}
+
+static void
+garrow_project_node_options_class_init(GArrowProjectNodeOptionsClass *klass)
+{
+}
+
+/**
+ * garrow_project_node_options_new:
+ * @expressions: (element-type GArrowExpression):
+ *   A list of #GArrowExpression to be executed.
+ * @names: (nullable) (array length=n_names):
+ *   A list of output column names of @expressions. If @names is %NULL,
+ *   the string representations of @expressions will be used.
+ * @n_names: The number of @names.
+ *
+ * Returns: A newly created #GArrowProjectNodeOptions.
+ *
+ * Since: 11.0.0
+ */
+GArrowProjectNodeOptions *
+garrow_project_node_options_new(GList *expressions,
+                                gchar **names,
+                                gsize n_names)
+{
+  std::vector<arrow::compute::Expression> arrow_expressions;
+  std::vector<std::string> arrow_names;
+  for (auto node = expressions; node; node = g_list_next(node)) {
+    auto expression = GARROW_EXPRESSION(node->data);
+    arrow_expressions.push_back(*garrow_expression_get_raw(expression));
+  }
+  for (gsize i = 0; i < n_names; ++i) {
+    arrow_names.emplace_back(names[i]);
+  }
+  if (!arrow_names.empty()) {
+    for (size_t i = arrow_names.size(); i < arrow_expressions.size(); ++i) {
+      arrow_names.push_back(arrow_expressions[i].ToString());
+    }
+  }
+  auto arrow_options =
+    new arrow::compute::ProjectNodeOptions(arrow_expressions, arrow_names);
+  auto options = g_object_new(GARROW_TYPE_PROJECT_NODE_OPTIONS,
+                              "options", arrow_options,
+                              NULL);
+  return GARROW_PROJECT_NODE_OPTIONS(options);
 }
 
 
@@ -1296,7 +1353,7 @@ garrow_aggregate_node_options_new(GList *aggregations,
 
 
 typedef struct GArrowSinkNodeOptionsPrivate_ {
-  arrow::AsyncGenerator<arrow::util::optional<arrow::compute::ExecBatch>> generator;
+  arrow::AsyncGenerator<std::optional<arrow::compute::ExecBatch>> generator;
   GArrowRecordBatchReader *reader;
 } GArrowSinkNodeOptionsPrivate;
 
@@ -1333,7 +1390,7 @@ garrow_sink_node_options_init(GArrowSinkNodeOptions *object)
 {
   auto priv = GARROW_SINK_NODE_OPTIONS_GET_PRIVATE(object);
   new(&(priv->generator))
-    arrow::AsyncGenerator<arrow::util::optional<arrow::compute::ExecBatch>>();
+    arrow::AsyncGenerator<std::optional<arrow::compute::ExecBatch>>();
 }
 
 static void
@@ -1772,6 +1829,39 @@ garrow_execute_plan_build_source_node(GArrowExecutePlan *plan,
 }
 
 /**
+ * garrow_execute_plan_build_project_node:
+ * @plan: A #GArrowExecutePlan.
+ * @input: A #GArrowExecuteNode.
+ * @options: A #GArrowProjectNodeOptions.
+ * @error: (nullable): Return location for a #GError or %NULL.
+ *
+ * This is a shortcut of garrow_execute_plan_build_node() for project
+ * node.
+ *
+ * Returns: (transfer full): A newly built and added #GArrowExecuteNode
+ *   for project on success, %NULL on error.
+ *
+ * Since: 11.0.0
+ */
+GArrowExecuteNode *
+garrow_execute_plan_build_project_node(GArrowExecutePlan *plan,
+                                       GArrowExecuteNode *input,
+                                       GArrowProjectNodeOptions *options,
+                                       GError **error)
+{
+  GList *inputs = nullptr;
+  inputs = g_list_prepend(inputs, input);
+  auto node =
+    garrow_execute_plan_build_node(plan,
+                                   "project",
+                                   inputs,
+                                   GARROW_EXECUTE_NODE_OPTIONS(options),
+                                   error);
+  g_list_free(inputs);
+  return node;
+}
+
+/**
  * garrow_execute_plan_build_aggregate_node:
  * @plan: A #GArrowExecutePlan.
  * @input: A #GArrowExecuteNode.
@@ -1931,16 +2021,21 @@ garrow_execute_plan_stop(GArrowExecutePlan *plan)
 /**
  * garrow_execute_plan_wait:
  * @plan: A #GArrowExecutePlan.
+ * @error: (nullable): Return location for a #GError or %NULL.
  *
  * Waits for finishing this plan.
  *
+ * Returns: %TRUE on success, %FALSE on error.
+ *
  * Since: 6.0.0
  */
-void
-garrow_execute_plan_wait(GArrowExecutePlan *plan)
+gboolean
+garrow_execute_plan_wait(GArrowExecutePlan *plan, GError **error)
 {
   auto arrow_plan = garrow_execute_plan_get_raw(plan);
   arrow_plan->finished().Wait();
+  return garrow::check(error, arrow_plan->finished().status(),
+                       "[execute-plan][wait]");
 }
 
 
@@ -5121,7 +5216,7 @@ GArrowFunctionOptions *
 garrow_function_options_new_raw(
   const arrow::compute::FunctionOptions *arrow_options)
 {
-  arrow::util::string_view arrow_type_name(arrow_options->type_name());
+  std::string_view arrow_type_name(arrow_options->type_name());
   if (arrow_type_name == "CastOptions") {
     auto arrow_cast_options =
       static_cast<const arrow::compute::CastOptions *>(arrow_options);
