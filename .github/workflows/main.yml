@@ -26,8 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          ref: 'master'
-          fetch-depth: 0
+          ref: 'rel-2300'
       - name: Install Conda
         run: |
           set -e
@@ -65,7 +64,6 @@ jobs:
           set -e
           pushd ..
           source /home/runner/miniconda3/bin/activate root
-          git clone -b rel-2300 https://github.com/lriggs/arrow.git
           pip install -e arrow/dev/archery[crossbow] 
           echo GITHUB_WORKSPACE:$GITHUB_WORKSPACE
           echo GITHUB_REPOSITORY: $GITHUB_REPOSITORY
