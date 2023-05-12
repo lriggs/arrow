@@ -40,3 +40,17 @@ cmake \
   ${arrow_dir}/java
 cmake --build . --target install --config ${ARROW_BUILD_TYPE:-release}
 popd
+
+mkdir -p ${dist_dir} 
+# For Windows. *.dll are installed into bin/ on Windows. 
+if [ -d "${prefix_dir}/bin" ]; then 
+  mv ${prefix_dir}/bin/* ${dist_dir}/ 
+else 
+  mv ${prefix_dir}/lib/* ${dist_dir}/ 
+ 77 mkdir -p ${dist_dir} 
+# For Windows. *.dll are installed into bin/ on Windows. 
+if [ -d "${prefix_dir}/bin" ]; then 
+  mv ${prefix_dir}/bin/* ${dist_dir}/ 
+else 
+  mv ${prefix_dir}/lib/* ${dist_dir}/ 
+fi fi 
