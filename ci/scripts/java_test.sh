@@ -46,7 +46,7 @@ fi
 if [ "${ARROW_PLASMA}" = "ON" ]; then
   pushd ${source_dir}/plasma
   java -cp target/test-classes:target/classes \
-       -Djava.library.path=${cpp_build_dir} \
+       -Djava.library.path=${java_jni_dist_dir}/$(arch) \
        org.apache.arrow.plasma.PlasmaClientTest
   popd
 fi
