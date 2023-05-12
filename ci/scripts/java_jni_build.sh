@@ -24,6 +24,8 @@ build_dir=${2}/java_jni
 # The directory where the final binaries will be stored when scripts finish
 dist_dir=${3}
 
+prefix_dir="${build_dir}/java-jni"  
+
 echo "=== Clear output directories and leftovers ==="
 # Clear output directories and leftovers
 rm -rf ${build_dir}
@@ -47,10 +49,4 @@ if [ -d "${prefix_dir}/bin" ]; then
   mv ${prefix_dir}/bin/* ${dist_dir}/ 
 else 
   mv ${prefix_dir}/lib/* ${dist_dir}/ 
- 77 mkdir -p ${dist_dir} 
-# For Windows. *.dll are installed into bin/ on Windows. 
-if [ -d "${prefix_dir}/bin" ]; then 
-  mv ${prefix_dir}/bin/* ${dist_dir}/ 
-else 
-  mv ${prefix_dir}/lib/* ${dist_dir}/ 
-fi fi 
+fi
