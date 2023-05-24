@@ -19,6 +19,7 @@ on: workflow_dispatch
 env:
   CROSSBOW_GITHUB_TOKEN: ${{ secrets.CROSSBOW_GITHUB_TOKEN }}
   ARCHERY_DEFAULT_BRANCH: lriggs-dremio-12.0-main
+  ARROW_USE_SCCACHE: "OFF"
 jobs:
   trigger-crossbow:
     name: Trigger Crossbow
