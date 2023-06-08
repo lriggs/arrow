@@ -350,7 +350,9 @@ on:
           }
  %}
   {% for key, value in sccache_vars.items() %}
-  {{ key }}: "{{ value }}"
+    {% if value != '' %}
+      {{ key }}: "{{ value }}"
+    {% endif %}
   {% endfor %}
 {% endmacro %}
 
