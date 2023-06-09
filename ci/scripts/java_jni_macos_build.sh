@@ -60,6 +60,10 @@ if [ "${ARROW_USE_CCACHE}" == "ON" ]; then
   ccache -s
 fi
 
+if [ $ENV{ARROW_USE_SCCACHE} == "OFF" ]; then
+  ${ARROW_USE_SCCACHE:=OFF}
+fi
+
 export ARROW_TEST_DATA="${arrow_dir}/testing/data"
 export PARQUET_TEST_DATA="${arrow_dir}/cpp/submodules/parquet-testing/data"
 export AWS_EC2_METADATA_DISABLED=TRUE
