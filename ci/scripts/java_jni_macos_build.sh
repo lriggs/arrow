@@ -53,7 +53,7 @@ export ARROW_ORC
 : ${ARROW_USE_CCACHE:=OFF}
 : ${CMAKE_BUILD_TYPE:=Release}
 : ${CMAKE_UNITY_BUILD:=ON}
-: ${ARROW_USE_SCCACHE:=ON}
+: ${ARROW_USE_SCCACHE:=OFF}
 
 if [ "${ARROW_USE_CCACHE}" == "ON" ]; then
   echo "=== ccache statistics before build ==="
