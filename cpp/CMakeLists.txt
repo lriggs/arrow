@@ -236,7 +236,7 @@ if(ARROW_USE_SCCACHE
           OR DEFINED ENV{SCCACHE_REDIS}
          ))
     message(STATUS "Using sccache: ${SCCACHE_FOUND}")
-    ${SCCACHE_FOUND} --version
+    execute_process(COMMAND ${SCCACHE_FOUND} --version)
     set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_FOUND})
     set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_FOUND})
   endif()
