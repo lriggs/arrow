@@ -53,15 +53,10 @@ export ARROW_ORC
 : ${ARROW_USE_CCACHE:=OFF}
 : ${CMAKE_BUILD_TYPE:=Release}
 : ${CMAKE_UNITY_BUILD:=ON}
-: ${ARROW_USE_SCCACHE:=OFF}
 
 if [ "${ARROW_USE_CCACHE}" == "ON" ]; then
   echo "=== ccache statistics before build ==="
   ccache -s
-fi
-
-if [[ -z "${ARROW_USE_SCCACHE}" ]]; then
-  ${ARROW_USE_SCCACHE:=OFF}
 fi
 
 export ARROW_TEST_DATA="${arrow_dir}/testing/data"
@@ -84,7 +79,6 @@ cmake \
   -DARROW_PARQUET=${ARROW_PARQUET} \
   -DARROW_S3=${ARROW_S3} \
   -DARROW_USE_CCACHE=${ARROW_USE_CCACHE} \
-  -DARROW_USE_SCCACHE=${ARROW_USE_SCCACHE} \
   -DAWSSDK_SOURCE=BUNDLED \
   -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
   -DCMAKE_INSTALL_LIBDIR=lib \
