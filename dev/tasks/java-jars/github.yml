@@ -102,6 +102,7 @@ jobs:
           brew uninstall sccache || :
 
           brew bundle --file=arrow/java/Brewfile
+          brew info sccache
       - name: Build C++ libraries
         env:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
