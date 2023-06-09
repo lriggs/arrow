@@ -60,7 +60,7 @@ if [ "${ARROW_USE_CCACHE}" == "ON" ]; then
   ccache -s
 fi
 
-if [ $ENV{ARROW_USE_SCCACHE} == "OFF" ]; then
+if [[ -z "${ARROW_USE_SCCACHE}" ]]; then
   ${ARROW_USE_SCCACHE:=OFF}
 fi
 
