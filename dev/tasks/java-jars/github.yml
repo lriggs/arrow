@@ -99,6 +99,7 @@ jobs:
           # We uninstall Homebrew's RE2 to ensure using bundled RE2.
           brew uninstall grpc || : # gRPC depends on RE2
           brew uninstall re2 || :
+          brew uninstall sccache || :
 
           brew bundle --file=arrow/java/Brewfile
       - name: Build C++ libraries
