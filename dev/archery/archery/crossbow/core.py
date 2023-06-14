@@ -297,6 +297,8 @@ class Repo:
         callbacks = GitRemoteCallbacks(github_token)
         refs = refs or []
         try:
+            print('**LR pushing refs: {0} {1}'
+                               .format(self._updated_refs, self))
             self.origin.push(refs + self._updated_refs, callbacks=callbacks)
         except pygit2.GitError:
             raise RuntimeError('Failed to push updated references, '
