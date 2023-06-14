@@ -86,4 +86,6 @@ jobs:
           cd arrow
           echo pwd
           pwd
+          echo ls /home/runner/work/arrow/crossbow-queue
+          ls /home/runner/work/arrow/crossbow-queue
           archery crossbow --queue-path /home/runner/work/arrow/crossbow-queue --queue-remote https://github.com/lriggs/arrow-build submit java-jars --job-prefix nightly 
