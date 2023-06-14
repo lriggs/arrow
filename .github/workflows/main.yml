@@ -17,7 +17,7 @@ name: Trigger Jar Build
 on: workflow_dispatch
        
 env:
-  ARCHERY_DEFAULT_BRANCH: ${{ github.ref_name }}
+  ARCHERY_DEFAULT_BRANCH: 'master'
 jobs:
   trigger-crossbow:
     name: Trigger Crossbow
@@ -82,7 +82,8 @@ jobs:
           pip install -e arrow/dev/archery[crossbow] 
           echo GITHUB_WORKSPACE:$GITHUB_WORKSPACE
           echo GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+          git clone https://github.com/dremio/arrow-build crossbow
           cd arrow
           echo pwd
           pwd
-          archery crossbow --queue-path $GITHUB_WORKSPACE --queue-remote https://github.com/lriggs/arrow-build submit java-jars --job-prefix nightly 
+          archery crossbow --queue-path /home/runner/work/arrow/crossbow-queue --queue-remote https://github.com/lriggs/arrow-build submit java-jars --job-prefix nightly 
