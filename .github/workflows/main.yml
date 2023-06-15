@@ -27,9 +27,6 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
-        run: |
-          set -e
-          echo ""
       - name: Install Conda
         run: |
           set -e
