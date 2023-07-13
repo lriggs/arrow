@@ -263,11 +263,11 @@ std::vector<NativeFunction> GetStringFunctionRegistry() {
                          NativeFunction::kNeedsFunctionHolder |
                          NativeFunction::kCanReturnErrors),
 
-      NativeFunction("geo_hash_encode", {}, DataTypeVector{float64(), float64()},
+      NativeFunction("st_geohash", {}, DataTypeVector{float64(), float64()},
                      utf8(), kResultNullIfNull, "gdv_fn_geo_hash_encode_float64_float64",
                      NativeFunction::kNeedsContext),
 
-      NativeFunction("geo_hash_decode", {}, DataTypeVector{utf8()},
+      NativeFunction("st_fromgeohash", {}, DataTypeVector{utf8()},
                      arrow::structType(), kResultNullIfNull, "gdv_fn_geo_hash_decode_utf8",
                      NativeFunction::kNeedsContext),
 
