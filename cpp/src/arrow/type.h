@@ -1079,6 +1079,9 @@ class ARROW_EXPORT StructType : public NestedType {
   static constexpr const char* type_name() { return "struct"; }
 
   explicit StructType(const std::vector<std::shared_ptr<Field>>& fields);
+  explicit StructType();
+  StructType(const StructType& rhs) = delete;
+  StructType& operator=(const StructType& rhs) = delete;
 
   ~StructType() override;
 
