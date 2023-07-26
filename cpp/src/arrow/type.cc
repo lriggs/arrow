@@ -856,6 +856,10 @@ StructType::StructType(const std::vector<std::shared_ptr<Field>>& fields)
   children_ = fields;
 }
 
+StructType::StructType()
+    : NestedType(Type::STRUCT) {
+}
+
 StructType::~StructType() {}
 
 std::string StructType::ToString() const {
@@ -2527,6 +2531,7 @@ TYPE_FACTORY(float16, HalfFloatType)
 TYPE_FACTORY(float32, FloatType)
 TYPE_FACTORY(float64, DoubleType)
 TYPE_FACTORY(utf8, StringType)
+TYPE_FACTORY(structType, StructType)
 TYPE_FACTORY(large_utf8, LargeStringType)
 TYPE_FACTORY(binary, BinaryType)
 TYPE_FACTORY(large_binary, LargeBinaryType)

@@ -41,6 +41,13 @@ using gdv_utf8 = char*;
 using gdv_binary = char*;
 using gdv_day_time_interval = int64_t;
 
+struct GeoStruct {
+  int32_t lat;
+  int32_t lon;
+};
+
+using gdv_struct = GeoStruct;
+
 #ifdef GANDIVA_UNIT_TEST
 // unit tests may be compiled without O2, so inlining may not happen.
 #define FORCE_INLINE
@@ -463,6 +470,11 @@ gdv_int64 truncate_int64_int32(gdv_int64 in, gdv_int32 out_scale);
 
 const char* repeat_utf8_int32(gdv_int64 context, const char* in, gdv_int32 in_len,
                               gdv_int32 repeat_times, gdv_int32* out_len);
+
+const char* gdv_fn_geo_hash_encode_float64_float64(gdv_int64 context, gdv_float64 lat, gdv_float64 lon,
+                              gdv_int32* out_len);
+
+const gdv_struct*  gdv_fn_geo_hash_decode_utf8(gdv_int64 context, const char* input, gdv_int32 in_len);
 
 const char* substr_utf8_int64_int64(gdv_int64 context, const char* input,
                                     gdv_int32 in_len, gdv_int64 offset64,
