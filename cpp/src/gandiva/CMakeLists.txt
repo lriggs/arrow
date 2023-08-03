@@ -251,9 +251,7 @@ add_gandiva_test(internals-test
                  random_generator_holder_test.cc
                  hash_utils_test.cc
                  gdv_function_stubs_test.cc
-<<<<<<< HEAD
                  interval_holder_test.cc)
-=======
                  array_ops_test.cc
                  EXTRA_DEPENDENCIES
                  LLVM::LLVM_INTERFACE
@@ -264,7 +262,6 @@ add_gandiva_test(internals-test
 if(ARROW_GANDIVA_JAVA)
   add_subdirectory(jni)
 endif()
->>>>>>> cdcde4e08 (add two list type input gandiva function)
 
 add_subdirectory(precompiled)
 add_subdirectory(tests)
