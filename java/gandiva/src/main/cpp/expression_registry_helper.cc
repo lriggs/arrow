@@ -136,10 +136,15 @@ void ArrowToProtobuf(DataTypePtr type, types::ExtGandivaType* gandiva_data_type)
       gandiva_data_type->set_type(types::GandivaType::INTERVAL);
       gandiva_data_type->set_intervaltype(types::IntervalType::DAY_TIME);
       break;
+    case arrow::Type::STRUCT:
+      gandiva_data_type->set_type(types::GandivaType::STRUCT);
+      break;
     default:
       // un-supported types. test ensures that
       // when one of these are added build breaks.
-      DCHECK(false);
+      //DCHECK(false);
+      printf("LR Found unsupported type %d\n", type->id());
+      fflush(stdout);
   }
 }
 
@@ -172,6 +177,9 @@ Java_org_apache_arrow_gandiva_evaluator_ExpressionRegistryJniHelper_getGandivaSu
   types::GandivaFunctions gandiva_functions;
   for (auto function = expr_registry.function_signature_begin();
        function != expr_registry.function_signature_end(); function++) {
+    printf("LR getGandivaSupportedFunctions Functions: %s\n", (*function).base_name().c_str());
+    fflush(stdout);
+
     types::FunctionSignature* function_signature = gandiva_functions.add_function();
     function_signature->set_name((*function).base_name());
     types::ExtGandivaType* return_type = function_signature->mutable_returntype();

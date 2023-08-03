@@ -268,7 +268,8 @@ std::vector<NativeFunction> GetStringFunctionRegistry() {
                      NativeFunction::kNeedsContext),
 
       NativeFunction("st_fromgeohash", {}, DataTypeVector{utf8()},
-                     arrow::structType(), kResultNullIfNull, "gdv_fn_geo_hash_decode_utf8",
+                     arrow::struct_({field("lattitude", arrow::float64(), false), field("longitude", arrow::float64(), false)}), kResultNullIfNull, "gdv_fn_geo_hash_decode_utf8",
+                     //arrow::structType(), kResultNullIfNull, "gdv_fn_geo_hash_decode_utf8",
                      NativeFunction::kNeedsContext),
 
       NativeFunction("concatOperator", {}, DataTypeVector{utf8(), utf8()}, utf8(),

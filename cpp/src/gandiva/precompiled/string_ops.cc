@@ -851,10 +851,11 @@ const char* gdv_fn_geo_hash_encode_float64_float64(gdv_int64 context, gdv_float6
 }
 
 FORCE_INLINE
-const gdv_struct* gdv_fn_geo_hash_decode_utf8(gdv_int64 context, const char* input, gdv_int32 in_len) {
-  gdv_struct* ret = reinterpret_cast<gdv_struct*>(gdv_fn_context_arena_malloc(context, sizeof(gdv_struct)));
-  ret->lat = 42;
-  ret->lon = 142;
+const gdv_struct gdv_fn_geo_hash_decode_utf8(gdv_int64 context, const char* input, gdv_int32 in_len) {
+  //gdv_struct* ret = reinterpret_cast<gdv_struct*>(gdv_fn_context_arena_malloc(context, sizeof(gdv_struct)));
+  gdv_struct ret;
+  ret.lattitude = 42;
+  ret.longitude = 142;
   return ret;
 
   //if (repeat_number == 0 || in_len <= 0) {

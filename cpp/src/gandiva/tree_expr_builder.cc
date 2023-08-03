@@ -144,11 +144,12 @@ NodePtr TreeExprBuilder::MakeOr(const NodeVector& children) {
 static bool print_expr = false;
 
 ExpressionPtr TreeExprBuilder::MakeExpression(NodePtr root_node, FieldPtr result_field) {
-  if (result_field == nullptr) {
-    return nullptr;
-  }
-  if (print_expr) {
+    if (true || print_expr) {
     std::cout << "Expression: " << root_node->ToString() << "\n";
+  }
+  if (result_field == nullptr) {
+    std::cout << "LR MakeExpression result_field is null" << std::endl;
+    return nullptr;
   }
   return ExpressionPtr(new Expression(root_node, result_field));
 }

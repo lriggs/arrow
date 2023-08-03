@@ -143,6 +143,11 @@ public class ArrowTypeHelper {
     }
   }
 
+  private static void initArrowTypeStruct(ArrowType.Struct structType,
+                                        GandivaTypes.ExtGandivaType.Builder builder) {
+    builder.setType(GandivaTypes.GandivaType.STRUCT);
+  }
+
   private static void initArrowTypeTime(ArrowType.Time timeType,
                                         GandivaTypes.ExtGandivaType.Builder builder) {
     short timeUnit = timeType.getUnit().getFlatbufID();
@@ -287,6 +292,7 @@ public class ArrowTypeHelper {
         break;
       }
       case Type.Struct_: { // 13
+        ArrowTypeHelper.initArrowTypeStruct((ArrowType.Struct) arrowType, builder);
         break;
       }
       case Type.Union: { // 14
