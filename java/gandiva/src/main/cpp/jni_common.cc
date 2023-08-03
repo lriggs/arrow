@@ -268,9 +268,10 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
       return ProtoTypeToTimestamp(ext_type);
     case types::INTERVAL:
       return ProtoTypeToInterval(ext_type);
+    case types::STRUCT:
+      return arrow::struct_({field("lattitude", arrow::float64(), false), field("longitude", arrow::float64(), false)});
     case types::FIXED_SIZE_BINARY:
     case types::LIST:
-    case types::STRUCT:
     case types::UNION:
     case types::DICTIONARY:
     case types::MAP:

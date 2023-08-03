@@ -17,6 +17,7 @@
 
 #include "gandiva/llvm_generator.h"
 
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -397,6 +398,10 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
     AddFunctionCall("gdv_fn_populate_varlen_vector", types()->i32_type(),
                     {arg_context_ptr, output_buffer_ptr_ref, output_offset_ref, loop_var,
                      output_value->data(), output_value->length()});
+  } else if (output_type_id == arrow::Type::STRUCT) {
+      std::cout << "LR creating struct type to store the result." << std::endl;
+      auto slot_offset = builder->CreateGEP(types()->IRType(output_type_id), output_ref, loop_var);
+      builder->CreateStore(output_value->data(), slot_offset);
   } else {
     return Status::NotImplemented("output type ", output->Type()->ToString(),
                                   " not supported");
@@ -530,6 +535,15 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     value = ir_builder()->CreateCall(fn, args);
   } else {
     value = ir_builder()->CreateCall(fn, args, full_name);
+
+    std::string str;
+    llvm::raw_string_ostream output(str);
+    std::string str2;
+    llvm::raw_string_ostream output2(str2);
+    ret_type->print(output);
+    value->getType()->print(output2);
+    std::cout << "LR ret type " << str << " value ret type " << str2 << std::endl;
+    
     DCHECK(value->getType() == ret_type);
   }
 

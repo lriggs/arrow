@@ -46,6 +46,10 @@ class GANDIVA_EXPORT LLVMTypes {
 
   llvm::Type* i128_type() { return llvm::Type::getInt128Ty(context_); }
 
+  llvm::StructType* struct_type() {
+    return llvm::StructType::get(context_, {double_type(), double_type()}, false);
+  }
+
   llvm::StructType* i128_split_type() {
     // struct with high/low bits (see decimal_ops.cc:DecimalSplit)
     return llvm::StructType::get(context_, {i64_type(), i64_type()}, false);

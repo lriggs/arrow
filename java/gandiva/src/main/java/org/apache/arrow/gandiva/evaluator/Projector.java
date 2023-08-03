@@ -22,16 +22,15 @@ import java.util.List;
 
 import org.apache.arrow.gandiva.exceptions.EvaluatorClosedException;
 import org.apache.arrow.gandiva.exceptions.GandivaException;
-import org.apache.arrow.gandiva.exceptions.UnsupportedTypeException;
 import org.apache.arrow.gandiva.expression.ArrowTypeHelper;
 import org.apache.arrow.gandiva.expression.ExpressionTree;
 import org.apache.arrow.gandiva.ipc.GandivaTypes;
 import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.vector.BaseVariableWidthVector;
-import org.apache.arrow.vector.FixedWidthVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
+import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -357,12 +356,12 @@ public class Projector {
     idx = 0;
     int outColumnIdx = 0;
     for (ValueVector valueVector : outColumns) {
-      boolean isFixedWith = valueVector instanceof FixedWidthVector;
+      /*boolean isFixedWith = valueVector instanceof FixedWidthVector;*/
       boolean isVarWidth = valueVector instanceof VariableWidthVector;
-      if (!isFixedWith && !isVarWidth) {
+      /*if (!isFixedWith && !isVarWidth) {
         throw new UnsupportedTypeException(
             "Unsupported value vector type " + valueVector.getField().getFieldType());
-      }
+      }*/
 
       outAddrs[idx] = valueVector.getValidityBuffer().memoryAddress();
       outSizes[idx++] = valueVector.getValidityBuffer().capacity();
@@ -374,8 +373,13 @@ public class Projector {
         // save vector to allow for resizing.
         resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
       }
-      outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
-      outSizes[idx++] = valueVector.getDataBuffer().capacity();
+      if (valueVector instanceof StructVector) {
+        outAddrs[idx] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().memoryAddress();
+        outSizes[idx++] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().capacity();
+      } else {
+        outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
+        outSizes[idx++] = valueVector.getDataBuffer().capacity();
+      }
 
       valueVector.setValueCount(selectionVectorRecordCount);
       outColumnIdx++;
