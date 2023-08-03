@@ -251,8 +251,8 @@ add_gandiva_test(internals-test
                  random_generator_holder_test.cc
                  hash_utils_test.cc
                  gdv_function_stubs_test.cc
-                 interval_holder_test.cc)
-                 array_ops_test.cc
+                 interval_holder_test.cc
+                 array_ops_test.cc)
                  EXTRA_DEPENDENCIES
                  LLVM::LLVM_INTERFACE
                  EXTRA_INCLUDES
