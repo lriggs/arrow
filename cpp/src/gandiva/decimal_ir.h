@@ -29,7 +29,7 @@ namespace gandiva {
 class DecimalIR : public FunctionIRBuilder {
  public:
   explicit DecimalIR(Engine* engine)
-      : FunctionIRBuilder(engine), enable_ir_traces_(false) {}
+      : FunctionIRBuilder(engine), enable_ir_traces_(true) {}
 
   /// Build decimal IR functions and add them to the engine.
   static Status AddFunctions(Engine* engine);

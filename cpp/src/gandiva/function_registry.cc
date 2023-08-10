@@ -17,6 +17,7 @@
 
 #include "gandiva/function_registry.h"
 
+#include <iostream>
 #include <iterator>
 #include <utility>
 #include <vector>
@@ -71,7 +72,10 @@ SignatureMap FunctionRegistry::InitPCMap() {
   pc_registry_.insert(std::end(pc_registry_), v7.begin(), v7.end());
 
   for (auto& elem : pc_registry_) {
+    std::cout << "LR pc_registry_ item " << elem.pc_name() << " first signature name " << elem.signatures()[0].base_name() << std::endl;
     for (auto& func_signature : elem.signatures()) {
+      std::cout << "LR Adding function to map " << func_signature.base_name() << std::endl;
+      //std::cout << "    LR args " << func_signature.param_types
       map.insert(std::make_pair(&(func_signature), &elem));
     }
   }

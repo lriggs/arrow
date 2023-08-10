@@ -17,6 +17,7 @@
 
 #include "gandiva/projector.h"
 
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -285,12 +286,14 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch, arrow::MemoryPool* p
 Status Projector::Evaluate(const arrow::RecordBatch& batch,
                            const SelectionVector* selection_vector,
                            arrow::MemoryPool* pool, arrow::ArrayVector* output) const {
+  std::cout << "LR Projector::Evaluate" << std::endl;
   ARROW_RETURN_NOT_OK(ValidateEvaluateArgsCommon(batch));
   ARROW_RETURN_IF(output == nullptr, Status::Invalid("Output must be non-null."));
   ARROW_RETURN_IF(pool == nullptr, Status::Invalid("Memory pool must be non-null."));
 
   auto num_rows =
       selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
+  std::cout << "LR Projector::Evaluate num_rows" << num_rows << std::endl;
   // Allocate the output data vecs.
   ArrayDataVector output_data_vecs;
   for (auto& field : output_fields_) {
@@ -348,6 +351,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   arrow::Status astatus;
   std::vector<std::shared_ptr<arrow::Buffer>> buffers;
 
+  std::cout << "LR Projector::AllocArrayData Enter" << std::endl;
   // The output vector always has a null bitmap.
   int64_t size = arrow::bit_util::BytesForBits(num_records);
   ARROW_ASSIGN_OR_RAISE(auto bitmap_buffer, arrow::AllocateBuffer(size, pool));
@@ -363,7 +367,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   }
 
   if (type_id == arrow::Type::LIST) {
-    auto offsets_len = arrow::BitUtil::BytesForBits((num_records + 1) * 32);
+    auto offsets_len = arrow::bit_util::BytesForBits((num_records + 1) * 32);
 
     ARROW_ASSIGN_OR_RAISE(auto offsets_buffer, arrow::AllocateBuffer(offsets_len, pool));
     buffers.push_back(std::move(offsets_buffer));
@@ -374,7 +378,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
       // so here i just allocate extra 32 bit for extra 1 length
       ARROW_ASSIGN_OR_RAISE(
           auto child_offsets_buffer,
-          arrow::AllocateResizableBuffer(arrow::BitUtil::BytesForBits(32), pool));
+          arrow::AllocateResizableBuffer(arrow::bit_util::BytesForBits(32), pool));
       buffers.push_back(std::move(child_offsets_buffer));
     }
   }
@@ -401,14 +405,18 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   }
   buffers.push_back(std::move(data_buffer));
 
+  std::cout << "LR Projector::AllocArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
+    std::cout << "LR Projector::AllocArrayData List" << std::endl;
     auto internal_type = type->field(0)->type();
     ArrayDataPtr child_data;
     if (arrow::is_primitive(internal_type->id())) {
+      std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
       child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
                                           {nullptr, std::move(buffers[2])}, 0);
     }
     if (arrow::is_binary_like(internal_type->id())) {
+      std::cout << "LR Projector::AllocArrayData List 2" << std::endl;
       child_data = arrow::ArrayData::Make(
           internal_type, 0 /*initialize length*/,
           {nullptr, std::move(buffers[2]), std::move(buffers[3])}, 0);
@@ -419,6 +427,8 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   } else {
     *array_data = arrow::ArrayData::Make(type, num_records, std::move(buffers));
   }
+
+  std::cout << "LR Projector::AllocArrayData Done" << std::endl;
   return Status::OK();
 }
 
