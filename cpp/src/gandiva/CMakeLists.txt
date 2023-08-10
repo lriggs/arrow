@@ -253,15 +253,6 @@ add_gandiva_test(internals-test
                  gdv_function_stubs_test.cc
                  interval_holder_test.cc
                  array_ops_test.cc)
-                 EXTRA_DEPENDENCIES
-                 LLVM::LLVM_INTERFACE
-                 EXTRA_INCLUDES
-                 $<TARGET_PROPERTY:LLVM::LLVM_INTERFACE,INTERFACE_INCLUDE_DIRECTORIES>
-                 ${GANDIVA_INTERNALS_TEST_ARGUMENTS})
-
-if(ARROW_GANDIVA_JAVA)
-  add_subdirectory(jni)
-endif()
 
 add_subdirectory(precompiled)
 add_subdirectory(tests)

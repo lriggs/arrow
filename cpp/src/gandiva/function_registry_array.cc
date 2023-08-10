@@ -22,12 +22,15 @@
 namespace gandiva {
 std::vector<NativeFunction> GetArrayFunctionRegistry() {
   static std::vector<NativeFunction> array_fn_registry_ = {
-      NativeFunction("array_contains", {}, DataTypeVector{list(utf8()), utf8()},
+      NativeFunction("array_containsGandiva", {}, DataTypeVector{list(utf8()), utf8()},
                      boolean(), kResultNullIfNull, "array_utf8_contains_utf8",
                      NativeFunction::kNeedsContext | NativeFunction::kCanReturnErrors),
-      NativeFunction("array_length", {}, DataTypeVector{list(utf8())}, int64(),
+      NativeFunction("array_lengthGandiva", {}, DataTypeVector{list(utf8())}, int64(),
                      kResultNullIfNull, "array_utf8_length",
                      NativeFunction::kNeedsContext | NativeFunction::kCanReturnErrors),
+      NativeFunction("array_containsGandiva", {}, DataTypeVector{list(int32()), int32()},
+                     boolean(), kResultNullIfNull, "array_int32_contains_int32",
+                     NativeFunction::kNeedsContext),
   };
   return array_fn_registry_;
 }

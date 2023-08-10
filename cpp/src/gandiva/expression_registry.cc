@@ -169,6 +169,10 @@ static void AddArrowTypesToVector(arrow::Type::type type, DataTypeVector& vector
     case arrow::Type::type::STRUCT:
       vector.push_back(arrow::struct_({field("lattitude", arrow::float64(), false), field("longitude", arrow::float64(), false)}));
       break;
+    case arrow::Type::type::LIST:
+      //vector.push_back(arrow::list(arrow::utf8()));
+      vector.push_back(arrow::list(arrow::int32()));
+      break;
     default:
       // Unsupported types. test ensures that
       // when one of these are added build breaks.

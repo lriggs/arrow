@@ -17,6 +17,8 @@
 
 #include "gandiva/array_ops.h"
 
+#include <iostream>
+
 #include "arrow/util/value_parsing.h"
 #include "gandiva/engine.h"
 #include "gandiva/exported_funcs.h"
@@ -38,6 +40,21 @@ bool array_utf8_contains_utf8(int64_t context_ptr, const char* entry_buf,
       return true;
     }
     entry_buf = entry_buf + entry_len;
+  }
+  return false;
+}
+
+bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
+                              int32_t entry_offsets_len,
+                              int32_t contains_data) {
+  std::cout << "LR array_int32_contains_int32 offset length=" << entry_offsets_len << std::endl;
+  for (int i = 0; i < entry_offsets_len; i++) {
+    std::cout << "LR going to check " << entry_buf + i << std::endl;
+    int32_t entry_len = *(entry_buf + i);
+    std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
+    if (entry_len == contains_data) {
+      return true;
+    }
   }
   return false;
 }
@@ -72,5 +89,14 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
   engine->AddGlobalMappingForFunc("array_utf8_contains_utf8",
                                   types->i1_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(array_utf8_contains_utf8));
+
+  args = {types->i64_type(),      // int64_t execution_context
+          types->i32_ptr_type(),   // int8_t* data ptr
+          types->i32_type(),      // int32_t child offsets length
+          types->i32_type()};     // int32_t contains data length
+
+  engine->AddGlobalMappingForFunc("array_int32_contains_int32",
+                                  types->i1_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(array_int32_contains_int32));
 }
 }  // namespace gandiva

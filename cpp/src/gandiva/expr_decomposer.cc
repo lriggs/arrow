@@ -17,6 +17,7 @@
 
 #include "gandiva/expr_decomposer.h"
 
+#include <iostream>
 #include <memory>
 #include <stack>
 #include <string>
@@ -37,19 +38,25 @@ namespace gandiva {
 Status ExprDecomposer::Visit(const FieldNode& node) {
   auto desc = annotator_.CheckAndAddInputFieldDescriptor(node.field());
 
+  std::cout << "LR ExprDecomposer" << std::endl;
   DexPtr validity_dex = std::make_shared<VectorReadValidityDex>(desc);
   DexPtr value_dex;
   if (desc->HasChildOffsetsIdx()) {
+    std::cout << "LR ExprDecomposer 1" << std::endl;
     // handle list<binary> type
     value_dex = std::make_shared<VectorReadVarLenValueListDex>(desc);
   } else if (desc->HasOffsetsIdx()) {
+      std::cout << "LR ExprDecomposer 2" << std::endl;
     if (desc->field()->type()->id() == arrow::Type::LIST) {
       // handle list<primitive> type
+      std::cout << "LR ExprDecomposer 3" << std::endl;
       value_dex = std::make_shared<VectorReadFixedLenValueListDex>(desc);
     } else {
+      std::cout << "LR ExprDecomposer 4" << std::endl;
       value_dex = std::make_shared<VectorReadVarLenValueDex>(desc);
     }
   } else {
+    std::cout << "LR ExprDecomposer 5" << std::endl;
     value_dex = std::make_shared<VectorReadFixedLenValueDex>(desc);
   }
   result_ = std::make_shared<ValueValidityPair>(validity_dex, value_dex);

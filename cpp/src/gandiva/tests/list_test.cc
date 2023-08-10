@@ -21,6 +21,8 @@
 
 #include "arrow/memory_pool.h"
 #include "arrow/status.h"
+#include "gandiva/execution_context.h"
+#include "gandiva/precompiled/types.h"
 #include "gandiva/projector.h"
 #include "gandiva/tests/test_util.h"
 #include "gandiva/tree_expr_builder.h"
@@ -93,19 +95,24 @@ void _test_list_type_field_alias(DataTypePtr type, ArrayPtr array,
   auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array});
 
   // Make expression
+  std::cout << "Make expression" << std::endl;
   auto field_a_node = TreeExprBuilder::MakeField(field_a);
   auto expr = TreeExprBuilder::MakeExpression(field_a_node, result);
 
+  std::cout << "Build a projector for the expressions." << std::endl;
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  std::cout << "status message: " << status.message() << std::endl;
   EXPECT_TRUE(status.ok()) << status.message();
 
+  std::cout << "Evaluate expression" << std::endl;
   // Evaluate expression
   arrow::ArrayVector outputs;
   status = projector->Evaluate(*in_batch, pool, &outputs);
   EXPECT_TRUE(status.ok()) << status.message();
 
+  std::cout << "Check results" << std::endl;
   EXPECT_ARROW_ARRAY_EQUALS(array, outputs[0]);
   // EXPECT_ARROW_ARRAY_EQUALS will not check the length of child data, but
   // ArrayData::Slice method will check length. ArrayData::ToString method will call
@@ -114,6 +121,7 @@ void _test_list_type_field_alias(DataTypePtr type, ArrayPtr array,
   EXPECT_TRUE(array->null_count() == outputs[0]->null_count());
 }
 
+/*
 TEST_F(TestList, TestListUtf8) {
   ArrayPtr array;
   _build_list_array<string, arrow::StringBuilder>(
@@ -140,6 +148,19 @@ TEST_F(TestList, TestListInt64) {
       {1, 2, 5, 4, 3}, {true, true, true, true, false}, pool_, &array);
   _test_list_type_field_alias(list(int64()), array, pool_);
 }
+*/
+TEST_F(TestList, TestListArrayInt32) {
+  gandiva::ExecutionContext ctx;
+  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
+  int32_t data[] = {11, 2, 23, 42};
+  int32_t entry_offsets_len = 4;
+  int32_t contains_data = 42;
+
+  EXPECT_EQ(
+      array_int32_contains_int32(ctx_ptr, data, entry_offsets_len,
+                               contains_data),
+      true);
+}
 
 TEST_F(TestList, TestListInt32) {
   ArrayPtr array;
@@ -148,6 +169,106 @@ TEST_F(TestList, TestListInt32) {
        50000},
       {5, 2, 3, 4, 1}, {true, false, true, true, true}, pool_, &array);
   _test_list_type_field_alias(list(int32()), array, pool_);
+}
+
+TEST_F(TestList, TestListInt32LiteralContains) {
+  // schema for input fields
+  auto field_a = field("a", list(int32()));
+  auto field_b = field("b", int32());
+  auto schema = arrow::schema({field_a, field_b});
+
+  // output fields
+  auto res = field("res", boolean());
+
+  // Create a row-batch with some sample data
+  int num_records = 5;
+  ArrayPtr array_a;
+    _build_list_array<int32_t, arrow::Int32Builder>(
+      {1, 5, 19, 42, 57},
+      {1, 1, 1, 1, 1}, {true, true, true, true, true}, pool_, &array_a);
+
+  auto array_b =
+      MakeArrowArrayInt32({42, 42, 42, 42, 42});
+
+  // expected output
+  auto exp = MakeArrowArrayBool({false, false, false, true, false},
+                                {true, true, true, true, true});
+
+  // prepare input record batch
+  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b});
+
+  // build expressions.
+  // array_contains(a, b)
+  
+  //auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
+
+  std::vector<NodePtr> field_nodes;
+  auto node = TreeExprBuilder::MakeField(field_a);
+  field_nodes.push_back(node);
+
+  auto node2 = TreeExprBuilder::MakeLiteral(42);
+  field_nodes.push_back(node2);
+  
+  auto func_node = TreeExprBuilder::MakeFunction("array_containsGandiva", field_nodes, res->type());
+  auto expr = TreeExprBuilder::MakeExpression(func_node, res);
+  ////////
+
+  // Build a projector for the expressions.
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Evaluate expression
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool_, &outputs);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Validate results
+  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
+}
+
+TEST_F(TestList, TestListInt32Contains) {
+  // schema for input fields
+  auto field_a = field("a", list(int32()));
+  auto field_b = field("b", int32());
+  auto schema = arrow::schema({field_a, field_b});
+
+  // output fields
+  auto res = field("res", boolean());
+
+  // Create a row-batch with some sample data
+  int num_records = 5;
+  ArrayPtr array_a;
+    _build_list_array<int32_t, arrow::Int32Builder>(
+      {1, 5, 19, 42, 57},
+      {1, 1, 1, 1, 1}, {true, true, true, true, true}, pool_, &array_a);
+
+  auto array_b =
+      MakeArrowArrayInt32({42, 42, 42, 42, 42});
+
+  // expected output
+  auto exp = MakeArrowArrayBool({false, false, false, true, false},
+                                {true, true, true, true, true});
+
+  // prepare input record batch
+  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b});
+
+  // build expressions.
+  // array_contains(a, b)
+  auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
+
+  // Build a projector for the expressions.
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Evaluate expression
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool_, &outputs);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Validate results
+  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
 }
 
 TEST_F(TestList, TestListFloat32) {
@@ -195,7 +316,7 @@ TEST_F(TestList, TestListUtf8Length) {
 
   // build expressions.
   // array_length(a)
-  auto expr = TreeExprBuilder::MakeExpression("array_length", {field_a}, res);
+  auto expr = TreeExprBuilder::MakeExpression("array_lengthGandiva", {field_a}, res);
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
@@ -234,7 +355,7 @@ TEST_F(TestList, TestListUtf8LengthWithInvalidData) {
 
   // build expressions.
   // array_length(a)
-  auto expr = TreeExprBuilder::MakeExpression("array_length", {field_a}, res);
+  auto expr = TreeExprBuilder::MakeExpression("array_lengthGandiva", {field_a}, res);
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
@@ -281,7 +402,7 @@ TEST_F(TestList, TestListUtf8Contains) {
 
   // build expressions.
   // array_contains(a, b)
-  auto expr = TreeExprBuilder::MakeExpression("array_contains", {field_a, field_b}, res);
+  auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;

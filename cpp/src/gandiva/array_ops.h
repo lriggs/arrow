@@ -30,4 +30,8 @@ bool array_utf8_contains_utf8(int64_t context_ptr, const char* entry_buf,
 GANDIVA_EXPORT
 int64_t array_utf8_length(int64_t context_ptr, const char* entry_buf,
                           int32_t* entry_child_offsets, int32_t entry_offsets_len);
+GANDIVA_EXPORT
+bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
+                              int32_t entry_offsets_len,
+                              int32_t contains_data);
 }

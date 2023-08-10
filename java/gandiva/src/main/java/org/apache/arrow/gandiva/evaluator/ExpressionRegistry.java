@@ -180,10 +180,11 @@ public class ExpressionRegistry {
         return new ArrowType.Interval(mapArrowIntervalUnit(type.getIntervalType()));
       case GandivaType.STRUCT_VALUE:
         return new ArrowType.Struct();
+      case GandivaType.LIST_VALUE:
+        return new ArrowType.List();
       case GandivaType.FIXED_SIZE_BINARY_VALUE:
       case GandivaType.MAP_VALUE:
       case GandivaType.DICTIONARY_VALUE:
-      case GandivaType.LIST_VALUE:
       case GandivaType.UNION_VALUE:
       default:
         assert false;

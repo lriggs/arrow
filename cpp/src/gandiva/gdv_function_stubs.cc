@@ -1284,6 +1284,9 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
           types->i32_type()};     // int32_t entry__len
 
   engine->AddGlobalMappingForFunc("gdv_fn_populate_varlen_vector",
+                                  types->i32_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_fn_populate_varlen_vector));
+
   // gdv_fn_cast_intervalyear_utf8_int32
   args = {
       types->i64_type(),                 // context

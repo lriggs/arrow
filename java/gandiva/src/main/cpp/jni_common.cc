@@ -270,8 +270,10 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
       return ProtoTypeToInterval(ext_type);
     case types::STRUCT:
       return arrow::struct_({field("lattitude", arrow::float64(), false), field("longitude", arrow::float64(), false)});
-    case types::FIXED_SIZE_BINARY:
     case types::LIST:
+      return arrow::list(arrow::int32());
+      //return arrow::list(arrow::utf8());
+    case types::FIXED_SIZE_BINARY:
     case types::UNION:
     case types::DICTIONARY:
     case types::MAP:
@@ -297,6 +299,7 @@ FieldPtr ProtoTypeToField(const types::Field& f) {
 
 NodePtr ProtoTypeToFieldNode(const types::FieldNode& node) {
   FieldPtr field_ptr = ProtoTypeToField(node.field());
+  std::cout << "LR created field " << field_ptr->ToString(true) << std::endl;
   if (field_ptr == nullptr) {
     std::cerr << "Unable to create field node from protobuf\n";
     return nullptr;
@@ -468,6 +471,7 @@ NodePtr ProtoTypeToNullNode(const types::NullNode& node) {
 
 NodePtr ProtoTypeToNode(const types::TreeNode& node) {
   if (node.has_fieldnode()) {
+      std::cout << "LR Found ProtoTypeToNode fieldnode " << std::endl;
     return ProtoTypeToFieldNode(node.fieldnode());
   }
 
@@ -516,6 +520,7 @@ NodePtr ProtoTypeToNode(const types::TreeNode& node) {
   }
 
   if (node.has_stringnode()) {
+    std::cout << "LR Found StringNode" << std::endl;
     return TreeExprBuilder::MakeStringLiteral(node.stringnode().value());
   }
 
@@ -625,9 +630,72 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
     }
+//////////
+auto type = field->type();
+auto type_id = type->id();
+//num_rows = num_records or ??
+    if (type_id == arrow::Type::LIST) {
 
-    auto array_data = arrow::ArrayData::Make(field->type(), num_rows, std::move(buffers));
+            if (buf_idx >= in_bufs_len) {
+        return Status::Invalid("insufficient number of in_buf_addrs");
+      }
+
+      // add offsets buffer for variable-len fields.
+      jlong offsets_addr = in_buf_addrs[buf_idx++];
+      jlong offsets_size = in_buf_sizes[sz_idx++];
+      auto offsets = std::shared_ptr<arrow::Buffer>(
+          new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
+      buffers.push_back(offsets);
+
+
+    if (arrow::is_binary_like(type->field(0)->type()->id())) {
+      // child offsets length is internal data length + 1
+      // offsets element is int32
+      // so here i just allocate extra 32 bit for extra 1 length
+      jlong offsets_addr = in_buf_addrs[buf_idx++];
+      jlong offsets_size = in_buf_sizes[sz_idx++];
+
+      auto child_offsets_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
+    
+      buffers.push_back(std::move(child_offsets_buffer));
+    }
+  }
+
+  jlong offsets_addr = in_buf_addrs[buf_idx++];
+  jlong offsets_size = in_buf_sizes[sz_idx++];
+  auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
+    
+  std::cout << "LR New ArrayData 1" << std::endl;
+  if (type->id() == arrow::Type::LIST) {
+    std::cout << "LR New ArrayData List" << std::endl;
+    auto internal_type = type->field(0)->type();
+    std::shared_ptr<arrow::ArrayData> child_data;
+    if (arrow::is_primitive(internal_type->id())) {
+      std::cout << "LR New ArrayData List 1" << std::endl;
+      child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
+                                          {nullptr, std::move(data_buffer)}, 0);
+    }
+    if (arrow::is_binary_like(internal_type->id())) {
+      std::cout << "LR New ArrayData List NYI 2" << std::endl;
+      /*child_data = arrow::ArrayData::Make(
+          internal_type, 0,
+          {nullptr, std::move(data_buffer), std::move(child_data)}, 0);*/
+    }
+
+    auto array_data = arrow::ArrayData::Make(type, num_rows, {std::move(buffers[0]), std::move(buffers[1])}, {child_data});
     columns.push_back(array_data);
+
+  } else {
+    auto array_data = arrow::ArrayData::Make(type, num_rows, std::move(buffers));
+    columns.push_back(array_data);
+  }
+
+/////////
+//TODO use unique_ptr
+//Was
+//auto array_data = arrow::ArrayData::Make(field->type(), num_rows, std::move(buffers));
+//columns.push_back(array_data);
+
   }
   *batch = arrow::RecordBatch::Make(schema, num_rows, columns);
   return Status::OK();
@@ -776,7 +844,7 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_gandiva_evaluator_JniWrapper_build
   status = Projector::Make(schema_ptr, expr_vector, mode, config, sec_cache, &projector);
 
   if (!status.ok()) {
-    ss << "Failed to make LLVM module due to " << status.message() << "\n";
+    ss << "Failed to make LLVM module [1]cdue to " << status.message() << "\n";
     releaseProjectorInput(schema_arr, schema_bytes, exprs_arr, exprs_bytes, env);
     goto err_out;
   }
@@ -864,6 +932,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     jlongArray buf_addrs, jlongArray buf_sizes, jint sel_vec_type, jint sel_vec_rows,
     jlong sel_vec_addr, jlong sel_vec_size, jlongArray out_buf_addrs,
     jlongArray out_buf_sizes) {
+  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector " << std::endl;
   Status status;
   std::shared_ptr<ProjectorHolder> holder = projector_modules_.Lookup(module_id);
   if (holder == nullptr) {
@@ -899,7 +968,11 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     if (!status.ok()) {
       break;
     }
-
+    std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
+    << " Made a recordbatch num_rows " << num_rows
+    << in_batch->ToString()
+    << std::endl;
+  
     std::shared_ptr<gandiva::SelectionVector> selection_vector;
     auto selection_buffer = std::make_shared<arrow::Buffer>(
         reinterpret_cast<uint8_t*>(sel_vec_addr), sel_vec_size);
@@ -1062,7 +1135,7 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_gandiva_evaluator_JniWrapper_build
   // good to invoke the filter builder now
   status = Filter::Make(schema_ptr, condition_ptr, config, sec_cache, &filter);
   if (!status.ok()) {
-    ss << "Failed to make LLVM module due to " << status.message() << "\n";
+    ss << "Failed to make LLVM module [2] due to " << status.message() << "\n";
     releaseFilterInput(schema_arr, schema_bytes, condition_arr, condition_bytes, env);
     goto err_out;
   }

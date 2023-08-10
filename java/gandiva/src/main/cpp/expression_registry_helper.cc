@@ -139,6 +139,9 @@ void ArrowToProtobuf(DataTypePtr type, types::ExtGandivaType* gandiva_data_type)
     case arrow::Type::STRUCT:
       gandiva_data_type->set_type(types::GandivaType::STRUCT);
       break;
+    case arrow::Type::LIST:
+      gandiva_data_type->set_type(types::GandivaType::LIST);
+      break;
     default:
       // un-supported types. test ensures that
       // when one of these are added build breaks.
@@ -173,11 +176,15 @@ Java_org_apache_arrow_gandiva_evaluator_ExpressionRegistryJniHelper_getGandivaSu
 JNIEXPORT jbyteArray JNICALL
 Java_org_apache_arrow_gandiva_evaluator_ExpressionRegistryJniHelper_getGandivaSupportedFunctions(  // NOLINT
     JNIEnv* env, jobject types_helper) {
+  printf("LR Entering JNI call getGandivaSupportedFunctions\n");
+  fflush(stdout);
+
   ExpressionRegistry expr_registry;
   types::GandivaFunctions gandiva_functions;
   for (auto function = expr_registry.function_signature_begin();
        function != expr_registry.function_signature_end(); function++) {
     printf("LR getGandivaSupportedFunctions Functions: %s\n", (*function).base_name().c_str());
+    printf("LR getGandivaSupportedFunctions Functions: %s\n", (*function).ToString().c_str());
     fflush(stdout);
 
     types::FunctionSignature* function_signature = gandiva_functions.add_function();

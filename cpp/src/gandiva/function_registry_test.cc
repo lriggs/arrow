@@ -95,7 +95,7 @@ TEST_F(TestFunctionRegistry, TestNoDuplicates) {
 }
 
 TEST_F(TestFunctionRegistry, TestFound2) {
-  FunctionSignature array_length("array_length", {list(utf8())}, arrow::int64());
+  FunctionSignature array_length("array_lengthGandiva", {list(utf8())}, arrow::int64());
 
   const NativeFunction* function = registry_.LookupSignature(array_length);
   EXPECT_NE(function, nullptr);
