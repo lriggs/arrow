@@ -43,7 +43,8 @@ LLVMTypes::LLVMTypes(llvm::LLVMContext& context) : context_(context) {
                                 {arrow::Type::type::DECIMAL, i128_type()},
                                 {arrow::Type::type::INTERVAL_MONTHS, i32_type()},
                                 {arrow::Type::type::STRUCT, struct_type()},
-                                {arrow::Type::type::INTERVAL_DAY_TIME, i64_type()}};
+                                {arrow::Type::type::INTERVAL_DAY_TIME, i64_type()},
+                                {arrow::Type::type::LIST, list_type()}};
 }
 
 }  // namespace gandiva

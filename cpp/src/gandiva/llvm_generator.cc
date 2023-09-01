@@ -92,6 +92,7 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   std::unique_ptr<CompiledExpr> compiled_expr(new CompiledExpr(value_validity, output));
   std::string fn_name = "expr_" + std::to_string(idx) + "_" +
                         std::to_string(static_cast<int>(selection_vector_mode_));
+  std::cout << "LR LLVMGenerator::Add " << fn_name << std::endl;
   if (!cached_) {
     ARROW_RETURN_NOT_OK(engine_->LoadFunctionIRs());
     ARROW_RETURN_NOT_OK(CodeGenExprValue(value_validity->value_expr(),
@@ -100,6 +101,7 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   }
   compiled_expr->SetFunctionName(selection_vector_mode_, fn_name);
   compiled_exprs_.push_back(std::move(compiled_expr));
+  std::cout << "LR LLVMGenerator::Add Done" << std::endl;
   return Status::OK();
 }
 
@@ -108,14 +110,19 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
 Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode mode) {
   selection_vector_mode_ = mode;
 
+  std::cout << "LR LLVMGenerator::Build " << std::endl;
   for (auto& expr : exprs) {
     auto output = annotator_.AddOutputFieldDescriptor(expr->result());
     ARROW_RETURN_NOT_OK(Add(expr, output));
   }
 
+  std::cout << "LR LLVMGenerator::Build 2" << std::endl;
+  //Too much logging. needle in haystack?
+  //std::cout << "LR LLVMGenerator::Build 2 IR is " << engine_->DumpIR() << std::endl;
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
-
+  std::cout << "LR LLVMGenerator::Build FinalizeModule" << std::endl;
+  
   // setup the jit functions for each expression.
   for (auto& compiled_expr : compiled_exprs_) {
     auto fn_name = compiled_expr->GetFunctionName(mode);
@@ -123,6 +130,7 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
     compiled_expr->SetJITFunction(selection_vector_mode_, jit_fn);
   }
 
+  std::cout << "LR LLVMGenerator::Build Done" << std::endl;
   return Status::OK();
 }
 
@@ -144,13 +152,12 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                               const SelectionVector* selection_vector,
                               const ArrayDataVector& output_vector) const {
   DCHECK_GT(record_batch.num_rows(), 0);
-  int jello = 0;
-  std::cout << "LR LLVMGenerator::Execute " << jello++ << std::endl;
+  std::cout << "LR LLVMGenerator::Execute 1"<< std::endl;
 
   auto eval_batch = annotator_.PrepareEvalBatch(record_batch, output_vector);
   DCHECK_GT(eval_batch->GetNumBuffers(), 0);
 
-  std::cout << "LR LLVMGenerator::Execute " << jello++ << std::endl;
+  std::cout << "LR LLVMGenerator::Execute 2" << std::endl;
   auto mode = SelectionVector::MODE_NONE;
   if (selection_vector != nullptr) {
     mode = selection_vector->GetMode();
@@ -160,7 +167,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                            selection_vector_mode_, " received vector with mode ", mode);
   }
 
-  std::cout << "LR LLVMGenerator::Execute " << jello++ << std::endl;
+  std::cout << "LR LLVMGenerator::Execute 3" << std::endl;
   for (auto& compiled_expr : compiled_exprs_) {
     // generate data/offset vectors.
     const uint8_t* selection_buffer = nullptr;
@@ -170,7 +177,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
       num_output_rows = selection_vector->GetNumSlots();
     }
 
-    std::cout << "LR LLVMGenerator::Execute A" << jello++ << std::endl;
+    std::cout << "LR LLVMGenerator::Execute A1" << std::endl;
     EvalFunc jit_function = compiled_expr->GetJITFunction(mode);
     jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
                  eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
@@ -182,7 +189,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
         eval_batch->GetExecutionContext()->has_error(),
         Status::ExecutionError(eval_batch->GetExecutionContext()->get_error()));
 
-    std::cout << "LR LLVMGenerator::Execute A" << jello++ << std::endl;
+    std::cout << "LR LLVMGenerator::Execute A2" << std::endl;
     // generate validity vectors.
     ComputeBitMapsForExpr(*compiled_expr, selection_vector, eval_batch.get());
   }
@@ -305,7 +312,8 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
                                        FieldDescriptorPtr output, int suffix_idx,
                                        std::string& fn_name,
                                        SelectionVector::Mode selection_vector_mode) {
-  std::cout << "LR CodeGenExprValue" << std::endl;
+  std::cout << "LR CodeGenExprValue for output field " << output->Name()
+    << " type " << output->Type()->ToString() << " output type id " << output->Type()->id() << std::endl;
   try {
   llvm::IRBuilder<>* builder = ir_builder();
   // Create fn prototype :
@@ -404,6 +412,7 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   }
 
   // The visitor can add code to both the entry/loop blocks.
+  std::cout << "LR calling visitor to get output data for [" << fn_name << "]" << std::endl;
   Visitor visitor(this, fn, loop_entry, arg_addrs, arg_local_bitmaps, arg_holder_ptrs,
                   slice_offsets, arg_context_ptr, position_var);
   value_expr->Accept(visitor);
@@ -441,6 +450,7 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   } else if (output_type_id == arrow::Type::LIST) {
     auto output_list_internal_type = output->Type()->field(0)->type()->id();
     std::cout << "LR creating list type to store the result with internal type " << output_list_internal_type << std::endl;
+    
     if (arrow::is_binary_like(output_list_internal_type)) {
       auto output_list_value = std::dynamic_pointer_cast<ListLValue>(output_value);
       llvm::Value* child_output_offset_ref = GetChildOffsetsReference(
@@ -451,6 +461,19 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
            child_output_offset_ref, loop_var, output_list_value->data(),
            output_list_value->child_offsets(), output_list_value->offsets_length()});
     } else if (output_list_internal_type == arrow::Type::INT32) {
+
+
+      std::string str1;
+      llvm::raw_string_ostream output1(str1);
+      output_value->data()->print(output1);
+
+      std::string str2;
+      llvm::raw_string_ostream output2(str2);
+      output_value->length()->print(output2);
+
+
+      std::cout << "LR gdv_fn_populate_list_int32_t_vector params are " << arg_context_ptr << "," << output_buffer_ptr_ref << "," 
+        << output_offset_ref << "," << loop_var << "[[" << str1 << "]] [[" << str2 << "]]" << std::endl;
       AddFunctionCall("gdv_fn_populate_list_int32_t_vector", types()->i32_type(),
                       {arg_context_ptr, output_buffer_ptr_ref, output_offset_ref,
                        loop_var, output_value->data(), output_value->length()});
@@ -604,7 +627,7 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
   llvm::Function* fn = module()->getFunction(full_name);
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
 
-  if (enable_ir_traces_ && !full_name.compare("printf") &&
+  if (!full_name.compare("printf") &&
       !full_name.compare("printff")) {
     // Trace for debugging
     ADD_TRACE("invoke native fn " + full_name);
@@ -624,7 +647,7 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     llvm::raw_string_ostream output2(str2);
     ret_type->print(output);
     value->getType()->print(output2);
-    std::cout << "LR ret type " << str << " value ret type " << str2 << std::endl;
+    std::cout << "LR addfunctioncall for " << full_name << " == value->getType " << str2 << " ret_type " << str << std::endl;
     
     DCHECK(value->getType() == ret_type);
   }
@@ -644,9 +667,7 @@ std::shared_ptr<DecimalLValue> LLVMGenerator::BuildDecimalLValue(llvm::Value* va
 }
 
 #define ADD_VISITOR_TRACE(...)         \
-  if (generator_->enable_ir_traces_) { \
     generator_->AddTrace(__VA_ARGS__); \
-  }
 
 // Visitor for generating the code for a decomposed expression.
 LLVMGenerator::Visitor::Visitor(LLVMGenerator* generator, llvm::Function* function,
@@ -1018,6 +1039,8 @@ void LLVMGenerator::Visitor::Visit(const NonNullableFuncDex& dex) {
     LLVMTypes* types = generator_->types();
     auto arrow_type_id = arrow_return_type->id();
     auto result_type = types->DataVecType(arrow_return_type);
+    //Result type array/list is special.
+    //auto result_type = types->IRType(arrow_type_id);
     std::cout << "LR NonNullableFunc 2 result_type " << printType(result_type) << " arrow_return_type " << arrow_return_type->ToString() << " old type " << types->IRType(arrow_type_id) << std::endl;
 
     // Build combined validity of the args.
@@ -1477,6 +1500,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
   auto llvm_return_type = types->DataVecType(arrow_return_type);
   DecimalIR decimalIR(generator_->engine_.get());
 
+  std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall for " << func->pc_name() << " llvm return type is " << printType(llvm_return_type) << std::endl;
   if (arrow_return_type_id == arrow::Type::DECIMAL) {
     // For decimal fns, the output precision/scale are passed along as parameters.
     //
@@ -1504,10 +1528,29 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
     // add extra arg for return length for variable len return types (allocated on stack).
     llvm::AllocaInst* result_len_ptr = nullptr;
     if (arrow::is_binary_like(arrow_return_type_id)) {
+      std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is binary like" << std::endl;
       result_len_ptr = new llvm::AllocaInst(generator_->types()->i32_type(), 0,
                                             "result_len", entry_block_);
       params->push_back(result_len_ptr);
       has_arena_allocs_ = true;
+    }
+
+    if (arrow_return_type_id == arrow::Type::LIST) {
+      std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is list" << std::endl;
+      result_len_ptr = new llvm::AllocaInst(generator_->types()->i32_type(), 0,
+                                            "result_len", entry_block_);
+      params->push_back(result_len_ptr);
+      has_arena_allocs_ = true;
+
+      
+    }
+
+    std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall params are: " << std::endl;
+    for (auto p : *params) {
+      std::string str1;
+      llvm::raw_string_ostream output1(str1);
+      p->print(output1);
+      std::cout << str1 << std::endl;
     }
 
     // Make the function call
@@ -1520,6 +1563,8 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
         (result_len_ptr == nullptr)
             ? nullptr
             : builder->CreateLoad(result_len_ptr->getAllocatedType(), result_len_ptr);
+    std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is DONE" << std::endl;
+      
     return std::make_shared<LValue>(value, value_len);
   }
 }

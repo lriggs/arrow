@@ -300,6 +300,8 @@ Status Engine::FinalizeModule() {
   if (!cached_) {
     ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
 
+/*
+    //LR Turning this off seems to provide better error messages with compilation/generation failures.
     if (optimize_) {
       // misc passes to allow for inlining, vectorization, ..
       std::unique_ptr<llvm::legacy::PassManager> pass_manager(
@@ -324,7 +326,7 @@ Status Engine::FinalizeModule() {
       pass_builder.populateModulePassManager(*pass_manager);
       pass_manager->run(*module_);
     }
-
+*/
     ARROW_RETURN_IF(llvm::verifyModule(*module_, &llvm::errs()),
                     Status::CodeGenError("Module verification failed after optimizer"));
   }

@@ -144,6 +144,8 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
           reinterpret_cast<uint8_t*>(array_data.buffers[buffer_idx].get());
       eval_batch->SetBuffer(desc.data_buffer_ptr_idx(), data_buf_ptr, array_data.offset);
     } else {
+        std::cout << "LR Annotator::PrepareBuffersForField is_output index " << desc.data_buffer_ptr_idx() << std::endl;
+  
       // list data buffer is in child data buffer
       uint8_t* data_buf_ptr = reinterpret_cast<uint8_t*>(
           array_data.child_data.at(0)->buffers[buffer_idx].get());
@@ -181,6 +183,7 @@ EvalBatchPtr Annotator::PrepareEvalBatch(const arrow::RecordBatch& record_batch,
   }
 
   // Fill in the entries for the output fields.
+  std::cout << "LR PrepareEvalBatch preparing output fields" << std::endl;
   int idx = 0;
   for (auto& arraydata : out_vector) {
     const FieldDescriptorPtr& desc = out_descs_.at(idx);

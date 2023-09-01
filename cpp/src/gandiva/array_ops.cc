@@ -18,8 +18,11 @@
 #include "gandiva/array_ops.h"
 
 #include <iostream>
+#include <string>
 
 #include "arrow/util/value_parsing.h"
+
+#include "gandiva/gdv_function_stubs.h"
 #include "gandiva/engine.h"
 #include "gandiva/exported_funcs.h"
 
@@ -50,7 +53,10 @@ bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
   std::cout << "LR array_int32_contains_int32 offset length=" << entry_offsets_len << std::endl;
   for (int i = 0; i < entry_offsets_len; i++) {
     std::cout << "LR going to check " << entry_buf + i << std::endl;
-    int32_t entry_len = *(entry_buf + i);
+    //LR TODO 
+    //int32_t entry_len = *(entry_buf + i);
+    //coming as int64 for some reason. *2
+    int32_t entry_len = *(entry_buf + (i * 2));
     std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
     if (entry_len == contains_data) {
       return true;
@@ -58,6 +64,38 @@ bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
   }
   return false;
 }
+
+bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
+                              int32_t entry_offsets_len,
+                              int64_t contains_data) {
+  std::cout << "LR array_int64_contains_int64 offset length=" << entry_offsets_len << std::endl;
+  for (int i = 0; i < entry_offsets_len; i++) {
+    std::cout << "LR going to check " << entry_buf + i << std::endl;
+    int64_t entry_len = *(entry_buf + (i*2));  //LR TODO sizeof int64?
+    std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
+    if (entry_len == contains_data) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int32_t* out_len) {
+  std::cout << "LR array_int32_make_array offset data=" << contains_data << std::endl;
+
+  int integers[] = { 1, 2, 3, contains_data, 5 };
+  *out_len = 5;// * 4;
+  //length is number of items, but buffers must account for byte size.
+  uint8_t* ret = gdv_fn_context_arena_malloc(context_ptr, *out_len * 4);
+  memcpy(ret, integers, *out_len * 4);
+  std::cout << "LR made a buffer length" << *out_len * 4 << " item 3 is = " << int32_t(ret[3*4]) << std::endl; 
+
+  
+  //return reinterpret_cast<int32_t*>(ret);
+  return reinterpret_cast<int32_t*>(ret);
+}
+
 
 int64_t array_utf8_length(int64_t context_ptr, const char* entry_buf,
                           int32_t* entry_child_offsets, int32_t entry_offsets_len) {
@@ -98,5 +136,25 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
   engine->AddGlobalMappingForFunc("array_int32_contains_int32",
                                   types->i1_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(array_int32_contains_int32));
+
+  args = {types->i64_type(),      // int64_t execution_context
+          types->i64_ptr_type(),   // int8_t* data ptr
+          types->i32_type(),      // int32_t child offsets length
+          types->i64_type()};     // int32_t contains data length
+
+  engine->AddGlobalMappingForFunc("array_int64_contains_int64",
+                                  types->i1_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(array_int64_contains_int64));
+
+
+  args = {types->i64_type(),      // int64_t execution_context
+          types->i32_type(),
+          types->i32_ptr_type()};     // int32_t contains data length
+
+  engine->AddGlobalMappingForFunc("array_int32_make_array",
+                                  types->i32_ptr_type(), args,
+                                  reinterpret_cast<void*>(array_int32_make_array));
+
+    
 }
 }  // namespace gandiva
