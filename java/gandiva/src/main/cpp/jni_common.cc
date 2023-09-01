@@ -631,6 +631,9 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
       buffers.push_back(offsets);
     }
 //////////
+
+
+
 auto type = field->type();
 auto type_id = type->id();
 //num_rows = num_records or ??
@@ -661,25 +664,27 @@ auto type_id = type->id();
     }
   }
 
-  jlong offsets_addr = in_buf_addrs[buf_idx++];
-  jlong offsets_size = in_buf_sizes[sz_idx++];
-  auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
-    
+
   std::cout << "LR New ArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
+    jlong offsets_addr = in_buf_addrs[buf_idx++];
+    jlong offsets_size = in_buf_sizes[sz_idx++];
+    auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
+    
+
     std::cout << "LR New ArrayData List" << std::endl;
     auto internal_type = type->field(0)->type();
     std::shared_ptr<arrow::ArrayData> child_data;
     if (arrow::is_primitive(internal_type->id())) {
       std::cout << "LR New ArrayData List 1" << std::endl;
-      child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
+      child_data = arrow::ArrayData::Make(internal_type, 0,
                                           {nullptr, std::move(data_buffer)}, 0);
     }
     if (arrow::is_binary_like(internal_type->id())) {
       std::cout << "LR New ArrayData List NYI 2" << std::endl;
-      /*child_data = arrow::ArrayData::Make(
-          internal_type, 0,
-          {nullptr, std::move(data_buffer), std::move(child_data)}, 0);*/
+      //child_data = arrow::ArrayData::Make(
+      //    internal_type, 0,
+      //    {nullptr, std::move(data_buffer), std::move(child_data)}, 0);
     }
 
     auto array_data = arrow::ArrayData::Make(type, num_rows, {std::move(buffers[0]), std::move(buffers[1])}, {child_data});
@@ -971,6 +976,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
     << " Made a recordbatch num_rows " << num_rows
     << in_batch->ToString()
+    << " there are " << out_bufs_len << " buffers "
     << std::endl;
   
     std::shared_ptr<gandiva::SelectionVector> selection_vector;
@@ -1030,15 +1036,56 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
               "null");
           break;
         }
+
+        buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, output_vector_idx, value_buf, data_sz));
+      } else if (field->type()->id() == arrow::Type::LIST) {
         buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, output_vector_idx, value_buf, data_sz));
       } else {
         buffers.push_back(std::make_shared<arrow::MutableBuffer>(value_buf, data_sz));
       }
 
+      if (field->type()->id() == arrow::Type::LIST) {
+
+        std::vector<std::shared_ptr<arrow::Buffer>> child_buffers;
+
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* child_valid_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, output_vector_idx, child_valid_buf, data_sz));
+
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, output_vector_idx, child_offset_buf, data_sz));
+
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, output_vector_idx, child_data_buf, data_sz));
+
+        std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
+        auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
+        //array_data_child->
+        
+
+        std::vector<std::shared_ptr<arrow::ArrayData>> kids;
+        kids.push_back(array_data_child);
+        //auto array_data = std::make_shared<arrow::ArrayData>(field->type(), output_row_count);
+        auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers, kids);
+        array_data->child_data = std::move(kids);
+        output.push_back(array_data);
+        ++output_vector_idx;
+
+        std::cout << "LR jni_common there are " << buffers.size() << " buffers" << std::endl;
+
+      } else {
       auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers);
       output.push_back(array_data);
       ++output_vector_idx;
+      }
+
     }
     if (!status.ok()) {
       break;

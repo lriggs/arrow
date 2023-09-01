@@ -21,6 +21,10 @@
 
 #include "gandiva/visibility.h"
 
+namespace llvm {
+class VectorType;
+}
+
 /// Array functions that can be accessed from LLVM.
 extern "C" {
 GANDIVA_EXPORT
@@ -34,4 +38,13 @@ GANDIVA_EXPORT
 bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_offsets_len,
                               int32_t contains_data);
+GANDIVA_EXPORT
+bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
+                              int32_t entry_offsets_len,
+                              int64_t contains_data);
+
+GANDIVA_EXPORT
+int32_t* array_int32_make_array(int64_t context_ptr, 
+                              int32_t contains_data,
+                              int32_t* out_len);
 }

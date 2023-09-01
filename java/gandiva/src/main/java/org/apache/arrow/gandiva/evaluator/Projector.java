@@ -30,6 +30,7 @@ import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.vector.BaseVariableWidthVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
+import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
@@ -331,6 +332,7 @@ public class Projector {
       throw new EvaluatorClosedException();
     }
 
+    logger.error("LR Projector.java evaluate");
     if (numExprs != outColumns.size()) {
       logger.info("Expected " + numExprs + " columns, got " + outColumns.size());
       throw new GandivaException("Incorrect number of columns for the output vector");
@@ -351,11 +353,20 @@ public class Projector {
 
     boolean hasVariableWidthColumns = false;
     BaseVariableWidthVector[] resizableVectors = new BaseVariableWidthVector[outColumns.size()];
+    
     long[] outAddrs = new long[3 * outColumns.size()];
     long[] outSizes = new long[3 * outColumns.size()];
+
     idx = 0;
     int outColumnIdx = 0;
     for (ValueVector valueVector : outColumns) {
+    if (valueVector instanceof ListVector) {
+      //LR HACK there is only one column.
+      logger.error("LR Projector.java evaluate out columns=" + outColumns.size());
+      outAddrs = new long[5 * outColumns.size()];
+      outSizes = new long[5 * outColumns.size()];
+    }
+
       /*boolean isFixedWith = valueVector instanceof FixedWidthVector;*/
       boolean isVarWidth = valueVector instanceof VariableWidthVector;
       /*if (!isFixedWith && !isVarWidth) {
@@ -376,6 +387,25 @@ public class Projector {
       if (valueVector instanceof StructVector) {
         outAddrs[idx] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().memoryAddress();
         outSizes[idx++] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().capacity();
+      }
+      if (valueVector instanceof ListVector) {
+        outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
+        outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
+
+        //vector valid
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
+        
+
+        //vector offset
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).capacity();
+        
+        //vector data
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).capacity();
+        //LR HACK TODO ((ListVector) valueVector).getDataVector().capacity();
+     
       } else {
         outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getDataBuffer().capacity();
