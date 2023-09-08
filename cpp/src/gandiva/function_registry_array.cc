@@ -37,6 +37,9 @@ std::vector<NativeFunction> GetArrayFunctionRegistry() {
       NativeFunction("array_makeGandiva", {}, DataTypeVector{int32()},
                      list(int32()), kResultNullIfNull, "array_int32_make_array",
                      NativeFunction::kNeedsContext),
+      NativeFunction("array_removeGandiva", {}, DataTypeVector{list(int32()), int32()},
+                     list(int32()), kResultNullIfNull, "array_int32_remove",
+                     NativeFunction::kNeedsContext),
       /*NativeFunction("array_containsGandiva", {}, DataTypeVector{list(int64()), int64()},
                      boolean(), kResultNullIfNull, "array_int64_contains_int64",
                      NativeFunction::kNeedsContext),*/

@@ -212,7 +212,7 @@ TEST_F(TestList, TestMakeArray) {
   // Validate results
   EXPECT_ARROW_ARRAY_EQUALS(exp1, outputs.at(0));
 
-  std::cout << "LR ==================================================================================== " << std::endl;
+  std::cout << "LR ==============================SECOND=WAY==================================================== " << std::endl;
 
 
 

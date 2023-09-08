@@ -27,12 +27,15 @@ import org.apache.arrow.gandiva.expression.ExpressionTree;
 import org.apache.arrow.gandiva.ipc.GandivaTypes;
 import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
+import org.apache.arrow.vector.BitVectorHelper;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
 import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
+import org.apache.arrow.vector.ipc.message.ArrowFieldNode;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
 
@@ -360,12 +363,12 @@ public class Projector {
     idx = 0;
     int outColumnIdx = 0;
     for (ValueVector valueVector : outColumns) {
-    if (valueVector instanceof ListVector) {
-      //LR HACK there is only one column.
-      logger.error("LR Projector.java evaluate out columns=" + outColumns.size());
-      outAddrs = new long[5 * outColumns.size()];
-      outSizes = new long[5 * outColumns.size()];
-    }
+      if (valueVector instanceof ListVector) {
+        //LR HACK there is only one column.
+        logger.error("LR Projector.java evaluate out columns=" + outColumns.size());
+        outAddrs = new long[5 * outColumns.size()];
+        outSizes = new long[5 * outColumns.size()];
+      }
 
       /*boolean isFixedWith = valueVector instanceof FixedWidthVector;*/
       boolean isVarWidth = valueVector instanceof VariableWidthVector;
@@ -389,22 +392,40 @@ public class Projector {
         outSizes[idx++] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().capacity();
       }
       if (valueVector instanceof ListVector) {
+        
+
+        List<ArrowBuf> fieldBufs = ((ListVector) valueVector).getDataVector().getFieldBuffers();
+        logger.error("LR Projector.java evaluate ListVector has buffers=" + fieldBufs.size());
+
+
         outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
 
         //vector valid
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getValidityBufferAddress();
         outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
         
 
         //vector offset
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).memoryAddress();
-        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).capacity();
+        logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
         
         //vector data
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).memoryAddress();
-        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).capacity();
+        //outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).memoryAddress();
+        //outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).capacity();
+        
         //LR HACK TODO ((ListVector) valueVector).getDataVector().capacity();
+
+
+
+
+
+
+
+
+
+
      
       } else {
         outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
@@ -415,12 +436,47 @@ public class Projector {
       outColumnIdx++;
     }
 
+    logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
     wrapper.evaluateProjector(
         hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
         this.moduleId, numRows, bufAddrs, bufSizes,
         selectionVectorType, selectionVectorRecordCount,
         selectionVectorAddr, selectionVectorSize,
         outAddrs, outSizes);
+
+    //outColumns.clear();
+    //FieldType ft = new FieldType(true, int32, null);
+    //ListVector lv = new ListVector("res", allocator, ft, null);
+    //System.out.println(intVector.getDataVector());
+
+
+    //logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3][3 * 4]);
+    for (ValueVector valueVector : outColumns) {
+      if (valueVector instanceof ListVector) {
+        //LR HACK
+
+        int numRecordsFound = 5;
+        //int numRecordsFound = Math.toIntExact(outSizes[3]) / 4;
+        logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound);
+
+        ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
+        ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
+        List<ArrowBuf> outBufsNew = new ArrayList<ArrowBuf>();
+
+        outBufsNew.add(ab);
+        outBufsNew.add(ab2);
+        ArrowFieldNode afn = new ArrowFieldNode(numRecordsFound, 0);
+        ((ListVector) valueVector).getDataVector().clear();
+        ((ListVector) valueVector).getDataVector().loadFieldBuffers(afn, outBufsNew);
+        //byte[] valid = new byte[outsizes[2]];
+        //LR HACK
+        //for (int i = 0; i < outSizes[2]; i++) {
+        for (int i = 0; i < numRecordsFound * 10; i++) {
+          BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
+        }
+      }
+    }
+
   }
 
   /**
