@@ -128,7 +128,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.offset);
     std::cout << "LR Annotator::PrepareBuffersForField 4b" << std::endl;
   } else {
-    std::cout << "LR Annotator::PrepareBuffersForField 5 buffer_idx " << buffer_idx << std::endl;
+    std::cout << "LR Annotator::PrepareBuffersForField 5 " << desc.Name() << " buffer_idx " << buffer_idx << std::endl;
     std::cout << "LR Annotator::PrepareBuffersForField 5 array_data child size " << array_data.child_data.size() << std::endl;
     
     uint8_t* data_buf =
@@ -139,6 +139,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
 
   if (is_output) {
     // pass in the Buffer object for output data buffers. Can be used for resizing.
+
     if (array_data.type->id() != arrow::Type::LIST) {
       uint8_t* data_buf_ptr =
           reinterpret_cast<uint8_t*>(array_data.buffers[buffer_idx].get());
@@ -153,6 +154,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
                             array_data.child_data.at(0)->offset);
     }
   }
+  
 }
 
 EvalBatchPtr Annotator::PrepareEvalBatch(const arrow::RecordBatch& record_batch,

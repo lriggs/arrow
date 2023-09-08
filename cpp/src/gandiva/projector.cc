@@ -292,10 +292,16 @@ std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
     // Create and return array arrays.
 
   for (auto& array_data : output_data_vecs) {
+
     if (array_data->type->id() == arrow::Type::LIST) {
       auto child_data = array_data->child_data[0];
       std::cout << "LR the other Projector::Evaluate modifying child array " << 
       child_data->buffers[1]->ToString() << std::endl;
+      std::cout << "LR the other Projector::Evaluate child array[3] " << 
+      int32_t( (*child_data->buffers[1])[3*4]) << std::endl;
+      //std::cout << "LR the other Projector::Evaluate modifying child0 array " << 
+      //child_data->buffers[0]->ToString() << std::endl;
+
       int64_t child_data_size = 1;
       if (arrow::is_binary_like(child_data->type->id())) {
 
@@ -313,6 +319,11 @@ std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
           child_data->type, child_data_size, child_data->buffers, child_data->offset);
       array_data->child_data.clear();
       array_data->child_data.push_back(new_child_data);
+
+      std::cout << "LR the other Projector::Evaluate child data size " <<  child_data_size << std::endl;
+      std::cout << "LR the other Projector::Evaluate after modifying child array[3] " << 
+      int32_t( (*(array_data->child_data[0])->buffers[1])[3*4]) << std::endl;
+
       //array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
       //                                    array_data->buffers, {new_child_data},
       //                                    array_data->null_count, array_data->offset);
@@ -453,7 +464,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
 
   std::cout << "LR Projector::AllocArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
-    std::cout << "LR Projector::AllocArrayData List" << std::endl;
+    std::cout << "LR Projector::AllocArrayData List. There are number of buffers=" << buffers.size() << std::endl;
     auto internal_type = type->field(0)->type();
     ArrayDataPtr child_data;
     if (arrow::is_primitive(internal_type->id())) {

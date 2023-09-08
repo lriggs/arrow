@@ -47,4 +47,10 @@ GANDIVA_EXPORT
 int32_t* array_int32_make_array(int64_t context_ptr, 
                               int32_t contains_data,
                               int32_t* out_len);
+
+GANDIVA_EXPORT
+int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
+                              int32_t entry_offsets_len,
+                              int32_t remove_data,
+                              int32_t* out_len);
 }
