@@ -455,14 +455,16 @@ public class Projector {
       if (valueVector instanceof ListVector) {
         //LR HACK
 
-        int numRecordsFound = 5;
+        int numRecordsFound = 5 * 100;
         //int numRecordsFound = Math.toIntExact(outSizes[3]) / 4;
         logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound);
 
+        //ArrowBuf ab0 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
         ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
         ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
         List<ArrowBuf> outBufsNew = new ArrayList<ArrowBuf>();
 
+        //outBufsNew.add(ab0);
         outBufsNew.add(ab);
         outBufsNew.add(ab2);
         ArrowFieldNode afn = new ArrowFieldNode(numRecordsFound, 0);
@@ -471,7 +473,7 @@ public class Projector {
         //byte[] valid = new byte[outsizes[2]];
         //LR HACK
         //for (int i = 0; i < outSizes[2]; i++) {
-        for (int i = 0; i < numRecordsFound * 10; i++) {
+        for (int i = 0; i < numRecordsFound; i++) {
           BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
         }
       }

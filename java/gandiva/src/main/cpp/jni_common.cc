@@ -1113,7 +1113,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         << (array_data->child_data[0])->length << std::endl;
       
       //LRTest1 Start
-      int numRecords = 5;
+      int numRecords = 5 * 100;
       //int numRecords = (array_data->child_data[0])->length * array_data->length;
       int recordSize = numRecords * 4;
 
