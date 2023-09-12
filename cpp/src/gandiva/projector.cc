@@ -169,7 +169,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   ARROW_RETURN_IF(configuration == nullptr,
                   Status::Invalid("Configuration cannot be null"));
 
-  std::cout << "LR Projector::Make 1" << std::endl;
+  //std::cout << "LR Projector::Make 1" << std::endl;
   // see if equivalent projector was already built
   std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>> cache =
       LLVMGenerator::GetCache();
@@ -192,7 +192,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   std::unique_ptr<LLVMGenerator> llvm_gen;
   ARROW_RETURN_NOT_OK(LLVMGenerator::Make(configuration, is_cached, &llvm_gen));
 
-  std::cout << "LR Projector::Make 2" << std::endl;
+  //std::cout << "LR Projector::Make 2" << std::endl;
   if (!is_cached && sec_cache != nullptr) {
     std::shared_ptr<arrow::Buffer> arrow_buffer =
         sec_cache->Get(GetSecondaryCacheKey(cache_key.ToString()));
@@ -210,7 +210,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   // Run the validation on the expressions.
   // Return if any of the expression is invalid since
   // we will not be able to process further.
-  std::cout << "LR Projector::Make 3" << std::endl;
+  //std::cout << "LR Projector::Make 3" << std::endl;
   if (!is_cached) {
     ExprValidator expr_validator(llvm_gen->types(), schema);
     for (auto& expr : exprs) {
@@ -230,13 +230,13 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
     output_fields.push_back(expr->result());
   }
 
-  std::cout << "LR Projector::Make 4" << std::endl;
+  //std::cout << "LR Projector::Make 4" << std::endl;
   // Instantiate the projector with the completely built llvm generator
   *projector = std::shared_ptr<Projector>(
       new Projector(std::move(llvm_gen), schema, output_fields, configuration));
   projector->get()->SetBuiltFromCache(is_cached);
 
-  std::cout << "LR Projector::Make 5" << std::endl;
+  //std::cout << "LR Projector::Make 5" << std::endl;
   if (sec_cache != nullptr && is_cached == false) {
     std::shared_ptr<llvm::MemoryBuffer> sec_cached_obj = cache->GetObjectCode(cache_key);
     llvm::StringRef string_buffer = sec_cached_obj->getBuffer();
@@ -245,7 +245,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
     sec_cache->Set(GetSecondaryCacheKey(cache_key.ToString()), arrow_buffer);
   }
 
-  std::cout << "LR Projector::Make DONE" << std::endl;
+  //std::cout << "LR Projector::Make DONE" << std::endl;
   return Status::OK();
 }
 
@@ -259,7 +259,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
                            const ArrayDataVector& output_data_vecs) const {
   ARROW_RETURN_NOT_OK(ValidateEvaluateArgsCommon(batch));
 
-  std::cout << "LR the other Projector::Evaluate" << std::endl;
+  //std::cout << "LR the other Projector::Evaluate" << std::endl;
   if (output_data_vecs.size() != output_fields_.size()) {
     std::stringstream ss;
     ss << "number of buffers for output_data_vecs is " << output_data_vecs.size()
@@ -267,10 +267,10 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
     return Status::Invalid(ss.str());
   }
 
-std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
+//std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
   int idx = 0;
   for (auto& array_data : output_data_vecs) {
-    std::cout << "LR the other Projector::Evaluate checking array_data" << std::endl;
+    //std::cout << "LR the other Projector::Evaluate checking array_data" << std::endl;
     if (array_data == nullptr) {
       std::stringstream ss;
       ss << "array for output field " << output_fields_[idx]->name() << "is null.";
@@ -280,12 +280,12 @@ std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
     auto num_rows =
         selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
 
-  std::cout << "LR the other Projector::Evaluate about to validate capacity" << std::endl;
+  //std::cout << "LR the other Projector::Evaluate about to validate capacity" << std::endl;
     ARROW_RETURN_NOT_OK(
         ValidateArrayDataCapacity(*array_data, *(output_fields_[idx]), num_rows));
     ++idx;
   }
-  std::cout << "LR the other Projector::Evaluate 2" << std::endl;
+  //std::cout << "LR the other Projector::Evaluate 2" << std::endl;
   ARROW_RETURN_NOT_OK(
     llvm_generator_->Execute(batch, selection_vector, output_data_vecs));
 
@@ -295,10 +295,10 @@ std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
 
     if (array_data->type->id() == arrow::Type::LIST) {
       auto child_data = array_data->child_data[0];
-      std::cout << "LR the other Projector::Evaluate modifying child array " << 
-      child_data->buffers[1]->ToString() << std::endl;
-      std::cout << "LR the other Projector::Evaluate child array[3] " << 
-      int32_t( (*child_data->buffers[1])[3*4]) << std::endl;
+      //std::cout << "LR the other Projector::Evaluate modifying child array " << 
+      //child_data->buffers[1]->ToString() << std::endl;
+      //std::cout << "LR the other Projector::Evaluate child array[3] " << 
+      //int32_t( (*child_data->buffers[1])[3*4]) << std::endl;
       //std::cout << "LR the other Projector::Evaluate modifying child0 array " << 
       //child_data->buffers[0]->ToString() << std::endl;
 
@@ -320,9 +320,9 @@ std::cout << "LR the other Projector::Evaluate 1a" << std::endl;
       array_data->child_data.clear();
       array_data->child_data.push_back(new_child_data);
 
-      std::cout << "LR the other Projector::Evaluate child data size " <<  child_data_size << std::endl;
-      std::cout << "LR the other Projector::Evaluate after modifying child array[3] " << 
-      int32_t( (*(array_data->child_data[0])->buffers[1])[3*4]) << std::endl;
+      //std::cout << "LR the other Projector::Evaluate child data size " <<  child_data_size << std::endl;
+      //std::cout << "LR the other Projector::Evaluate after modifying child array[3] " << 
+      //int32_t( (*(array_data->child_data[0])->buffers[1])[3*4]) << std::endl;
 
       //array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
       //                                    array_data->buffers, {new_child_data},
@@ -343,14 +343,14 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch, arrow::MemoryPool* p
 Status Projector::Evaluate(const arrow::RecordBatch& batch,
                            const SelectionVector* selection_vector,
                            arrow::MemoryPool* pool, arrow::ArrayVector* output) const {
-  std::cout << "LR Projector::Evaluate" << std::endl;
+  //std::cout << "LR Projector::Evaluate" << std::endl;
   ARROW_RETURN_NOT_OK(ValidateEvaluateArgsCommon(batch));
   ARROW_RETURN_IF(output == nullptr, Status::Invalid("Output must be non-null."));
   ARROW_RETURN_IF(pool == nullptr, Status::Invalid("Memory pool must be non-null."));
 
   auto num_rows =
       selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
-  std::cout << "LR Projector::Evaluate num_rows" << num_rows << std::endl;
+  //std::cout << "LR Projector::Evaluate num_rows" << num_rows << std::endl;
   // Allocate the output data vecs.
   ArrayDataVector output_data_vecs;
   for (auto& field : output_fields_) {
@@ -408,7 +408,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   arrow::Status astatus;
   std::vector<std::shared_ptr<arrow::Buffer>> buffers;
 
-  std::cout << "LR Projector::AllocArrayData Enter" << std::endl;
+  //std::cout << "LR Projector::AllocArrayData Enter" << std::endl;
   // The output vector always has a null bitmap.
   int64_t size = arrow::bit_util::BytesForBits(num_records);
   ARROW_ASSIGN_OR_RAISE(auto bitmap_buffer, arrow::AllocateBuffer(size, pool));
@@ -462,18 +462,18 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   }
   buffers.push_back(std::move(data_buffer));
 
-  std::cout << "LR Projector::AllocArrayData 1" << std::endl;
+  //std::cout << "LR Projector::AllocArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
-    std::cout << "LR Projector::AllocArrayData List. There are number of buffers=" << buffers.size() << std::endl;
+   // std::cout << "LR Projector::AllocArrayData List. There are number of buffers=" << buffers.size() << std::endl;
     auto internal_type = type->field(0)->type();
     ArrayDataPtr child_data;
     if (arrow::is_primitive(internal_type->id())) {
-      std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
+      //std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
       child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
                                           {nullptr, std::move(buffers[2])}, 0);
     }
     if (arrow::is_binary_like(internal_type->id())) {
-      std::cout << "LR Projector::AllocArrayData List 2" << std::endl;
+      //std::cout << "LR Projector::AllocArrayData List 2" << std::endl;
       child_data = arrow::ArrayData::Make(
           internal_type, 0 /*initialize length*/,
           {nullptr, std::move(buffers[2]), std::move(buffers[3])}, 0);
@@ -485,7 +485,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
     *array_data = arrow::ArrayData::Make(type, num_records, std::move(buffers));
   }
 
-  std::cout << "LR Projector::AllocArrayData Done" << std::endl;
+ // std::cout << "LR Projector::AllocArrayData Done" << std::endl;
   return Status::OK();
 }
 
@@ -504,18 +504,18 @@ Status Projector::ValidateArrayDataCapacity(const arrow::ArrayData& array_data,
   ARROW_RETURN_IF(array_data.buffers.size() < 2,
                   Status::Invalid("ArrayData must have at least 2 buffers"));
 
-std::cout << "LR ValidateArrayDataCapacity" << std::endl;
+//std::cout << "LR ValidateArrayDataCapacity" << std::endl;
   int64_t min_bitmap_len = arrow::bit_util::BytesForBits(num_records);
-  std::cout << "LR ValidateArrayDataCapacity arra_data 0 is " << array_data.buffers[0] << std::endl;
+  //std::cout << "LR ValidateArrayDataCapacity arra_data 0 is " << array_data.buffers[0] << std::endl;
   int64_t bitmap_len = array_data.buffers[0]->capacity();
-  std::cout << "LR ValidateArrayDataCapacity" << std::endl;
+  //std::cout << "LR ValidateArrayDataCapacity" << std::endl;
   ARROW_RETURN_IF(
       bitmap_len < min_bitmap_len,
       Status::Invalid("Bitmap buffer too small for ", field.name(), " expected minimum ",
                       min_bitmap_len, " actual size ", bitmap_len));
 
   auto type_id = field.type()->id();
-  std::cout << "LR ValidateArrayDataCapacity" << std::endl;
+  //std::cout << "LR ValidateArrayDataCapacity" << std::endl;
   //LR TODO
   if (arrow::is_binary_like(type_id)) { //|| type_id == arrow::Type::LIST) {
     // validate size of offsets buffer.

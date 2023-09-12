@@ -38,25 +38,28 @@ namespace gandiva {
 Status ExprDecomposer::Visit(const FieldNode& node) {
   auto desc = annotator_.CheckAndAddInputFieldDescriptor(node.field());
 
-  std::cout << "LR ExprDecomposer" << std::endl;
+  //std::cout << "LR ExprDecomposer" << std::endl;
   DexPtr validity_dex = std::make_shared<VectorReadValidityDex>(desc);
   DexPtr value_dex;
   if (desc->HasChildOffsetsIdx()) {
-    std::cout << "LR ExprDecomposer 1" << std::endl;
+    //std::cout << "LR ExprDecomposer 1" << std::endl;
     // handle list<binary> type
     value_dex = std::make_shared<VectorReadVarLenValueListDex>(desc);
   } else if (desc->HasOffsetsIdx()) {
-      std::cout << "LR ExprDecomposer 2" << std::endl;
+      //std::cout << "LR ExprDecomposer 2" << std::endl;
     if (desc->field()->type()->id() == arrow::Type::LIST) {
       // handle list<primitive> type
-      std::cout << "LR ExprDecomposer 3" << std::endl;
-      value_dex = std::make_shared<VectorReadFixedLenValueListDex>(desc);
+      //std::cout << "LR ExprDecomposer 3" << std::endl;
+      auto p = std::make_shared<VectorReadFixedLenValueListDex>(desc);
+      value_dex = p;
+      int v = p->DataIdx();
+      //std::cout << "LR primitive list type " v << " " << 
     } else {
-      std::cout << "LR ExprDecomposer 4" << std::endl;
+      //std::cout << "LR ExprDecomposer 4" << std::endl;
       value_dex = std::make_shared<VectorReadVarLenValueDex>(desc);
     }
   } else {
-    std::cout << "LR ExprDecomposer 5" << std::endl;
+    //std::cout << "LR ExprDecomposer 5" << std::endl;
     value_dex = std::make_shared<VectorReadFixedLenValueDex>(desc);
   }
   result_ = std::make_shared<ValueValidityPair>(validity_dex, value_dex);

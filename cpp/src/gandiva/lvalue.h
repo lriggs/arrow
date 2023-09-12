@@ -82,7 +82,7 @@ class GANDIVA_EXPORT ListLValue : public LValue {
       : LValue(data, NULLPTR, validity),
         child_offsets_(child_offsets),
         offsets_length_(offsets_length) {
-          std::cout << "LR Creating ListLValue " << std::endl;
+          //std::cout << "LR Creating ListLValue " << std::endl;
         }
 
   llvm::Value* child_offsets() { return child_offsets_; }
