@@ -36,7 +36,7 @@ namespace gandiva {
     AddTrace(__VA_ARGS__); \
   }
 
-namespace {
+/*namespace {
   std::string printType(llvm::Type* t) {
     if (t == nullptr) {
       return std::string("null");
@@ -55,7 +55,7 @@ namespace {
     t->print(output);
     return str;
   }
-}
+}*/
 
 LLVMGenerator::LLVMGenerator(bool cached) : cached_(cached), enable_ir_traces_(true) {}
 
@@ -92,7 +92,7 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   std::unique_ptr<CompiledExpr> compiled_expr(new CompiledExpr(value_validity, output));
   std::string fn_name = "expr_" + std::to_string(idx) + "_" +
                         std::to_string(static_cast<int>(selection_vector_mode_));
-  std::cout << "LR LLVMGenerator::Add " << fn_name << std::endl;
+  //std::cout << "LR LLVMGenerator::Add " << fn_name << std::endl;
   if (!cached_) {
     ARROW_RETURN_NOT_OK(engine_->LoadFunctionIRs());
     ARROW_RETURN_NOT_OK(CodeGenExprValue(value_validity->value_expr(),
@@ -101,7 +101,7 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   }
   compiled_expr->SetFunctionName(selection_vector_mode_, fn_name);
   compiled_exprs_.push_back(std::move(compiled_expr));
-  std::cout << "LR LLVMGenerator::Add Done" << std::endl;
+  //std::cout << "LR LLVMGenerator::Add Done" << std::endl;
   return Status::OK();
 }
 
@@ -110,18 +110,18 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
 Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode mode) {
   selection_vector_mode_ = mode;
 
-  std::cout << "LR LLVMGenerator::Build " << std::endl;
+  //std::cout << "LR LLVMGenerator::Build " << std::endl;
   for (auto& expr : exprs) {
     auto output = annotator_.AddOutputFieldDescriptor(expr->result());
     ARROW_RETURN_NOT_OK(Add(expr, output));
   }
 
-  std::cout << "LR LLVMGenerator::Build 2" << std::endl;
+  //std::cout << "LR LLVMGenerator::Build 2" << std::endl;
   //Too much logging. needle in haystack?
   //std::cout << "LR LLVMGenerator::Build 2 IR is " << engine_->DumpIR() << std::endl;
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
-  std::cout << "LR LLVMGenerator::Build FinalizeModule" << std::endl;
+  //std::cout << "LR LLVMGenerator::Build FinalizeModule" << std::endl;
   
   // setup the jit functions for each expression.
   for (auto& compiled_expr : compiled_exprs_) {
@@ -130,7 +130,7 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
     compiled_expr->SetJITFunction(selection_vector_mode_, jit_fn);
   }
 
-  std::cout << "LR LLVMGenerator::Build Done" << std::endl;
+  //std::cout << "LR LLVMGenerator::Build Done" << std::endl;
   return Status::OK();
 }
 
@@ -152,12 +152,12 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                               const SelectionVector* selection_vector,
                               const ArrayDataVector& output_vector) const {
   DCHECK_GT(record_batch.num_rows(), 0);
-  std::cout << "LR LLVMGenerator::Execute 1"<< std::endl;
+  //std::cout << "LR LLVMGenerator::Execute 1"<< std::endl;
 
   auto eval_batch = annotator_.PrepareEvalBatch(record_batch, output_vector);
   DCHECK_GT(eval_batch->GetNumBuffers(), 0);
 
-  std::cout << "LR LLVMGenerator::Execute 2" << std::endl;
+  //std::cout << "LR LLVMGenerator::Execute 2" << std::endl;
   auto mode = SelectionVector::MODE_NONE;
   if (selection_vector != nullptr) {
     mode = selection_vector->GetMode();
@@ -167,7 +167,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                            selection_vector_mode_, " received vector with mode ", mode);
   }
 
-  std::cout << "LR LLVMGenerator::Execute 3" << std::endl;
+  //std::cout << "LR LLVMGenerator::Execute 3" << std::endl;
   for (auto& compiled_expr : compiled_exprs_) {
     // generate data/offset vectors.
     const uint8_t* selection_buffer = nullptr;
@@ -177,7 +177,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
       num_output_rows = selection_vector->GetNumSlots();
     }
 
-    std::cout << "LR LLVMGenerator::Execute A1" << std::endl;
+    //std::cout << "LR LLVMGenerator::Execute A1" << std::endl;
     EvalFunc jit_function = compiled_expr->GetJITFunction(mode);
     jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
                  eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
@@ -189,7 +189,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
         eval_batch->GetExecutionContext()->has_error(),
         Status::ExecutionError(eval_batch->GetExecutionContext()->get_error()));
 
-    std::cout << "LR LLVMGenerator::Execute A2" << std::endl;
+    //std::cout << "LR LLVMGenerator::Execute A2" << std::endl;
     // generate validity vectors.
     ComputeBitMapsForExpr(*compiled_expr, selection_vector, eval_batch.get());
   }
@@ -312,8 +312,8 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
                                        FieldDescriptorPtr output, int suffix_idx,
                                        std::string& fn_name,
                                        SelectionVector::Mode selection_vector_mode) {
-  std::cout << "LR CodeGenExprValue for output field " << output->Name()
-    << " type " << output->Type()->ToString() << " output type id " << output->Type()->id() << std::endl;
+  //std::cout << "LR CodeGenExprValue for output field " << output->Name()
+  //  << " type " << output->Type()->ToString() << " output type id " << output->Type()->id() << std::endl;
   try {
   llvm::IRBuilder<>* builder = ir_builder();
   // Create fn prototype :
@@ -412,7 +412,7 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   }
 
   // The visitor can add code to both the entry/loop blocks.
-  std::cout << "LR calling visitor to get output data for [" << fn_name << "]" << std::endl;
+  //std::cout << "LR calling visitor to get output data for [" << fn_name << "]" << std::endl;
   Visitor visitor(this, fn, loop_entry, arg_addrs, arg_local_bitmaps, arg_holder_ptrs,
                   slice_offsets, arg_context_ptr, position_var);
   value_expr->Accept(visitor);
@@ -444,12 +444,12 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
                     {arg_context_ptr, output_buffer_ptr_ref, output_offset_ref, loop_var,
                      output_value->data(), output_value->length()});
   } else if (output_type_id == arrow::Type::STRUCT) {
-      std::cout << "LR creating struct type to store the result." << std::endl;
+      //std::cout << "LR creating struct type to store the result." << std::endl;
       auto slot_offset = builder->CreateGEP(types()->IRType(output_type_id), output_ref, loop_var);
       builder->CreateStore(output_value->data(), slot_offset);
   } else if (output_type_id == arrow::Type::LIST) {
     auto output_list_internal_type = output->Type()->field(0)->type()->id();
-    std::cout << "LR creating list type to store the result with internal type " << output_list_internal_type << std::endl;
+    //std::cout << "LR creating list type to store the result with internal type " << output_list_internal_type << std::endl;
     
     if (arrow::is_binary_like(output_list_internal_type)) {
       auto output_list_value = std::dynamic_pointer_cast<ListLValue>(output_value);
@@ -472,8 +472,8 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
       output_value->length()->print(output2);
 
 
-      std::cout << "LR gdv_fn_populate_list_int32_t_vector params are " << arg_context_ptr << "," << output_buffer_ptr_ref << "," 
-        << output_offset_ref << "," << loop_var << "[[" << str1 << "]] [[" << str2 << "]]" << std::endl;
+      //std::cout << "LR gdv_fn_populate_list_int32_t_vector params are " << arg_context_ptr << "," << output_buffer_ptr_ref << "," 
+      //  << output_offset_ref << "," << loop_var << "[[" << str1 << "]] [[" << str2 << "]]" << std::endl;
       AddFunctionCall("gdv_fn_populate_list_int32_t_vector", types()->i32_type(),
                       {arg_context_ptr, output_buffer_ptr_ref, output_offset_ref,
                        loop_var, output_value->data(), output_value->length()});
@@ -503,8 +503,8 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   //  printType(output_value->data()) << std::endl;
 
   //ADD_TRACE("saving result 2 " + output->Name() + " value %T", output_value->data());
-  int jello = 0;
-  std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
+  //int jello = 0;
+  //std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
   if (visitor.has_arena_allocs()) {
     // Reset allocations to avoid excessive memory usage. Once the result is copied to
     // the output vector (store instruction above), any memory allocations in this
@@ -514,23 +514,23 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
     AddFunctionCall("gdv_fn_context_arena_reset", types()->void_type(), reset_args);
   }
 
-  std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
+  //std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
   // check loop_var
   loop_var->addIncoming(types()->i64_constant(0), loop_entry);
   llvm::Value* loop_update =
       builder->CreateAdd(loop_var, types()->i64_constant(1), "loop_var+1");
   loop_var->addIncoming(loop_update, loop_body_tail);
 
-  std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
+  //std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
   llvm::Value* loop_var_check =
       builder->CreateICmpSLT(loop_update, arg_nrecords, "loop_var < nrec");
   builder->CreateCondBr(loop_var_check, loop_body, loop_exit);
 
-  std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
+  //std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
   // Loop exit
   builder->SetInsertPoint(loop_exit);
   builder->CreateRet(types()->i32_constant(0));
-  std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
+  //std::cout << "LR CodeGenExprValue " << jello++ << std::endl;
   return Status::OK();
   } catch (std::exception& e) {
     std::cout << e.what() << std::endl;
@@ -647,7 +647,7 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     llvm::raw_string_ostream output2(str2);
     ret_type->print(output);
     value->getType()->print(output2);
-    std::cout << "LR addfunctioncall for " << full_name << " == value->getType " << str2 << " ret_type " << str << std::endl;
+    //std::cout << "LR addfunctioncall for " << full_name << " == value->getType " << str2 << " ret_type " << str << std::endl;
     
     DCHECK(value->getType() == ret_type);
   }
@@ -732,21 +732,21 @@ void LLVMGenerator::Visitor::Visit(const VectorReadFixedLenValueListDex& dex) {
   auto types = generator_->types();
   auto type = types->IRType(dex.FieldType()->id());
 
-  std::cout << "LR Visitor::Visit(const VectorReadFixedLenValueListDex& dex)" << std::endl;
-  std::cout << "LR VectorReadFixedLenValueListDex dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
-  std::cout << "LR VectorReadFixedLenValueListDex IRType is " << printType(type) << std::endl;
+  //std::cout << "LR Visitor::Visit(const VectorReadFixedLenValueListDex& dex)" << std::endl;
+  //std::cout << "LR VectorReadFixedLenValueListDex dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
+  //std::cout << "LR VectorReadFixedLenValueListDex IRType is " << printType(type) << std::endl;
   arrow::Type::type at = arrow::Type::INT32;
   type = types->IRType(at);
   //type = types->DataVecType(dex.FieldType());
-  std::cout << "LR VectorReadFixedLenValueListDex went with type " << printType(type) << std::endl;
+  //std::cout << "LR VectorReadFixedLenValueListDex went with type " << printType(type) << std::endl;
 
   // compute list len from the offsets array.
   llvm::Value* offsets_slot_ref =
       GetBufferReference(dex.OffsetsIdx(), kBufferTypeOffsets, dex.Field());
   llvm::Value* offsets_slot_index =
       builder->CreateAdd(loop_var_, GetSliceOffset(dex.OffsetsIdx()));
-  std::cout << "LR VectorReadFixedLenValueListDex values " << printType(offsets_slot_ref) << " [next] " <<
-    printType(offsets_slot_index) << std::endl; 
+  //std::cout << "LR VectorReadFixedLenValueListDex values " << printType(offsets_slot_ref) << " [next] " <<
+  //  printType(offsets_slot_index) << std::endl; 
 
   // => offset_start = offsets[loop_var]
   slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index);
@@ -773,9 +773,9 @@ void LLVMGenerator::Visitor::Visit(const VectorReadFixedLenValueListDex& dex) {
   // TODO: handle bool type bitmap
   // TODO: handle decimal precision and scale
 
-  std::cout << "LR VectorReadFixedLenValueListDex slot_ref " << printType(slot_ref) << std::endl;
-  std::cout << "LR VectorReadFixedLenValueListDex visit fixed-len data list vector " << dex.FieldName() <<
-     " length " << printType(list_len) << " data_list " << printType(data_list) << std::endl;
+  //std::cout << "LR VectorReadFixedLenValueListDex slot_ref " << printType(slot_ref) << std::endl;
+  //std::cout << "LR VectorReadFixedLenValueListDex visit fixed-len data list vector " << dex.FieldName() <<
+  //   " length " << printType(list_len) << " data_list " << printType(data_list) << std::endl;
   ADD_VISITOR_TRACE("visit fixed-len data list vector " + dex.FieldName() + " length %T",
                     list_len);
   result_.reset(new LValue(data_list, list_len));
@@ -835,8 +835,8 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueListDex& dex) {
   llvm::Value* slot;
   auto types = generator_->types();
   auto type = types->IRType(dex.FieldType()->id());
-  std::cout << "LR dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
-  std::cout << "LR IRType is " << printType(type) << std::endl;
+  //std::cout << "LR dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
+  //std::cout << "LR IRType is " << printType(type) << std::endl;
   //type = types->DataVecType(dex.FieldType());
   //LR HACK. Original was type = types->DataVecType(dex.FieldType());
   arrow::Type::type at = arrow::Type::INT32;
@@ -851,29 +851,29 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueListDex& dex) {
   int i = 0;
   std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // => offset_start = offsets[loop_var]
-  std::cout << "LR Type is " << printType(type) << std::endl;
+  //std::cout << "LR Type is " << printType(type) << std::endl;
   slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index);
   std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   llvm::Value* offset_start = builder->CreateLoad(type, slot, "offset_start");
   
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // => offset_end = offsets[loop_var + 1]
   llvm::Value* offsets_slot_index_next = builder->CreateAdd(
       offsets_slot_index, generator_->types()->i64_constant(1), "loop_var+1");
   slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index_next);
   llvm::Value* offset_end = builder->CreateLoad(type, slot, "offset_end");
 
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // => list_data_length = offset_end - offset_start
   llvm::Value* list_data_length =
       builder->CreateSub(offset_end, offset_start, "offsets_len");
 
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // get the child offsets array from the child offsets array,
   // start from offset 'offset_start'
   llvm::Value* child_offset_slot_ref =
       GetBufferReference(dex.ChildOffsetsIdx(), kBufferTypeChildOffsets, dex.Field());
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // do not forget slice offset
   llvm::Value* offset_start_int64 =
       builder->CreateIntCast(offset_start, generator_->types()->i64_type(), true);
@@ -884,13 +884,13 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueListDex& dex) {
   llvm::Value* child_offset_start =
       builder->CreateLoad(type, child_offsets, "child_offset_start");
 
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   // get the data array
   llvm::Value* data_slot_ref =
       GetBufferReference(dex.DataIdx(), kBufferTypeData, dex.Field());
   llvm::Value* data_value = builder->CreateGEP(type, data_slot_ref, child_offset_start);
   
-  std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
+  //std::cout << "VectorReadVarLenValueListDex " << i++ << std::endl;
   result_.reset(new ListLValue(data_value, child_offsets, list_data_length));
 }
 
@@ -934,7 +934,7 @@ void LLVMGenerator::Visitor::Visit(const LiteralDex& dex) {
   llvm::Value* value = nullptr;
   llvm::Value* len = nullptr;
 
-  std::cout << "LR LiteralDex type " << dex.type()->id() << std::endl;
+  //std::cout << "LR LiteralDex type " << dex.type()->id() << std::endl;
   switch (dex.type()->id()) {
     case arrow::Type::BOOL:
       value = types->i1_constant(std::get<bool>(dex.holder()));
@@ -975,7 +975,7 @@ void LLVMGenerator::Visitor::Visit(const LiteralDex& dex) {
     case arrow::Type::STRING:
     case arrow::Type::BINARY: {
       const std::string& str = std::get<std::string>(dex.holder());
-      std::cout << "LR Literal string " << str << std::endl;
+      //std::cout << "LR Literal string " << str << std::endl;
       value = ir_builder()->CreateGlobalStringPtr(str.c_str());
       len = types->i32_constant(static_cast<int32_t>(str.length()));
       break;
@@ -1029,7 +1029,7 @@ void LLVMGenerator::Visitor::Visit(const NonNullableFuncDex& dex) {
                             native_function->NeedsContext());
 
   auto arrow_return_type = dex.func_descriptor()->return_type();
-  std::cout << "LR NonNullableFunc 1 result_type " << printType(generator_->types()->DataVecType(arrow_return_type)) << " arrow_return_type " << arrow_return_type->ToString() << " old type " << printType(generator_->types()->IRType(arrow_return_type->id())) << std::endl;
+  //std::cout << "LR NonNullableFunc 1 result_type " << printType(generator_->types()->DataVecType(arrow_return_type)) << " arrow_return_type " << arrow_return_type->ToString() << " old type " << printType(generator_->types()->IRType(arrow_return_type->id())) << std::endl;
 
   if (native_function->CanReturnErrors()) {
     // slow path : if a function can return errors, skip invoking the function
@@ -1041,7 +1041,7 @@ void LLVMGenerator::Visitor::Visit(const NonNullableFuncDex& dex) {
     auto result_type = types->DataVecType(arrow_return_type);
     //Result type array/list is special.
     //auto result_type = types->IRType(arrow_type_id);
-    std::cout << "LR NonNullableFunc 2 result_type " << printType(result_type) << " arrow_return_type " << arrow_return_type->ToString() << " old type " << types->IRType(arrow_type_id) << std::endl;
+    //std::cout << "LR NonNullableFunc 2 result_type " << printType(result_type) << " arrow_return_type " << arrow_return_type->ToString() << " old type " << types->IRType(arrow_type_id) << std::endl;
 
     // Build combined validity of the args.
     llvm::Value* is_valid = types->true_constant();
@@ -1500,7 +1500,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
   auto llvm_return_type = types->DataVecType(arrow_return_type);
   DecimalIR decimalIR(generator_->engine_.get());
 
-  std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall for " << func->pc_name() << " llvm return type is " << printType(llvm_return_type) << std::endl;
+  //std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall for " << func->pc_name() << " llvm return type is " << printType(llvm_return_type) << std::endl;
   if (arrow_return_type_id == arrow::Type::DECIMAL) {
     // For decimal fns, the output precision/scale are passed along as parameters.
     //
@@ -1528,7 +1528,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
     // add extra arg for return length for variable len return types (allocated on stack).
     llvm::AllocaInst* result_len_ptr = nullptr;
     if (arrow::is_binary_like(arrow_return_type_id)) {
-      std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is binary like" << std::endl;
+      //std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is binary like" << std::endl;
       result_len_ptr = new llvm::AllocaInst(generator_->types()->i32_type(), 0,
                                             "result_len", entry_block_);
       params->push_back(result_len_ptr);
@@ -1536,7 +1536,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
     }
 
     if (arrow_return_type_id == arrow::Type::LIST) {
-      std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is list" << std::endl;
+      //std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is list" << std::endl;
       result_len_ptr = new llvm::AllocaInst(generator_->types()->i32_type(), 0,
                                             "result_len", entry_block_);
       params->push_back(result_len_ptr);
@@ -1545,7 +1545,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
       
     }
 
-    std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall params are: " << std::endl;
+    //std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall params are: " << std::endl;
     for (auto p : *params) {
       std::string str1;
       llvm::raw_string_ostream output1(str1);
@@ -1563,7 +1563,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
         (result_len_ptr == nullptr)
             ? nullptr
             : builder->CreateLoad(result_len_ptr->getAllocatedType(), result_len_ptr);
-    std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is DONE" << std::endl;
+    //std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is DONE" << std::endl;
       
     return std::make_shared<LValue>(value, value_len);
   }
@@ -1580,7 +1580,7 @@ std::vector<llvm::Value*> LLVMGenerator::Visitor::BuildParams(
     params.push_back(arg_context_ptr_);
   }
 
-  std::cout << "LR BuildParams1" << std::endl;
+  //std::cout << "LR BuildParams1" << std::endl;
   // if the function has holder, add the holder pointer.
   if (holder_idx != -1) {
     auto builder = ir_builder();
@@ -1589,7 +1589,7 @@ std::vector<llvm::Value*> LLVMGenerator::Visitor::BuildParams(
     llvm::BasicBlock* saved_block = builder->GetInsertBlock();
     builder->SetInsertPoint(entry_block_);
 
-    std::cout << "LR BuildParams1a" << std::endl;
+    //std::cout << "LR BuildParams1a" << std::endl;
     auto holder = generator_->LoadVectorAtIndex(
         arg_holder_ptrs_, generator_->types()->i64_type(), holder_idx, "holder");
 
@@ -1597,20 +1597,20 @@ std::vector<llvm::Value*> LLVMGenerator::Visitor::BuildParams(
     params.push_back(holder);
   }
 
-  std::cout << "LR BuildParams2" << std::endl;
+  //std::cout << "LR BuildParams2" << std::endl;
   // build the function params, along with the validities.
   for (auto& pair : args) {
     // build value.
     DexPtr value_expr = pair->value_expr();
-    std::cout << "LR BuildParams2a" << std::endl;
+    //std::cout << "LR BuildParams2a" << std::endl;
     value_expr->Accept(*this);
-    std::cout << "LR BuildParams2b" << std::endl;
+    //std::cout << "LR BuildParams2b" << std::endl;
     LValue& result_ref = *result();
 
     // append all the parameters corresponding to this LValue.
     result_ref.AppendFunctionParams(&params);
 
-    std::cout << "LR BuildParams2c" << std::endl;
+    //std::cout << "LR BuildParams2c" << std::endl;
     // build validity.
     if (with_validity) {
       llvm::Value* validity_expr = BuildCombinedValidity(pair->validity_exprs());
@@ -1734,9 +1734,9 @@ std::string LLVMGenerator::ReplaceFormatInTrace(const std::string& in_msg,
 }
 
 void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
-  //if (!enable_ir_traces_) {
-  //  return;
-  //}
+  if (!enable_ir_traces_) {
+    return;
+  }
 
   std::string dmsg = "IR_TRACE:: " + msg + "\n";
   std::string print_fn_name = "printf";

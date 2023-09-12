@@ -393,7 +393,11 @@ public class Projector {
       }
       if (valueVector instanceof ListVector) {
         
-
+        hasVariableWidthColumns = true;
+        //LR TODO figure out what to use here resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
+        //resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
+        //resizeableVectors[outColumnIdx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0);
+        
         List<ArrowBuf> fieldBufs = ((ListVector) valueVector).getDataVector().getFieldBuffers();
         logger.error("LR Projector.java evaluate ListVector has buffers=" + fieldBufs.size());
 
@@ -455,9 +459,9 @@ public class Projector {
       if (valueVector instanceof ListVector) {
         //LR HACK
 
-        int numRecordsFound = 5 * 100;
+        int numRecordsFound = 5 * 1000000;
         //int numRecordsFound = Math.toIntExact(outSizes[3]) / 4;
-        logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound);
+        //logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound);
 
         //ArrowBuf ab0 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
         ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
@@ -473,8 +477,12 @@ public class Projector {
         //byte[] valid = new byte[outsizes[2]];
         //LR HACK
         //for (int i = 0; i < outSizes[2]; i++) {
-        for (int i = 0; i < numRecordsFound; i++) {
-          BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
+        try {
+          for (int i = 0; i < numRecordsFound; i++) {
+            BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
+          }
+        } catch (IndexOutOfBoundsException e) {
+          return;
         }
       }
     }
