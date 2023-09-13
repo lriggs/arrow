@@ -54,9 +54,9 @@ bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
   for (int i = 0; i < entry_offsets_len; i++) {
     //std::cout << "LR going to check " << entry_buf + i << std::endl;
     //LR TODO 
-    //int32_t entry_len = *(entry_buf + i);
+    int32_t entry_len = *(entry_buf + i);
     //coming as int64 for some reason. *2
-    int32_t entry_len = *(entry_buf + (i * 2));
+    //int32_t entry_len = *(entry_buf + (i * 2));
     //std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
     if (entry_len == contains_data) {
       return true;
@@ -98,15 +98,16 @@ int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int3
 
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_offsets_len, int32_t remove_data, int32_t* out_len) {
-  //std::cout << "LR array_int32_remove offset data=" << remove_data << std::endl;
+  //std::cout << "LR array_int32_remove data=" << remove_data 
+  //  << " entry_offsets_len " << entry_offsets_len << std::endl;
 
   //LR sizes are HACK
   int* integers = new int[5];
   int j = 0;
   for (int i = 0; i < entry_offsets_len; i++) {
-    //std::cout << "LR going to check " << entry_buf + i << std::endl;
-    int32_t entry_len = *(entry_buf + (i * 2));
-    //std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
+    std::cout << "LR going to check " << entry_buf + i << std::endl;
+    int32_t entry_len = *(entry_buf + (i * 1));
+    std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
     if (entry_len == remove_data) {
       continue;
     } else {

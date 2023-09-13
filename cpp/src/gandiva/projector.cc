@@ -394,6 +394,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
       array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
                                           array_data->buffers, {new_child_data},
                                           array_data->null_count, array_data->offset);
+      std::cout << "LR Making array data length " << array_data->length << std::endl;
     }
 
     output->push_back(arrow::MakeArray(array_data));
