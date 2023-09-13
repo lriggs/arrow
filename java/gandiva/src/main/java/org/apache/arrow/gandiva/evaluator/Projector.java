@@ -29,13 +29,12 @@ import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
-import org.apache.arrow.vector.BitVectorHelper;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
 import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.StructVector;
+import org.apache.arrow.vector.complex.impl.UnionListWriter;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
-import org.apache.arrow.vector.ipc.message.ArrowFieldNode;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
 
@@ -412,8 +411,14 @@ public class Projector {
 
         //vector offset
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
+        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc();
+        //The realloc avoids dynamic resizing, will have to be fixed later.
         outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
         outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
+        logger.error("LR Projector.java evaluate ListVector set buffer " + idx + 
+            " as ptr=" + outAddrs[idx - 1] + " size " + outSizes[idx - 1]);
         
         //vector data
         //outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).memoryAddress();
@@ -461,29 +466,113 @@ public class Projector {
 
         int numRecordsFound = 5 * 1000000;
         //int numRecordsFound = Math.toIntExact(outSizes[3]) / 4;
-        //logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound);
+        //logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound + " outSizes[3]=" + outSizes[3]);
 
+        //LR HACK 9-13 10:34
+        /*public void startList() {
+        vector.startNewValue(idx());
+        writer.setPosition(vector.getOffsetBuffer().getInt((idx() + 1L) * OFFSET_WIDTH));
+        listStarted = true;
+        }
+
+        @Override
+        public void endList() {
+        vector.getOffsetBuffer().setInt((idx() + 1L) * OFFSET_WIDTH, writer.idx());
+        setPosition(idx() + 1);
+        listStarted = false;
+        */
+
+        /*ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
+        for (int i = 0; i < 50; i++) {
+          System.out.println("LR arrowbuf=" + Integer.reverseBytes(ab2.getInt(i)));
+          System.out.println("LR arrowbuf=" + ab2.getInt(i));
+          System.out.println("LR arrowbuf=" + ab2.getShort(i));
+          System.out.println("LR arrowbuf=" + ab2.getInt(i * 4));
+          System.out.println("LR arrowbuf======");
+        }*/
+
+        /*ArrowBuf ab = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0);
+        for (int i = 0; i < 50; i++) {
+          System.out.println("LR arrowbuf2=" + Integer.reverseBytes(ab.getInt(i)));
+          System.out.println("LR arrowbuf2=" + ab.getInt(i));
+          System.out.println("LR arrowbuf2=" + ab.getShort(i));
+        }*/
+
+
+        UnionListWriter writer = ((ListVector) valueVector).getWriter();
+        for (int i = 0; i < 100; i++) {
+          writer.startList();
+          writer.setPosition(i);
+          for (int j = 0; j < 5; j++) {
+            writer.writeInt(ab2.getInt((j + (5 * i)) * 4));
+          }
+          writer.setValueCount(5);
+          writer.endList();
+        }
+        ((ListVector) valueVector).setValueCount(100);
+
+
+        //LR HACK 9-13 10:34 All the multiline comment
+        /*
+        import org.apache.arrow.memory.ReferenceManager;
+        import org.apache.arrow.vector.BitVectorHelper;
+        import org.apache.arrow.vector.ipc.message.ArrowFieldNode;
+        */
         //ArrowBuf ab0 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
-        ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
-        ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
+        /*ArrowBuf abb = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
+        ArrowBuf abb2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
         List<ArrowBuf> outBufsNew = new ArrayList<ArrowBuf>();
 
+        StringBuilder sbb = new StringBuilder();
+        abb.print(sbb, 1);
+        System.out.println("LR abb=" + sbb);
+
         //outBufsNew.add(ab0);
-        outBufsNew.add(ab);
-        outBufsNew.add(ab2);
+        outBufsNew.add(abb);
+        outBufsNew.add(abb2);
         ArrowFieldNode afn = new ArrowFieldNode(numRecordsFound, 0);
         ((ListVector) valueVector).getDataVector().clear();
         ((ListVector) valueVector).getDataVector().loadFieldBuffers(afn, outBufsNew);
+
+        //LR HACK 9-12 10:09
+        //ArrowBuf offBuff = ((ListVector) valueVector).getOffsetBuffer();
+        //for (int i = 0; i < 101; i++) {
+        //  offBuff.setInt(i, 5 * i * 4);
+        //}
+
+
+
+
+
         //byte[] valid = new byte[outsizes[2]];
         //LR HACK
         //for (int i = 0; i < outSizes[2]; i++) {
+        int simple = 0;
         try {
-          for (int i = 0; i < numRecordsFound; i++) {
+          for (int i = 0; i < numRecordsFound * 4; i++) {
             BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
+            simple++;
+            //BitVectorHelper.setBit(((ListVector) valueVector).getValidityBuffer(), i);
           }
         } catch (IndexOutOfBoundsException e) {
-          return;
+          simple = 0;
         }
+        ArrowBuf ab3 = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0);
+        for (int i = 0; i < 50; i++) {
+          System.out.println("LR arrowbuf after=" + Integer.reverseBytes(ab3.getInt(i)));
+          System.out.println("LR arrowbuf after=" + ab3.getInt(i));
+          System.out.println("LR arrowbuf after=" + ab3.getShort(i));
+        }
+        ArrowBuf ab3a = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1);
+        for (int i = 0; i < 50; i++) {
+          System.out.println("LR arrowbuf aftera=" + Integer.reverseBytes(ab3a.getInt(i)));
+          System.out.println("LR arrowbuf aftera=" + ab3a.getInt(i));
+          System.out.println("LR arrowbuf aftera=" + ab3a.getShort(i));
+        }
+        IntVector iv = (IntVector) ((ListVector) valueVector).getDataVector();
+        for (int i = 0; i < 50; i++) {
+          System.out.println("LR IntVector=" + iv.get(i));
+        }*/
       }
     }
 

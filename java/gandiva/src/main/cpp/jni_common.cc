@@ -1061,13 +1061,14 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         std::vector<std::shared_ptr<arrow::Buffer>> child_buffers;
 
 
-
+        data_sz = out_sizes[sz_idx++];
         //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding buffer size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, output_vector_idx, child_offset_buf, data_sz));
 
+        data_sz = out_sizes[sz_idx++];
         //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding buffer size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
@@ -1138,7 +1139,10 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
       //out_sizes[1] = 1;
 
       //std::cout << "LR jni_common after copy parent buff child array[0] " << 
-      //int32_t( (out_bufs[3])) << std::endl;
+      //"," << int32_t( (out_bufs[3])) <<
+      //"," << int32_t( (out_bufs[3]+4)) <<
+      //"," << int32_t( (out_bufs[3])+8) <<
+      //"," << int32_t( (out_bufs[3])+12) << std::endl;
       //LRTest1 End
      }
     
