@@ -30,4 +30,5 @@ then
 fi
 
 cd java
-/opt/homebrew/bin/mvn -DskipTests -Darrow.c.jni.dist.dir=/Users/logan.riggs/github/arrow-fork/arrow/java-dist/lib -Darrow.cpp.build.dir=/Users/logan.riggs/github/arrow-fork/arrow/java-dist/lib -Parrow-jni clean install
+/opt/homebrew/bin/mvn -DskipTests -Darrow.c.jni.dist.dir=/Users/logan.riggs/github/arrow/java-dist/lib -Darrow.cpp.build.dir=/Users/logan.riggs/github/arrow/java-dist/lib -Parrow-jni clean install
+cp gandiva/target/arrow-gandiva-12.0.1.jar /Users/logan.riggs/github/dremio/enterprise/distribution/server/target/dremio-enterprise-24.3.0-SNAPSHOT/dremio-enterprise-24.3.0-SNAPSHOT/jars/3rdparty/
