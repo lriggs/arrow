@@ -939,7 +939,7 @@ Status JavaResizableBuffer::Resize(const int64_t new_size, bool shrink_to_fit) {
 
 JNIEXPORT void JNICALL
 Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
-    JNIEnv* env, jobject object, jobject jexpander, jlong module_id, jint num_rows,
+    JNIEnv* env, jobject object, jobject jexpander, jobject jListExpander, jlong module_id, jint num_rows,
     jlongArray buf_addrs, jlongArray buf_sizes, jint sel_vec_type, jint sel_vec_rows,
     jlong sel_vec_addr, jlong sel_vec_size, jlongArray out_buf_addrs,
     jlongArray out_buf_sizes) {
@@ -1060,20 +1060,29 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
 
         std::vector<std::shared_ptr<arrow::Buffer>> child_buffers;
 
+        if (jListExpander == nullptr) {
+          status = Status::Invalid(
+              "expression has variable len output columns, but the jListExpander object is "
+              "null");
+          break;
+        }
+        
+
+        //LR TODO the two buffers...
 
         data_sz = out_sizes[sz_idx++];
         //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding buffer size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
-            env, jexpander, output_vector_idx, child_offset_buf, data_sz));
+            env, jListExpander, output_vector_idx, child_offset_buf, data_sz));
 
         data_sz = out_sizes[sz_idx++];
         //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding buffer size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
-            env, jexpander, output_vector_idx, child_data_buf, data_sz));
+            env, jListExpander, output_vector_idx, child_data_buf, data_sz));
 
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
         auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
@@ -1120,9 +1129,12 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
       //  << (array_data->child_data[0])->length << std::endl;
       
       //LRTest1 Start
-      int numRecords = 5 * 1000000;
+      int numRecords = (array_data->child_data[0])->length;
       //int numRecords = (array_data->child_data[0])->length * array_data->length;
-      int recordSize = numRecords * 4;
+      int recordSize = numRecords * 4; //LR TODO HACK
+
+      std::cout << "LR jni_common there are records=" << array_data->length << " and the first one is="
+        << (array_data->child_data[0])->length << " using numRecords=" << numRecords << std::endl;
 
       memcpy(&out_bufs[3], (array_data->child_data[0])->buffers[1]->data(), recordSize);
       out_sizes[3] = recordSize;

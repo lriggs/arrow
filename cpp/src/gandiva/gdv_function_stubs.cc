@@ -164,12 +164,8 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
   int32_t gdv_fn_populate_list_##TYPE##_vector(int64_t context_ptr, int8_t* data_ptr, \
                                                int32_t* offsets, int64_t slot,        \
                                                TYPE* entry_buf, int32_t entry_len) {  \
-    std::cout << "gdv_fn_populate 1 data_ptr is " << data_ptr << std::endl; \
     auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);                \
     int32_t offset = static_cast<int32_t>(buffer->size());                            \
-    std::cout << "gdv_fn_populate 2 data_ptr" << data_ptr << " buffer " << buffer << \
-    " offset " << offset << " entry_len " << entry_len << " scale " \
-    << SCALE << " slot " << slot<< std::endl; \
     auto status = buffer->Resize(offset + entry_len * SCALE, false /*shrink*/);       \
     if (!status.ok()) {                                                               \
       gandiva::ExecutionContext* context =                                            \
@@ -177,11 +173,7 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
       context->set_error_msg(status.message().c_str());                               \
       return -1;                                                                      \
     }                                                                                \
-    std::cout << "gdv_fn_populate resized buffer to =" <<  offset + entry_len * SCALE << std::endl; \
-    std::cout << "gdv_fn_populate copying bytes =" <<  entry_len * SCALE << std::endl; \
-    std::cout << "gdv_fn_populate buffer =" <<  buffer->ToString() << " offeset " << offset << std::endl; \
     memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);     \
-     std::cout << "gdv_fn_populate buffer after =" <<  buffer->ToString() << std::endl; \
     offsets[slot] = offset / SCALE;                                                   \
     offsets[slot + 1] = offset / SCALE + entry_len;                                   \
     return 0;                                                                         \

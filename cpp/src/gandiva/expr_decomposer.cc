@@ -52,7 +52,7 @@ Status ExprDecomposer::Visit(const FieldNode& node) {
       //std::cout << "LR ExprDecomposer 3" << std::endl;
       auto p = std::make_shared<VectorReadFixedLenValueListDex>(desc);
       value_dex = p;
-      int v = p->DataIdx();
+      //int v = p->DataIdx();
       //std::cout << "LR primitive list type " v << " " << 
     } else {
       //std::cout << "LR ExprDecomposer 4" << std::endl;

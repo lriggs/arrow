@@ -355,7 +355,8 @@ public class Projector {
 
     boolean hasVariableWidthColumns = false;
     BaseVariableWidthVector[] resizableVectors = new BaseVariableWidthVector[outColumns.size()];
-    
+    ListVector[] resizableListVectors = new ListVector[outColumns.size()];
+
     long[] outAddrs = new long[3 * outColumns.size()];
     long[] outSizes = new long[3 * outColumns.size()];
 
@@ -393,6 +394,7 @@ public class Projector {
       if (valueVector instanceof ListVector) {
         
         hasVariableWidthColumns = true;
+        resizableListVectors[outColumnIdx] = (ListVector) valueVector;
         //LR TODO figure out what to use here resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
         //resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
         //resizeableVectors[outColumnIdx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0);
@@ -413,7 +415,14 @@ public class Projector {
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
         ((ListVector) valueVector).reAlloc();
         ((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc(); //100 rows
+        
+        //This doesnt actually allocate any memory.
+        //((ListVector) valueVector).setInitialCapacity(1000000);
+        //while (((ListVector) valueVector).getValueCapacity() < 1000000) {
+        //  ((ListVector) valueVector).reAlloc();
+        //}
+        
         //The realloc avoids dynamic resizing, will have to be fixed later.
         outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
         outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
@@ -448,6 +457,7 @@ public class Projector {
     logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
     wrapper.evaluateProjector(
         hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
+        hasVariableWidthColumns ? new ListVectorExpander(resizableListVectors) : null,
         this.moduleId, numRows, bufAddrs, bufSizes,
         selectionVectorType, selectionVectorRecordCount,
         selectionVectorAddr, selectionVectorSize,
@@ -464,9 +474,9 @@ public class Projector {
       if (valueVector instanceof ListVector) {
         //LR HACK
 
-        int numRecordsFound = 5 * 1000000;
+        //int numRecordsFound = 5 * 100;
         //int numRecordsFound = Math.toIntExact(outSizes[3]) / 4;
-        //logger.error("LR Projector.java using outsizes numRecords=" + numRecordsFound + " outSizes[3]=" + outSizes[3]);
+        //logger.error("LR Projector.java using numRecords=" + numRecordsFound + " outSizes[3]=" + outSizes[3]);
 
         //LR HACK 9-13 10:34
         /*public void startList() {
@@ -482,8 +492,8 @@ public class Projector {
         listStarted = false;
         */
 
-        /*ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
-        for (int i = 0; i < 50; i++) {
+        ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
+        /*for (int i = 0; i < 50; i++) {
           System.out.println("LR arrowbuf=" + Integer.reverseBytes(ab2.getInt(i)));
           System.out.println("LR arrowbuf=" + ab2.getInt(i));
           System.out.println("LR arrowbuf=" + ab2.getShort(i));
@@ -498,18 +508,25 @@ public class Projector {
           System.out.println("LR arrowbuf2=" + ab.getShort(i));
         }*/
 
-
+        logger.error("LR Projector.java using numRecords=" +
+            selectionVectorRecordCount + " outSizes[3]=" + outSizes[3]);
         UnionListWriter writer = ((ListVector) valueVector).getWriter();
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < selectionVectorRecordCount; i++) {
           writer.startList();
           writer.setPosition(i);
           for (int j = 0; j < 5; j++) {
-            writer.writeInt(ab2.getInt((j + (5 * i)) * 4));
+            int index = ((j + (5 * i)) * 4);
+            //Not sure whats going on. Buffer too small?
+            try {
+              writer.writeInt(ab2.getInt(index));
+            } catch (IndexOutOfBoundsException e) {
+              continue;
+            }
           }
           writer.setValueCount(5);
           writer.endList();
         }
-        ((ListVector) valueVector).setValueCount(100);
+        ((ListVector) valueVector).setValueCount(selectionVectorRecordCount);
 
 
         //LR HACK 9-13 10:34 All the multiline comment
