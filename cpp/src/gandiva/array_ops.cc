@@ -105,9 +105,9 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
   int* integers = new int[5];
   int j = 0;
   for (int i = 0; i < entry_offsets_len; i++) {
-    std::cout << "LR going to check " << entry_buf + i << std::endl;
+    //std::cout << "LR going to check " << entry_buf + i << std::endl;
     int32_t entry_len = *(entry_buf + (i * 1));
-    std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
+    //std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
     if (entry_len == remove_data) {
       continue;
     } else {
