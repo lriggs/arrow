@@ -61,6 +61,8 @@ public class ListVectorExpander {
     while (vector.getDataVector().getFieldBuffers().get(0).capacity() < toCapacity) {
       vector.reAlloc();
     }
+    System.out.println("LR Expanding ListVector. New capacity=" +
+        vector.getDataVector().getFieldBuffers().get(0).capacity());
     return new ExpandResult(
         vector.getDataVector().getFieldBuffers().get(0).memoryAddress(),
         vector.getDataVector().getFieldBuffers().get(0).capacity());

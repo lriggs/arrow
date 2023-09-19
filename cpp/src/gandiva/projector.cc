@@ -291,7 +291,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
 
     // Create and return array arrays.
 
-  for (auto& array_data : output_data_vecs) {
+ /* for (auto& array_data : output_data_vecs) {
 
     if (array_data->type->id() == arrow::Type::LIST) {
       auto child_data = array_data->child_data[0];
@@ -329,7 +329,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
       //                                    array_data->null_count, array_data->offset);
     }
 
-  }
+  }*/
 
 
   return Status::OK();

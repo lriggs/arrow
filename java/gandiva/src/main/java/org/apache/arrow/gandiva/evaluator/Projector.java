@@ -413,10 +413,13 @@ public class Projector {
 
         //vector offset
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
-        ((ListVector) valueVector).reAlloc();
+        /*((ListVector) valueVector).reAlloc();
         ((ListVector) valueVector).reAlloc();
         ((ListVector) valueVector).reAlloc(); //100 rows
-        
+        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc();
+        */
+       
         //This doesnt actually allocate any memory.
         //((ListVector) valueVector).setInitialCapacity(1000000);
         //while (((ListVector) valueVector).getValueCapacity() < 1000000) {
@@ -455,6 +458,7 @@ public class Projector {
     }
 
     logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
+    logger.error("LR Projector.java before evaluateProjector buffer[3]=" + outAddrs[3]);
     wrapper.evaluateProjector(
         hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
         hasVariableWidthColumns ? new ListVectorExpander(resizableListVectors) : null,
@@ -469,7 +473,7 @@ public class Projector {
     //System.out.println(intVector.getDataVector());
 
 
-    //logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3][3 * 4]);
+    logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3]);
     for (ValueVector valueVector : outColumns) {
       if (valueVector instanceof ListVector) {
         //LR HACK
@@ -491,6 +495,8 @@ public class Projector {
         setPosition(idx() + 1);
         listStarted = false;
         */
+
+        //ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
 
         ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
         /*for (int i = 0; i < 50; i++) {
@@ -519,6 +525,7 @@ public class Projector {
             //Not sure whats going on. Buffer too small?
             try {
               writer.writeInt(ab2.getInt(index));
+              //writer.writeInt(42);
             } catch (IndexOutOfBoundsException e) {
               continue;
             }
