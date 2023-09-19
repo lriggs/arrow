@@ -173,6 +173,8 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
       context->set_error_msg(status.message().c_str());                               \
       return -1;                                                                      \
     }                                                                                \
+    std::cout << "LR populate_list slot " << slot << " offset = " << offset << " buffer = " << \
+    (int64_t)(buffer->mutable_data() + offset) << std::endl; \
     memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);     \
     offsets[slot] = offset / SCALE;                                                   \
     offsets[slot + 1] = offset / SCALE + entry_len;                                   \
