@@ -27,13 +27,12 @@ import org.apache.arrow.gandiva.expression.ExpressionTree;
 import org.apache.arrow.gandiva.ipc.GandivaTypes;
 import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
+import org.apache.arrow.vector.BitVectorHelper;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
 import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.StructVector;
-import org.apache.arrow.vector.complex.impl.UnionListWriter;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -380,6 +379,7 @@ public class Projector {
       outAddrs[idx] = valueVector.getValidityBuffer().memoryAddress();
       outSizes[idx++] = valueVector.getValidityBuffer().capacity();
       if (isVarWidth) {
+        logger.error("LR Projector.java evaluate isVarWidth setting buffer=" + idx);
         outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
         hasVariableWidthColumns = true;
@@ -393,6 +393,12 @@ public class Projector {
       }
       if (valueVector instanceof ListVector) {
         
+        /*((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc(); //100 rows
+        ((ListVector) valueVector).reAlloc();
+        ((ListVector) valueVector).reAlloc();*/
+
         hasVariableWidthColumns = true;
         resizableListVectors[outColumnIdx] = (ListVector) valueVector;
         //LR TODO figure out what to use here resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
@@ -403,22 +409,20 @@ public class Projector {
         logger.error("LR Projector.java evaluate ListVector has buffers=" + fieldBufs.size());
 
 
+        logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
         outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
 
         //vector valid
+        logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
         outAddrs[idx] = ((ListVector) valueVector).getDataVector().getValidityBufferAddress();
         outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
         
 
         //vector offset
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
-        /*((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc(); //100 rows
-        ((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc();
-        */
+
+        
        
         //This doesnt actually allocate any memory.
         //((ListVector) valueVector).setInitialCapacity(1000000);
@@ -426,11 +430,12 @@ public class Projector {
         //  ((ListVector) valueVector).reAlloc();
         //}
         
+        logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
         //The realloc avoids dynamic resizing, will have to be fixed later.
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
-        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
-        logger.error("LR Projector.java evaluate ListVector set buffer " + idx + 
-            " as ptr=" + outAddrs[idx - 1] + " size " + outSizes[idx - 1]);
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).capacity();
+        //logger.error("LR Projector.java evaluate ListVector set buffer " + idx + 
+        //    " as ptr=" + outAddrs[idx - 1] + " size " + outSizes[idx - 1]);
         
         //vector data
         //outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(2).memoryAddress();
@@ -459,6 +464,7 @@ public class Projector {
 
     logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
     logger.error("LR Projector.java before evaluateProjector buffer[3]=" + outAddrs[3]);
+    logger.error("LR Projector.java before evaluateProjector buffer[1]=" + outAddrs[1]);
     wrapper.evaluateProjector(
         hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
         hasVariableWidthColumns ? new ListVectorExpander(resizableListVectors) : null,
@@ -474,6 +480,7 @@ public class Projector {
 
 
     logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3]);
+    logger.error("LR Projector.java after evaluateProjector buffer[1]=" + outAddrs[1]);
     for (ValueVector valueVector : outColumns) {
       if (valueVector instanceof ListVector) {
         //LR HACK
@@ -498,25 +505,14 @@ public class Projector {
 
         //ArrowBuf ab = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
 
-        ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
-        /*for (int i = 0; i < 50; i++) {
-          System.out.println("LR arrowbuf=" + Integer.reverseBytes(ab2.getInt(i)));
-          System.out.println("LR arrowbuf=" + ab2.getInt(i));
-          System.out.println("LR arrowbuf=" + ab2.getShort(i));
-          System.out.println("LR arrowbuf=" + ab2.getInt(i * 4));
-          System.out.println("LR arrowbuf======");
-        }*/
 
-        /*ArrowBuf ab = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0);
-        for (int i = 0; i < 50; i++) {
-          System.out.println("LR arrowbuf2=" + Integer.reverseBytes(ab.getInt(i)));
-          System.out.println("LR arrowbuf2=" + ab.getInt(i));
-          System.out.println("LR arrowbuf2=" + ab.getShort(i));
-        }*/
+        //ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
 
         logger.error("LR Projector.java using numRecords=" +
             selectionVectorRecordCount + " outSizes[3]=" + outSizes[3]);
-        UnionListWriter writer = ((ListVector) valueVector).getWriter();
+        
+        //import org.apache.arrow.vector.complex.impl.UnionListWriter;
+        /*UnionListWriter writer = ((ListVector) valueVector).getWriter();
         for (int i = 0; i < selectionVectorRecordCount; i++) {
           writer.startList();
           writer.setPosition(i);
@@ -533,7 +529,147 @@ public class Projector {
           writer.setValueCount(5);
           writer.endList();
         }
-        ((ListVector) valueVector).setValueCount(selectionVectorRecordCount);
+        ((ListVector) valueVector).setValueCount(selectionVectorRecordCount);*/
+        
+        
+        //offsetBuffer = [0,83886080,327680,1280,5,167772160,655360,2560,10,251658240,983040,3840,15,
+        //335544320,1310720,5120,20,
+        //419430400,1638400,6400,25,503316480,1966080,7680,30,587202560,2293760,8960,35,671088640,2621440,10240,40,
+        //754974720,2949120,11520,
+
+
+
+
+
+
+
+
+
+
+
+        String s = "";
+        List<ArrowBuf> fv = ((ListVector) valueVector).getDataVector().getFieldBuffers();
+        for (ArrowBuf ab : fv) {
+          s = "";
+          for (int i = 0; i < 20; i++) {
+            s += ab.getInt(i) + ",";
+          }
+          logger.error("LR Projector.java before updating listvector. size=" +
+              ab.capacity() + " buffer=" + s);
+        }
+
+        ArrowBuf fvv = ((ListVector) valueVector).getValidityBuffer();
+        s = "";
+        for (int i = 0; i < 20; i++) {
+          s += fvv.getInt(i) + ",";
+        }
+        logger.error("LR Projector.java before updating listvector. getValidityBuffer=" +
+            fvv.capacity() + " buffer=" + s);
+        
+        ArrowBuf fvvv = ((ListVector) valueVector).getOffsetBuffer();
+        s = "";
+        for (int i = 0; i < 20; i++) {
+          s += fvvv.getInt(i) + ",";
+        }
+        logger.error("LR Projector.java before updating listvector. getOffsetBuffer=" +
+            fvvv.capacity() + " buffer=" + s);
+
+      
+        ((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount * 5);
+
+        ((ListVector) valueVector).setLastSet(selectionVectorRecordCount - 1);
+        /*
+        //Validity then data.
+        ArrowBuf abb = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
+        ArrowBuf abb2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
+        List<ArrowBuf> outBufsNew = new ArrayList<ArrowBuf>();
+
+        //outBufsNew.add(ab0);
+        outBufsNew.add(abb);
+        outBufsNew.add(abb2);
+        ArrowFieldNode afn = new ArrowFieldNode(selectionVectorRecordCount * 5, 0);
+        ((ListVector) valueVector).getDataVector().clear();
+        ((ListVector) valueVector).getDataVector().loadFieldBuffers(afn, outBufsNew);
+
+        //TODO Need to get validity [0] and offset [1] buffer for the listvector.
+        //((ListVector) valueVector).getDataVector().loadFieldBuffers(afn, outBufsNew);
+
+        List<ArrowBuf> outBufsNew2 = new ArrayList<ArrowBuf>();
+
+        
+
+        ArrowBuf mabb22 = new ArrowBuf(ReferenceManager.NO_OP, null, selectionVectorRecordCount, outAddrs[0]);
+        for (int i = 0; i < selectionVectorRecordCount; i++) {
+          BitVectorHelper.setBit(mabb22, i);
+        }
+
+        ArrowBuf mabb2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[1], outAddrs[1]);
+        //for (int i = 0; i < selectionVectorRecordCount; i++) {
+        //  mabb2.setInt(i * 4, 5 * i);
+        //}
+        s = "offset? buffer mabb2, outAddrs[0]=";
+        for (int i = 0; i < 20; i++) {
+          s += mabb2.getInt(i) + ",";
+        }
+        System.out.println(s);
+
+        outBufsNew2.add(mabb22);
+        outBufsNew2.add(mabb2);
+        ArrowFieldNode afn2 = new ArrowFieldNode(selectionVectorRecordCount, 0);
+        ((ListVector) valueVector).loadFieldBuffers(afn2, outBufsNew2);
+
+
+        */
+
+        //((ListVector) valueVector).setValueCount(selectionVectorRecordCount);
+        //((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount);
+
+        int simple = 0;
+        try {
+          for (int i = 0; i < selectionVectorRecordCount * 5; i++) {
+            BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
+            simple++;
+          }
+        } catch (IndexOutOfBoundsException e) {
+          simple = 0;
+        }
+        try {
+          for (int i = 0; i < selectionVectorRecordCount; i++) {
+            BitVectorHelper.setBit(((ListVector) valueVector).getValidityBuffer(), i);
+            simple++;
+          }
+        } catch (IndexOutOfBoundsException e) {
+          simple = 0;
+        }
+
+      
+
+
+
+
+        /*
+        
+        
+
+        try {
+          for (int i = 0; i < selectionVectorRecordCount; i++) {
+            BitVectorHelper.setBit(((ListVector) valueVector).getValidityBuffer(), i);
+            simple++;
+          }
+        } catch (IndexOutOfBoundsException e) {
+          simple = 0;
+        }
+
+
+        for (int i = 0; i < selectionVectorRecordCount; i++) {
+          ((ListVector) valueVector).getOffsetBuffer().setInt(i * 4, 5 * i);
+        }
+        */
+
+
+
+
+
 
 
         //LR HACK 9-13 10:34 All the multiline comment
