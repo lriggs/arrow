@@ -768,6 +768,7 @@ public class ListVector extends BaseRepeatedValueVector
   }
 
   protected void invalidateReader() {
+    fieldReader = null;
     reader = null;
   }
 
