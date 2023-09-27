@@ -53,7 +53,7 @@ FieldDescriptorPtr Annotator::MakeDesc(FieldPtr field, bool is_output) {
   }
 
   if (field->type()->id() == arrow::Type::LIST) {
-    //std::cout << "LR Annotator::MakeDesc 1" << std::endl;
+    std::cout << "LR Annotator::MakeDesc 1" << std::endl;
     offsets_idx = buffer_count_++;
     if (arrow::is_binary_like(field->type()->field(0)->type()->id())) {
       child_offsets_idx = buffer_count_++;
@@ -91,7 +91,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
 
   if (desc.HasOffsetsIdx()) {
     uint8_t* offsets_buf = const_cast<uint8_t*>(array_data.buffers[buffer_idx]->data());
-    std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -4 " << &offsets_buf << std::endl;
+    std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -4 " << &offsets_buf << " using idx=" << buffer_idx << std::endl;
     eval_batch->SetBuffer(desc.offsets_idx(), offsets_buf, array_data.offset);
 
     if (desc.HasChildOffsetsIdx()) {
@@ -139,7 +139,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
     
     uint8_t* data_buf =
         const_cast<uint8_t*>(array_data.child_data.at(0)->buffers[buffer_idx]->data());
-    std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer 0 " << &data_buf << std::endl;
+    std::cout << "LR Annotator::PrepareBuffersForField setting offset eval buffer idx=" << buffer_idx << " data=" << &data_buf << std::endl;
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.child_data.at(0)->offset);
     //std::cout << "LR Annotator::PrepareBuffersForField 5a" << std::endl;
   }
@@ -158,7 +158,7 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
       // list data buffer is in child data buffer
       uint8_t* data_buf_ptr = reinterpret_cast<uint8_t*>(
           array_data.child_data.at(0)->buffers[buffer_idx].get());
-      std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer 2 " << &data_buf_ptr << std::endl;
+      std::cout << "LR Annotator::PrepareBuffersForField setting eval data buffer " << buffer_idx << " data=" << &data_buf_ptr << std::endl;
   
       eval_batch->SetBuffer(desc.data_buffer_ptr_idx(), data_buf_ptr,
                             array_data.child_data.at(0)->offset);

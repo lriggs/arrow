@@ -84,10 +84,15 @@ static jclass gandiva_exception_;
 static jclass vector_expander_class_;
 static jclass listvector_expander_class_;
 static jclass vector_expander_ret_class_;
+static jclass list_expander_ret_class_;
 static jmethodID vector_expander_method_;
 static jmethodID listvector_expander_method_;
 static jfieldID vector_expander_ret_address_;
 static jfieldID vector_expander_ret_capacity_;
+static jfieldID list_expander_ret_address_;
+static jfieldID list_expander_ret_capacity_;
+static jfieldID list_expander_offset_ret_address_;
+static jfieldID list_expander_offset_ret_capacity_;
 
 static jclass secondary_cache_class_;
 static jmethodID cache_get_method_;
@@ -141,10 +146,24 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   vector_expander_ret_class_ = (jclass)env->NewGlobalRef(local_expander_ret_class);
   env->DeleteLocalRef(local_expander_ret_class);
 
+  jclass local_list_expander_ret_class =
+      env->FindClass("org/apache/arrow/gandiva/evaluator/ListVectorExpander$ExpandResult");
+  list_expander_ret_class_ = (jclass)env->NewGlobalRef(local_list_expander_ret_class);
+  env->DeleteLocalRef(local_list_expander_ret_class);
+
   vector_expander_ret_address_ =
       env->GetFieldID(vector_expander_ret_class_, "address", "J");
   vector_expander_ret_capacity_ =
       env->GetFieldID(vector_expander_ret_class_, "capacity", "J");
+
+  list_expander_ret_address_ =
+      env->GetFieldID(list_expander_ret_class_, "address", "J");
+  list_expander_ret_capacity_ =
+      env->GetFieldID(list_expander_ret_class_, "capacity", "J");
+  list_expander_offset_ret_address_ =
+      env->GetFieldID(list_expander_ret_class_, "offsetaddress", "J");
+  list_expander_offset_ret_capacity_ =
+      env->GetFieldID(list_expander_ret_class_, "offsetcapacity", "J");
 
   jclass local_cache_class =
       env->FindClass("org/apache/arrow/gandiva/evaluator/JavaSecondaryCacheInterface");
@@ -175,8 +194,9 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
   env->DeleteGlobalRef(configuration_builder_class_);
   env->DeleteGlobalRef(gandiva_exception_);
   env->DeleteGlobalRef(vector_expander_class_);
-  env->DeleteGlobalRef(vector_expander_class_);
+  env->DeleteGlobalRef(listvector_expander_class_);
   env->DeleteGlobalRef(vector_expander_ret_class_);
+  env->DeleteGlobalRef(list_expander_ret_class_);
   env->DeleteGlobalRef(secondary_cache_class_);
   env->DeleteGlobalRef(cache_buf_ret_class_);
 }
@@ -884,12 +904,14 @@ err_out:
 class JavaResizableBuffer : public arrow::ResizableBuffer {
  public:
   JavaResizableBuffer(JNIEnv* env, jobject jexpander, jmethodID jmethod, int32_t vector_idx, uint8_t* buffer,
-                      int32_t len)
+                      int32_t len, bool isListVec = false)
       : ResizableBuffer(buffer, len),
         env_(env),
         jexpander_(jexpander),
         vector_idx_(vector_idx),
-        method_(jmethod) {
+        method_(jmethod),
+        isList(isListVec)
+        {
     size_ = 0;
   }
 
@@ -897,11 +919,12 @@ class JavaResizableBuffer : public arrow::ResizableBuffer {
 
   Status Reserve(const int64_t new_capacity) override;
 
- private:
+ public:
   JNIEnv* env_;
   jobject jexpander_;
   jmethodID method_;
   int32_t vector_idx_;
+  bool isList;
 };
 
 Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
@@ -919,16 +942,36 @@ Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
     return Status::OutOfMemory("buffer expand failed in java.");
   }
 
-  jlong ret_address = env_->GetLongField(ret, vector_expander_ret_address_);
-  jlong ret_capacity = env_->GetLongField(ret, vector_expander_ret_capacity_);
 
-  std::cout << "Buffer expand: New capacity is " << new_capacity  <<
+  if (isList) {
+    jlong ret_address = env_->GetLongField(ret, list_expander_ret_address_);
+    jlong ret_capacity = env_->GetLongField(ret, list_expander_ret_capacity_);
+    jlong offset_ret_address = env_->GetLongField(ret, list_expander_offset_ret_address_);
+    jlong offset_ret_capacity = env_->GetLongField(ret, list_expander_offset_ret_capacity_);
+
+    std::cout << "Buffer expand: New capacity is " << new_capacity  <<
     " vector id " << vector_idx_ << " expander method " << method_ <<
     " jexpander_ " << jexpander_ << " returned size is " << ret_capacity << 
-    " and the original buffer ptr=" << data_ << " and the new ptr=" << ret_address << std::endl;
+    " and the original buffer ptr=" << reinterpret_cast<jlong>(data_) << " and the new ptr=" << ret_address <<
+    " and the original offset ptr=" << reinterpret_cast<jlong>(offsetBuffer) << " and the new ptr=" << offset_ret_address << std::endl;
 
-  data_ = reinterpret_cast<uint8_t*>(ret_address);
-  capacity_ = ret_capacity;
+    data_ = reinterpret_cast<uint8_t*>(ret_address);
+    capacity_ = ret_capacity;
+
+    offsetBuffer = reinterpret_cast<uint8_t*>(offset_ret_address);
+    offsetCapacity = offset_ret_capacity;
+  } else {
+    jlong ret_address = env_->GetLongField(ret, vector_expander_ret_address_);
+    jlong ret_capacity = env_->GetLongField(ret, vector_expander_ret_capacity_);
+
+    std::cout << "Buffer expand: New capacity is " << new_capacity  <<
+      " vector id " << vector_idx_ << " expander method " << method_ <<
+      " jexpander_ " << jexpander_ << " returned size is " << ret_capacity << 
+      " and the original buffer ptr=" << reinterpret_cast<jlong>(data_) << " and the new ptr=" << ret_address << std::endl;
+
+    data_ = reinterpret_cast<uint8_t*>(ret_address);
+    capacity_ = ret_capacity;
+  }
 
   return Status::OK();
 }
@@ -1039,6 +1082,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
       break;
     }
 
+    std::shared_ptr<JavaResizableBuffer> outBufJava = nullptr;
     auto ret_types = holder->rettypes();
     ArrayDataVector output;
     int buf_idx = 0;
@@ -1047,14 +1091,14 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     for (FieldPtr field : ret_types) {
       std::vector<std::shared_ptr<arrow::Buffer>> buffers;
 
-      //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -2 adding buffer" << std::endl;
+      std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -2 adding buffer idx=" << buf_idx << std::endl;
       CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
       uint8_t* validity_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
       jlong bitmap_sz = out_sizes[sz_idx++];
       buffers.push_back(std::make_shared<arrow::MutableBuffer>(validity_buf, bitmap_sz));
 
       if (arrow::is_binary_like(field->type()->id())) {
-        //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -1 adding buffer" << std::endl;
+        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -1 adding bufferbuffer idx=" << buf_idx << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* offsets_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         jlong offsets_sz = out_sizes[sz_idx++];
@@ -1064,7 +1108,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
 
       CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
       uint8_t* value_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
-      jlong data_sz = out_sizes[sz_idx++] * 1000;
+      jlong data_sz = out_sizes[sz_idx++];
       if (arrow::is_binary_like(field->type()->id())) {
         if (jexpander == nullptr) {
           status = Status::Invalid(
@@ -1073,16 +1117,19 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
           break;
         }
 
-        //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 1 adding buffer size=" << data_sz << std::endl;
+        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 1 adding buffer buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
         buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
       } else if (field->type()->id() == arrow::Type::LIST) {
-        //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 2 adding buffer size=" << data_sz << std::endl;
-        buffers.push_back(std::make_shared<JavaResizableBuffer>(
+        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 2 adding list offset buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
+        std::cout  << " size=" << out_sizes[sz_idx - 1] << " outsize index=" << sz_idx - 1 << " address " << out_bufs[buf_idx - 1] 
+          << " output_vector_idx=" << output_vector_idx << std::endl;
+          buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
       } else {
         buffers.push_back(std::make_shared<arrow::MutableBuffer>(value_buf, data_sz));
       }
+      
       
       if (field->type()->id() == arrow::Type::LIST) {
 
@@ -1099,7 +1146,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         //LR TODO the two buffers...
 
         data_sz = out_sizes[sz_idx++];
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding buffer " << buf_idx 
+        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding child nbuffer " << buf_idx 
           << " size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
@@ -1107,14 +1154,18 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
             env, jListExpander, listvector_expander_method_, output_vector_idx, child_offset_buf, data_sz));
 
         
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding buffer " << buf_idx 
+        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding child buffer " << buf_idx 
           << " size=" << out_sizes[sz_idx] << " outsize index=" << sz_idx << " address " << out_bufs[buf_idx] 
           << " output_vector_idx=" << output_vector_idx << std::endl;
         data_sz = out_sizes[sz_idx++];
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
-        child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
-            env, jListExpander, listvector_expander_method_, output_vector_idx, child_data_buf, data_sz));
+        
+        outBufJava = std::make_shared<JavaResizableBuffer>(
+            env, jListExpander, listvector_expander_method_, output_vector_idx, child_data_buf, data_sz, true);
+        outBufJava->offsetBuffer = reinterpret_cast<uint8_t*>(out_bufs[1]);
+        outBufJava->offsetCapacity = out_sizes[1];
+        child_buffers.push_back(outBufJava);
 
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
         auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
@@ -1163,29 +1214,51 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
       //LRTest1 Start
       int numRecords = (array_data->child_data[0])->length;
       //int numRecords = (array_data->child_data[0])->length * array_data->length;
-      int recordSize = numRecords * 4; //LR TODO HACK
 
-      std::cout << "LR jni_common there are records=" << array_data->length << " and the first one is="
-        << (array_data->child_data[0])->length << " using numRecords=" << numRecords << std::endl;
-      std::cout << "LR jni_common out_bufs[3]=" << out_bufs[3] << " after eval="
-        << (jlong)(array_data->child_data[0])->buffers[1]->data() << std::endl;
+      //std::cout << "LR jni_common there are records=" << array_data->length << " and the first one is="
+      //  << (array_data->child_data[0])->length << " using numRecords=" << numRecords << std::endl;
+      //std::cout << "LR jni_common out_bufs[3]=" << out_bufs[3] << " after eval="
+      //  << (jlong)(array_data->child_data[0])->buffers[1]->data() << std::endl;
       //LR test1
       out_bufs[3] = (jlong)(array_data->child_data[0])->buffers[1]->data();
       out_sizes[3] = (jlong)(array_data->child_data[0])->buffers[1]->capacity();
 
       //Copy the new buffer ptr back to Java. The above two lines don't copy it to java, just to the local array.
-      env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
-      env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);
+      //env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
+      //env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);
+
+      //array_data.child_data.at(0)->offset)
+      
       //env->ReleaseLongArrayElements(out_buf_addrs, out_bufs, JNI_ABORT);
       //memcpy((void*)out_bufs[3], (array_data->child_data[0])->buffers[1]->data(), recordSize);
       //out_sizes[3] = recordSize;
       //int test[] = {42,21,42,21,42};
       //memcpy((void *)out_bufs[3], test, 20);
 
+      /*out_sizes[2] = numRecords * 20;
+      int test[numRecords * 20];
+      for (int i = 0; i < numRecords; i++) {
+        test[i] = 0;
+      }
+      memcpy((void *)out_bufs[2], test, numRecords*4);
+      */
+
+      //LR test1  Havent tried yet.
+      //out_bufs[2] = (jlong)(array_data->child_data[0])->buffers[0]->data();
+      //out_sizes[2] = (jlong)(array_data->child_data[0])->buffers[0]->capacity();
+      
+      //out_bufs[1] = (jlong)(array_data->child_data[0])->buffers[0]->data();
+      //out_sizes[1] = (jlong)(array_data->child_data[0])->buffers[0]->capacity();
+
+      //out_bufs[1] = (jlong)(array_data)->buffers[0]->data();
+      //out_sizes[1] = (jlong)(array_data)->buffers[0]->capacity();
+      out_bufs[1] = (jlong) outBufJava->offsetBuffer;
+      out_sizes[1] = (jlong) outBufJava->offsetCapacity;
+
+      env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
+      env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);
 
 
-    //std::cout << "LR jni_common the (validity)? buffer has size=" << out_sizes[2] << " and the first thing is "
-    //<< out_bufs[2] << " and the second is " << (out_bufs[2])[1] std::endl;
 
 
       //validity buffer?

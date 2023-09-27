@@ -17,6 +17,7 @@
 
 package org.apache.arrow.gandiva.evaluator;
 
+import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.vector.complex.ListVector;
 
 /**
@@ -36,10 +37,22 @@ public class ListVectorExpander {
   public static class ExpandResult {
     public long address;
     public long capacity;
+    public long offsetaddress;
+    public long offsetcapacity;
 
-    public ExpandResult(long address, long capacity) {
+    /**
+     * fdsfsdfds.
+     * @param address dsfds
+     * @param capacity dfsdf
+     * @param offsetad dsfdsfsd
+     * @param offsetcap dfsfs
+     * 
+     */
+    public ExpandResult(long address, long capacity, long offsetad, long offsetcap) {
       this.address = address;
       this.capacity = capacity;
+      this.offsetaddress = offsetad;
+      this.offsetcapacity = offsetcap;
     }
   }
 
@@ -57,15 +70,25 @@ public class ListVectorExpander {
       throw new IllegalArgumentException("invalid index " + index);
     }
 
+    int valueBufferIndex = 1;
     ListVector vector = vectors[index];
-    while (vector.getDataVector().getFieldBuffers().get(0).capacity() < toCapacity) {
+    while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
       vector.reAlloc();
     }
     System.out.println("LR Expanding ListVector. New capacity=" +
-        vector.getDataVector().getFieldBuffers().get(0).capacity());
+        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity());
+    System.out.println("LR Expanding ListVector. Offset data is ");
+    ArrowBuf ab = vector.getOffsetBuffer();
+    String s = "offsetBuffer = [";
+    for (int i = 0; i < 20; i++) {
+      s += ab.getInt(i) + ",";
+    }
+    System.out.println(s);
     return new ExpandResult(
-        vector.getDataVector().getFieldBuffers().get(0).memoryAddress(),
-        vector.getDataVector().getFieldBuffers().get(0).capacity());
+        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).memoryAddress(),
+        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity(),
+        vector.getOffsetBuffer().memoryAddress(),
+        vector.getOffsetBuffer().capacity());
   }
 
 }

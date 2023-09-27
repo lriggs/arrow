@@ -57,7 +57,7 @@ namespace gandiva {
   }
 }*/
 
-LLVMGenerator::LLVMGenerator(bool cached) : cached_(cached), enable_ir_traces_(true) {}
+LLVMGenerator::LLVMGenerator(bool cached) : cached_(cached), enable_ir_traces_(false) {}
 
 Status LLVMGenerator::Make(std::shared_ptr<Configuration> config, bool cached,
                            std::unique_ptr<LLVMGenerator>* llvm_generator) {
@@ -472,7 +472,8 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
       output_value->length()->print(output2);
 
 
-      //std::cout << "LR gdv_fn_populate_list_int32_t_vector params are " << arg_context_ptr << "," << output_buffer_ptr_ref << "," 
+      std::cout << "LR gdv_fn_populate_list_int32_t_vector params are " << arg_context_ptr << "," << output_buffer_ptr_ref << "," 
+        << output_offset_ref << "," << loop_var << std::endl;
       //  << output_offset_ref << "," << loop_var << "[[" << str1 << "]] [[" << str2 << "]]" << std::endl;
       AddFunctionCall("gdv_fn_populate_list_int32_t_vector", types()->i32_type(),
                       {arg_context_ptr, output_buffer_ptr_ref, output_offset_ref,

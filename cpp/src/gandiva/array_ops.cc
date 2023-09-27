@@ -95,7 +95,7 @@ int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int3
   //return reinterpret_cast<int32_t*>(ret);
   return reinterpret_cast<int32_t*>(ret);
 }
-
+/*
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_offsets_len, int32_t remove_data, int32_t* out_len) {
   //std::cout << "LR array_int32_remove data=" << remove_data 
@@ -122,6 +122,36 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
   //std::cout << "LR made a buffer length" << *out_len * 4 << " item 3 is = " << int32_t(ret[3*4]) << std::endl; 
 
   delete [] integers;
+  //return reinterpret_cast<int32_t*>(ret);
+  return reinterpret_cast<int32_t*>(ret);
+}
+*/
+int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
+                              int32_t entry_offsets_len, int32_t remove_data, int32_t* out_len) {
+  //std::cout << "LR array_int32_remove data=" << remove_data 
+  //  << " entry_offsets_len " << entry_offsets_len << std::endl;
+
+  std::vector<int> newInts;
+
+  for (int i = 0; i < entry_offsets_len; i++) {
+    //std::cout << "LR going to check " << entry_buf + i << std::endl;
+    int32_t entry_item = *(entry_buf + (i * 1));
+    //std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
+    if (entry_item == remove_data) {
+      continue;
+    } else {
+      newInts.push_back(entry_item);
+    }
+  }
+
+  *out_len = newInts.size();
+  int32_t outBufferLength = *out_len * sizeof(int);
+  //length is number of items, but buffers must account for byte size.
+  uint8_t* ret = gdv_fn_context_arena_malloc(context_ptr, outBufferLength);
+  memcpy(ret, newInts.data(), outBufferLength);
+  //std::cout << "LR made a buffer length" << *out_len * 4 << " item 3 is = " << int32_t(ret[3*4]) << std::endl; 
+
+
   //return reinterpret_cast<int32_t*>(ret);
   return reinterpret_cast<int32_t*>(ret);
 }
