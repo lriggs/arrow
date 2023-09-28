@@ -37,7 +37,7 @@ extras = {
     'crossbow': ['github3.py', jinja_req, 'pygit2>=1.6.0', 'requests',
                  'ruamel.yaml', 'setuptools_scm'],
     'crossbow-upload': ['github3.py', jinja_req, 'ruamel.yaml',
-                        'setuptools_scm'],
+                        'setuptools_scm==7.1.0'],
     'numpydoc': ['numpydoc==1.1.0']
 }
 extras['bot'] = extras['crossbow'] + ['pygithub', 'jira']
