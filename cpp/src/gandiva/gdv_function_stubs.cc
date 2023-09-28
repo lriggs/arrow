@@ -174,10 +174,6 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
       return -1;                                                                      \
     }                                                                                \
     memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);     \
-    std::cout << "LR gdv_fn_populate buffer=" << buffer->data() << std::endl;         \
-    std::cout << " and offset=" << offsets << " * =" << *offsets << std::endl;        \
-    std::cout << "Setting offset slot=" << slot << "=" << offset / SCALE << std::endl; \
-    std::cout << "Setting offset slot+1=" << slot + 1 << "=" << offset / SCALE + entry_len << std::endl; \
     offsets = reinterpret_cast<int32_t*>(buffer->offsetBuffer);                       \
     offsets[slot] = offset / SCALE;                                                   \
     offsets[slot + 1] = offset / SCALE + entry_len;                                   \
