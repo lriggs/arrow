@@ -740,7 +740,7 @@ def get_version(root, **kwargs):
     subprojects, e.g. apache-arrow-js-XXX tags.
     """
     from setuptools_scm.git import parse as parse_git_version
-    from setuptools_scm.git import Config
+    from setuptools_scm import Config
 
     # query the calculated version based on the git tags
     kwargs['describe_command'] = (
