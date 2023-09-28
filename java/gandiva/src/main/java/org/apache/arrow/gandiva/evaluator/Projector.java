@@ -462,9 +462,9 @@ public class Projector {
       outColumnIdx++;
     }
 
-    logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
-    logger.error("LR Projector.java before evaluateProjector buffer[3]=" + outAddrs[3]);
-    logger.error("LR Projector.java before evaluateProjector buffer[1]=" + outAddrs[1]);
+    //logger.error("LR Projector.java evaluate calling evaluateProjector with buffers=" + idx);
+    //logger.error("LR Projector.java before evaluateProjector buffer[3]=" + outAddrs[3]);
+    //logger.error("LR Projector.java before evaluateProjector buffer[1]=" + outAddrs[1]);
     wrapper.evaluateProjector(
         hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
         hasVariableWidthColumns ? new ListVectorExpander(resizableListVectors) : null,
@@ -479,8 +479,8 @@ public class Projector {
     //System.out.println(intVector.getDataVector());
 
 
-    logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3]);
-    logger.error("LR Projector.java after evaluateProjector buffer[1]=" + outAddrs[1]);
+    //logger.error("LR Projector.java after evaluateProjector buffer[3]=" + outAddrs[3]);
+    //logger.error("LR Projector.java after evaluateProjector buffer[1]=" + outAddrs[1]);
     for (ValueVector valueVector : outColumns) {
       if (valueVector instanceof ListVector) {
         //LR HACK
@@ -508,8 +508,8 @@ public class Projector {
 
         //ArrowBuf ab2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[3], outAddrs[3]);
 
-        logger.error("LR Projector.java using numRecords=" +
-            selectionVectorRecordCount + " outSizes[3]=" + outSizes[3]);
+        // logger.error("LR Projector.java using numRecords=" +
+        //     selectionVectorRecordCount + " outSizes[3]=" + outSizes[3]);
         
         //import org.apache.arrow.vector.complex.impl.UnionListWriter;
         /*UnionListWriter writer = ((ListVector) valueVector).getWriter();
@@ -546,7 +546,7 @@ public class Projector {
 
 
 
-
+        /*
         String s = "";
         List<ArrowBuf> fv = ((ListVector) valueVector).getDataVector().getFieldBuffers();
         for (ArrowBuf ab : fv) {
@@ -573,7 +573,7 @@ public class Projector {
         }
         logger.error("LR Projector.java before updating listvector. getOffsetBuffer=" +
             fvvv.capacity() + " buffer=" + s);
-
+        */
       
         ((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount * 5);
 
