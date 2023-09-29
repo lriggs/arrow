@@ -746,7 +746,7 @@ def get_version(root, **kwargs):
     kwargs['describe_command'] = (
         'git describe --dirty --tags --long --match "apache-arrow-[0-9]*.*"'
     )
-    kwargs['config'] = Config(root=root)
+    kwargs['config'] = Configuration(root=root)
 
     version = parse_git_version(root, **kwargs)
     tag = str(version.tag)
