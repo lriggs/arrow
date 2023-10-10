@@ -51,6 +51,12 @@ int32_t* array_int32_make_array(int64_t context_ptr,
 GANDIVA_EXPORT
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_offsets_len,
+                              const int32_t* notSureWhatThisIs,
+                              bool entry_valid, 
                               int32_t remove_data,
-                              int32_t* out_len);
+                              bool entry_validWhat,
+                              bool* valid_buf,
+                              int32_t* out_len,
+                              int32_t* valid_ptr);
+
 }

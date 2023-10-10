@@ -31,13 +31,14 @@ class FieldDescriptor {
 
   FieldDescriptor(FieldPtr field, int data_idx, int validity_idx = kInvalidIdx,
                   int offsets_idx = kInvalidIdx, int data_buffer_ptr_idx = kInvalidIdx,
-                  int child_offsets_idx = kInvalidIdx)
+                  int child_offsets_idx = kInvalidIdx, int child_validity_idx = kInvalidIdx)
       : field_(field),
         data_idx_(data_idx),
         validity_idx_(validity_idx),
         offsets_idx_(offsets_idx),
         data_buffer_ptr_idx_(data_buffer_ptr_idx),
-        child_offsets_idx_(child_offsets_idx) {}
+        child_offsets_idx_(child_offsets_idx),
+        child_validity_idx_(child_validity_idx) {}
 
   /// Index of validity array in the array-of-buffers
   int validity_idx() const { return validity_idx_; }
@@ -53,6 +54,7 @@ class FieldDescriptor {
 
   /// Index of list type child data offsets
   int child_data_offsets_idx() const { return child_offsets_idx_; }
+  int child_data_validity_idx() const { return child_validity_idx_; }
 
   FieldPtr field() const { return field_; }
 
@@ -65,6 +67,8 @@ class FieldDescriptor {
 
   bool HasChildOffsetsIdx() const { return child_offsets_idx_ != kInvalidIdx; }
 
+  bool HasChildValidityIdx() const { return child_validity_idx_ != kInvalidIdx; }
+
  private:
   FieldPtr field_;
   int data_idx_;
@@ -72,6 +76,7 @@ class FieldDescriptor {
   int offsets_idx_;
   int data_buffer_ptr_idx_;
   int child_offsets_idx_;
+  int child_validity_idx_;
 };
 
 }  // namespace gandiva

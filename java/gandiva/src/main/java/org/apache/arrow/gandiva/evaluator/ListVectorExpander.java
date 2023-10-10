@@ -39,6 +39,7 @@ public class ListVectorExpander {
     public long capacity;
     public long offsetaddress;
     public long offsetcapacity;
+    public long validityddress;
 
     /**
      * fdsfsdfds.
@@ -48,11 +49,12 @@ public class ListVectorExpander {
      * @param offsetcap dfsfs
      * 
      */
-    public ExpandResult(long address, long capacity, long offsetad, long offsetcap) {
+    public ExpandResult(long address, long capacity, long offsetad, long offsetcap, long validAdd) {
       this.address = address;
       this.capacity = capacity;
       this.offsetaddress = offsetad;
       this.offsetcapacity = offsetcap;
+      this.validityddress = validAdd;
     }
   }
 
@@ -71,6 +73,7 @@ public class ListVectorExpander {
     }
 
     int valueBufferIndex = 1;
+    int validBufferIndex = 0;
     ListVector vector = vectors[index];
     while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
       vector.reAlloc();
@@ -88,7 +91,8 @@ public class ListVectorExpander {
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).memoryAddress(),
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity(),
         vector.getOffsetBuffer().memoryAddress(),
-        vector.getOffsetBuffer().capacity());
+        vector.getOffsetBuffer().capacity(),
+        vector.getDataVector().getFieldBuffers().get(validBufferIndex).memoryAddress());
   }
 
 }

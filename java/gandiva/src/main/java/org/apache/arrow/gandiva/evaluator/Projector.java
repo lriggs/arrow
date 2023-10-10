@@ -27,6 +27,7 @@ import org.apache.arrow.gandiva.expression.ExpressionTree;
 import org.apache.arrow.gandiva.ipc.GandivaTypes;
 import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
 import org.apache.arrow.vector.BitVectorHelper;
 import org.apache.arrow.vector.ValueVector;
@@ -415,9 +416,10 @@ public class Projector {
 
         //vector valid
         logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getValidityBufferAddress();
+        //outAddrs[idx] = ((ListVector) valueVector).getDataVector().getValidityBufferAddress();
+        //outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
         outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
-        
 
         //vector offset
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
@@ -546,7 +548,7 @@ public class Projector {
 
 
 
-        /*
+        
         String s = "";
         List<ArrowBuf> fv = ((ListVector) valueVector).getDataVector().getFieldBuffers();
         for (ArrowBuf ab : fv) {
@@ -573,11 +575,20 @@ public class Projector {
         }
         logger.error("LR Projector.java before updating listvector. getOffsetBuffer=" +
             fvvv.capacity() + " buffer=" + s);
-        */
+        
       
         ((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount * 5);
 
         ((ListVector) valueVector).setLastSet(selectionVectorRecordCount - 1);
+
+
+        ArrowBuf mabb2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
+        s = "validity? buffer mabb2, outAddrs[2]=";
+        for (int i = 0; i < 20; i++) {
+          s += mabb2.getInt(i) + ",";
+        }
+        System.out.println(s);
+
         /*
         //Validity then data.
         ArrowBuf abb = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
@@ -624,7 +635,7 @@ public class Projector {
         //((ListVector) valueVector).setValueCount(selectionVectorRecordCount);
         //((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount);
 
-        int simple = 0;
+        /*TODO NEeD THIS        int simple = 0;
         try {
           for (int i = 0; i < selectionVectorRecordCount * 5; i++) {
             BitVectorHelper.setBit(((ListVector) valueVector).getDataVector().getValidityBuffer(), i);
@@ -633,6 +644,8 @@ public class Projector {
         } catch (IndexOutOfBoundsException e) {
           simple = 0;
         }
+        */
+        int simple = 0;
         try {
           for (int i = 0; i < selectionVectorRecordCount; i++) {
             BitVectorHelper.setBit(((ListVector) valueVector).getValidityBuffer(), i);
@@ -642,7 +655,7 @@ public class Projector {
           simple = 0;
         }
 
-      
+        
 
 
 
