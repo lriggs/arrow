@@ -90,6 +90,10 @@ class GANDIVA_EXPORT VectorReadFixedLenValueListDex : public VectorReadBaseDex {
 
   int OffsetsIdx() const { return field_desc_->offsets_idx(); }
 
+  int ValidityIdx() const { return field_desc_->validity_idx(); }
+
+  int ChildValidityIdx() const { return field_desc_->child_data_validity_idx(); }
+
   void Accept(DexVisitor& visitor) override { visitor.Visit(*this); }
 };
 

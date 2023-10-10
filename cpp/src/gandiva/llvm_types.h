@@ -64,6 +64,8 @@ class GANDIVA_EXPORT LLVMTypes {
 
   llvm::PointerType* ptr_type(llvm::Type* type) { return type->getPointerTo(); }
 
+  llvm::PointerType* i1_ptr_type() { return ptr_type(i1_type()); }
+
   llvm::PointerType* i8_ptr_type() { return ptr_type(i8_type()); }
 
   llvm::PointerType* i32_ptr_type() { return ptr_type(i32_type()); }

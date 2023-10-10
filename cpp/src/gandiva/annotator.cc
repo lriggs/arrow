@@ -63,8 +63,12 @@ FieldDescriptorPtr Annotator::MakeDesc(FieldPtr field, bool is_output) {
   if (is_output) {
     data_buffer_ptr_idx = buffer_count_++;
   }
+  int child_valid_buffer_ptr_idx = FieldDescriptor::kInvalidIdx;
+  if (is_output) {
+    child_valid_buffer_ptr_idx = buffer_count_++;
+  }
   return std::make_shared<FieldDescriptor>(field, data_idx, validity_idx, offsets_idx,
-                                           data_buffer_ptr_idx, child_offsets_idx);
+                                           data_buffer_ptr_idx, child_offsets_idx, child_valid_buffer_ptr_idx);
 }
 
 int Annotator::AddHolderPointer(void* holder) {
@@ -104,6 +108,13 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
         std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -3 " << &child_offsets_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_offsets_buf,
                               array_data.child_data.at(0)->offset);
+
+        uint8_t* child_valid_buf = reinterpret_cast<uint8_t*>(
+            array_data.child_data.at(0)->buffers[0].get());
+        std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -3 " << &child_valid_buf << std::endl;
+        eval_batch->SetBuffer(desc.child_data_validity_idx(), child_valid_buf,
+                              array_data.child_data.at(0)->offset);
+        
       } else {
         //std::cout << "LR Annotator::PrepareBuffersForField 2" << std::endl;
         // if list field is input field, just put buffer data into eval batch
@@ -111,6 +122,12 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
             array_data.child_data.at(0)->buffers[buffer_idx]->data());
         std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -2 " << &child_offsets_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_offsets_buf,
+                              array_data.child_data.at(0)->offset);
+
+        uint8_t* child_valid_buf = const_cast<uint8_t*>(
+            array_data.child_data.at(0)->buffers[0]->data());
+        std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -2 " << &child_valid_buf << std::endl;
+        eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_valid_buf,
                               array_data.child_data.at(0)->offset);
       }
     }

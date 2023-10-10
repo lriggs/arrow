@@ -114,5 +114,72 @@ TEST_F(TestLLVMGenerator, TestAdd) {
   EXPECT_THAT(out, testing::ElementsAre(6, 8, 10, 12));
   EXPECT_EQ(out_bitmap, 0ULL);
 }
+/*
+TEST_F(TestLLVMGenerator, TestArrayRemove) {
+  // Setup LLVM generator to do an array remove.
+  std::unique_ptr<LLVMGenerator> generator;
+  ASSERT_OK(LLVMGenerator::Make(TestConfiguration(), false, &generator));
+  Annotator annotator;
+
+  std::shared_ptr<arrow::DataType> listDt = std::make_shared<arrow::Int32Type>();
+  std::shared_ptr<arrow::DataType> dt = std::make_shared<arrow::ListType>(listDt);
+  auto field0 = std::make_shared<arrow::Field>("f0", dt);
+  auto desc0 = annotator.CheckAndAddInputFieldDescriptor(field0);
+  auto validity_dex0 = std::make_shared<VectorReadValidityDex>(desc0);
+  auto value_dex0 = std::make_shared<VectorReadFixedLenValueDex>(desc0);
+  auto pair0 = std::make_shared<ValueValidityPair>(validity_dex0, value_dex0);
+
+  auto field1 = std::make_shared<arrow::Field>("f1", arrow::int32());
+  auto desc1 = annotator.CheckAndAddInputFieldDescriptor(field1);
+  auto validity_dex1 = std::make_shared<VectorReadValidityDex>(desc1);
+  auto value_dex1 = std::make_shared<VectorReadFixedLenValueDex>(desc1);
+  auto pair1 = std::make_shared<ValueValidityPair>(validity_dex1, value_dex1);
+
+  DataTypeVector params{dt, arrow::int32()};
+  auto func_desc = std::make_shared<FuncDescriptor>("array_removeGandiva", params, arrow::int32());
+  FunctionSignature signature(func_desc->name(), func_desc->params(),
+                              func_desc->return_type());
+  const NativeFunction* native_func =
+      generator->function_registry_.LookupSignature(signature);
+
+  std::vector<ValueValidityPairPtr> pairs{pair0, pair1};
+  auto func_dex = std::make_shared<NonNullableFuncDex>(
+      func_desc, native_func, FunctionHolderPtr(nullptr), -1, pairs);
+
+  auto field_sum = std::make_shared<arrow::Field>("out", arrow::int32());
+  auto desc_sum = annotator.CheckAndAddInputFieldDescriptor(field_sum);
+
+  std::string fn_name = "codegen";
+
+  ASSERT_OK(generator->engine_->LoadFunctionIRs());
+  ASSERT_OK(generator->CodeGenExprValue(func_dex, 4, desc_sum, 0, fn_name,
+                                        SelectionVector::MODE_NONE));
+
+  ASSERT_OK(generator->engine_->FinalizeModule());
+  auto ir = generator->engine_->DumpIR();
+  EXPECT_THAT(ir, testing::HasSubstr("vector.body"));
+
+  EvalFunc eval_func = (EvalFunc)generator->engine_->CompiledFunction(fn_name);
+
+  constexpr size_t kNumRecords = 4;
+  std::array<uint32_t, kNumRecords> a0{1, 2, 3, 4};
+  std::array<uint32_t, kNumRecords> a1{5, 6, 7, 8};
+  uint64_t in_bitmap = 0xffffffffffffffffull;
+
+  std::array<uint32_t, kNumRecords> out{0, 0, 0, 0};
+  uint64_t out_bitmap = 0;
+
+  std::array<uint8_t*, 6> addrs{
+      reinterpret_cast<uint8_t*>(a0.data()),  reinterpret_cast<uint8_t*>(&in_bitmap),
+      reinterpret_cast<uint8_t*>(a1.data()),  reinterpret_cast<uint8_t*>(&in_bitmap),
+      reinterpret_cast<uint8_t*>(out.data()), reinterpret_cast<uint8_t*>(&out_bitmap),
+  };
+  std::array<int64_t, 6> addr_offsets{0, 0, 0, 0, 0, 0};
+  eval_func(addrs.data(), addr_offsets.data(), nullptr, nullptr, nullptr,
+            0 /* dummy context ptr */, kNumRecords);
+
+  EXPECT_THAT(out, testing::ElementsAre(6, 8, 10, 12));
+  EXPECT_EQ(out_bitmap, 0ULL);
+}*/
 
 }  // namespace gandiva

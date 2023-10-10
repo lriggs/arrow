@@ -163,9 +163,10 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
 #define POPULATE_NUMERIC_LIST_TYPE_VECTOR(TYPE, SCALE)                                \
   int32_t gdv_fn_populate_list_##TYPE##_vector(int64_t context_ptr, int8_t* data_ptr, \
                                                int32_t* offsets, int64_t slot,        \
-                                               TYPE* entry_buf, int32_t entry_len) {  \
+                                               TYPE* entry_buf, int32_t entry_len, int32_t* valid_ptr) {  \
     auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);                \
     int32_t offset = static_cast<int32_t>(buffer->size());                            \
+    std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                             \
     auto status = buffer->Resize(offset + entry_len * SCALE, false /*shrink*/);       \
     if (!status.ok()) {                                                               \
       gandiva::ExecutionContext* context =                                            \
@@ -173,12 +174,27 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
       context->set_error_msg(status.message().c_str());                               \
       return -1;                                                                      \
     }                                                                                \
+    std::cout << "LR gdv_fn_populate_list_ 2 valid_ptr" << valid_ptr << std::endl;    \
+    std::cout << "LR gdv_fn_populate_list_ " << buffer << " " << offset; \
+    std::cout << " " << entry_len << " " << SCALE << "]]" << std::endl; \
     memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);     \
+    std::cout << "LR gdv_fn_populate_list_ 3 entry_buf=" << entry_buf << "]" << std::endl;                           \
+    std::cout << "LR gdv_fn_populate_list_ 3a entry_len=" << entry_len << " &entry_len=" << &entry_len << "]" << std::endl;             \
+    std::cout << "LR gdv_fn_populate_list_ 4 buffer->validityBuffer=" << reinterpret_cast<int32_t*>(buffer->validityBuffer) << "]" << std::endl;                           \
+    int v[6] = {255, 255, 255, 255, 255, 255};   \
+    memcpy(buffer->validityBuffer + slot, v, 6);  \
+    std::cout << "LR gdv_fn_populate_list_ 5 valid_ptr="  << valid_ptr << " *valid_ptr=" << *valid_ptr << std::endl;                            \
+    std::bitset<8> bs(*valid_ptr);                                                     \
+    std::cout << "LR bitset of valid ptr is " << bs << std::endl;                     \
     offsets = reinterpret_cast<int32_t*>(buffer->offsetBuffer);                       \
     offsets[slot] = offset / SCALE;                                                   \
     offsets[slot + 1] = offset / SCALE + entry_len;                                   \
+    std::cout << "LR gdv_fn_populate_list_ Done" << std::endl;                        \
     return 0;                                                                         \
   }
+
+//    int32_t vv = 5;    
+    //memcpy(buffer->validityBuffer  + slot, *vv, 1);                             
 
     //buffer->offsetBuffer[slot] = offset / SCALE;                                       
     //buffer->offsetBuffer[slot + 1] = offset / SCALE + entry_len;                      
@@ -1269,7 +1285,7 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
 
 #define ADD_MAPPING_FOR_NUMERIC_LIST_TYPE_POPULATE_FUNCTION(LLVM_TYPE, DATA_TYPE)      \
   args = {types->i64_type(), types->i8_ptr_type(),          types->i32_ptr_type(),     \
-          types->i64_type(), types->LLVM_TYPE##_ptr_type(), types->i32_type()};        \
+          types->i64_type(), types->LLVM_TYPE##_ptr_type(), types->i32_type(), types->i32_ptr_type()};        \
   engine->AddGlobalMappingForFunc(                                                     \
       "gdv_fn_populate_list_" #DATA_TYPE "_vector", types->i32_type() /*return_type*/, \
       args, reinterpret_cast<void*>(gdv_fn_populate_list_##DATA_TYPE##_vector));
@@ -1315,7 +1331,9 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
           types->i64_type(),      // int64_t slot
           types->i8_ptr_type(),   // const char* entry_buf
           types->i32_ptr_type(),  // int32_t* entry child offsets ptr
-          types->i32_type()};     // int32_t entry child offsets length
+          types->i32_type(),     // int32_t entry child offsets length
+          types->i32_ptr_type()  // int32_t* entry child valid ptr
+  };
 
   engine->AddGlobalMappingForFunc(
       "gdv_fn_populate_list_varlen_vector", types->i32_type() /*return_type*/, args,

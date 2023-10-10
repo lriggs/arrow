@@ -38,7 +38,7 @@ namespace gandiva {
 Status ExprDecomposer::Visit(const FieldNode& node) {
   auto desc = annotator_.CheckAndAddInputFieldDescriptor(node.field());
 
-  //std::cout << "LR ExprDecomposer" << std::endl;
+  std::cout << "LR ExprDecomposer" << std::endl;
   DexPtr validity_dex = std::make_shared<VectorReadValidityDex>(desc);
   DexPtr value_dex;
   if (desc->HasChildOffsetsIdx()) {
@@ -126,7 +126,9 @@ Status ExprDecomposer::Visit(const FunctionNode& in_node) {
   } else {
     DCHECK(native_function->result_nullable_type() == kResultNullInternal);
 
+    //LR TODO Need validity?
     // Add a local bitmap to track the output validity.
+    std::cout << "LR Making a nullable function holder with validity." << std::endl;
     int local_bitmap_idx = annotator_.AddLocalBitMap();
     auto validity_dex = std::make_shared<LocalBitMapValidityDex>(local_bitmap_idx);
 

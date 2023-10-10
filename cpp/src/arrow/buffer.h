@@ -447,17 +447,20 @@ class ARROW_EXPORT ResizableBuffer : public MutableBuffer {
  public:
    uint8_t* offsetBuffer;
    int64_t offsetCapacity;
+   uint8_t* validityBuffer;
 
  protected:
   ResizableBuffer(uint8_t* data, int64_t size) : MutableBuffer(data, size) {
     offsetBuffer = nullptr;
     offsetCapacity = 0;
+    validityBuffer = nullptr;
 
   }
   ResizableBuffer(uint8_t* data, int64_t size, std::shared_ptr<MemoryManager> mm)
       : MutableBuffer(data, size, std::move(mm)) {
         offsetBuffer = nullptr;
         offsetCapacity = 0;
+        validityBuffer = nullptr;
       }
 };
 
