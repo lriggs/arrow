@@ -163,7 +163,7 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
 #define POPULATE_NUMERIC_LIST_TYPE_VECTOR(TYPE, SCALE)                                \
   int32_t gdv_fn_populate_list_##TYPE##_vector(int64_t context_ptr, int8_t* data_ptr, \
                                                int32_t* offsets, int64_t slot,        \
-                                               TYPE* entry_buf, int32_t entry_len, int32_t* valid_ptr) {  \
+                                               TYPE* entry_buf, int32_t entry_len, int32_t** valid_ptr) {  \
     auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);                \
     int32_t offset = static_cast<int32_t>(buffer->size());                            \
     std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                             \
@@ -181,10 +181,8 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
     std::cout << "LR gdv_fn_populate_list_ 3 entry_buf=" << entry_buf << "]" << std::endl;                           \
     std::cout << "LR gdv_fn_populate_list_ 3a entry_len=" << entry_len << " &entry_len=" << &entry_len << "]" << std::endl;             \
     std::cout << "LR gdv_fn_populate_list_ 4 buffer->validityBuffer=" << reinterpret_cast<int32_t*>(buffer->validityBuffer) << "]" << std::endl;                           \
-    int v[6] = {255, 255, 255, 255, 255, 255};   \
-    memcpy(buffer->validityBuffer + slot, v, 6);  \
     std::cout << "LR gdv_fn_populate_list_ 5 valid_ptr="  << valid_ptr << " *valid_ptr=" << *valid_ptr << std::endl;                            \
-    std::bitset<8> bs(*valid_ptr);                                                     \
+    std::bitset<8> bs((unsigned long)(*valid_ptr));                                                     \
     std::cout << "LR bitset of valid ptr is " << bs << std::endl;                     \
     offsets = reinterpret_cast<int32_t*>(buffer->offsetBuffer);                       \
     offsets[slot] = offset / SCALE;                                                   \
@@ -195,11 +193,62 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
 
 //    int32_t vv = 5;    
     //memcpy(buffer->validityBuffer  + slot, *vv, 1);                             
-
+//memcpy(buffer->validityBuffer + slot, bs.to_ulong(), 1);  
     //buffer->offsetBuffer[slot] = offset / SCALE;                                       
     //buffer->offsetBuffer[slot + 1] = offset / SCALE + entry_len;                      
 
-POPULATE_NUMERIC_LIST_TYPE_VECTOR(int32_t, 4)
+int32_t gdv_fn_populate_list_int32_t_vector(int64_t context_ptr, int8_t* data_ptr, 
+                                               int32_t* offsets, int64_t slot,      
+                                               int32_t* entry_buf, int32_t entry_len, int32_t** valid_ptr) {
+    int SCALE = 4;
+    auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);              
+    int32_t offset = static_cast<int32_t>(buffer->size());                          
+    std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                           
+    auto status = buffer->Resize(offset + entry_len * SCALE, false /*shrink*/);     
+    if (!status.ok()) {                                                             
+      gandiva::ExecutionContext* context =                                          
+          reinterpret_cast<gandiva::ExecutionContext*>(context_ptr);                
+      context->set_error_msg(status.message().c_str());                             
+      return -1;                                                                    
+    }                                                                              
+    std::cout << "LR gdv_fn_populate_list_ 2 valid_ptr" << valid_ptr << std::endl;  
+    std::cout << "LR gdv_fn_populate_list_ " << buffer << " " << offset; \
+    std::cout << " " << entry_len << " " << SCALE << "]]" << std::endl; \
+    memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);   
+    std::cout << "LR gdv_fn_populate_list_ 3 entry_buf=" << entry_buf << "]" << std::endl;                         
+    std::cout << "LR gdv_fn_populate_list_ 3a entry_len=" << entry_len << " &entry_len=" << &entry_len << "]" << std::endl;           
+    std::cout << "LR gdv_fn_populate_list_ 4 buffer->validityBuffer=" << reinterpret_cast<int32_t*>(buffer->validityBuffer) << "]" << std::endl;                         
+    //int v[6] = {255, 255, 255, 255, 255, 255}; 
+    std::cout << "LR gdv_fn_populate_list_ 5 valid_ptr="  << valid_ptr << " *valid_ptr=" << *valid_ptr << std::endl;                          
+    int validbitIndex = offset / SCALE;   
+    //int newValidSize = validbitIndex + entry_len;   
+    
+    //TODO need to iterate over bits in valid_ptr since bitset rewuires compile time size.
+    std::bitset<10> bs((unsigned long)(*valid_ptr));                                                   
+    for (int i = 0; i < entry_len; i++) {         
+
+      arrow::bit_util::SetBitTo(buffer->validityBuffer, validbitIndex + i, bs[i]);     
+    } 
+    
+    
+    /*std::bitset<newValidSize> existingBits(buffer->validityBuffer);     
+    std::cout << "LR bitset of existingBits " << existingBits << std::endl;                   
+    std::bitset<8> bs((unsigned long)(*valid_ptr));                                                   
+    for (int i = 0; i < entry_len; i++) {         
+      existingBits.set(validbitIndex + i, bs[i]);      
+    }                     
+    std::bitset<newValidSize> existingBits2(buffer->validityBuffer);     
+    std::cout << "LR bitset of existingBits2 " << existingBits2 << std::endl; 
+    */                  
+    std::cout << "LR bitset of valid ptr is " << bs << std::endl;                   
+    offsets = reinterpret_cast<int32_t*>(buffer->offsetBuffer);                     
+    offsets[slot] = offset / SCALE;                                                 
+    offsets[slot + 1] = offset / SCALE + entry_len;                                 
+    std::cout << "LR gdv_fn_populate_list_ Done" << std::endl;                      
+    return 0;                                                                     
+  }
+
+//POPULATE_NUMERIC_LIST_TYPE_VECTOR(int32_t, 4)
 POPULATE_NUMERIC_LIST_TYPE_VECTOR(int64_t, 8)
 POPULATE_NUMERIC_LIST_TYPE_VECTOR(float, 4)
 POPULATE_NUMERIC_LIST_TYPE_VECTOR(double, 8)

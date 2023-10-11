@@ -57,6 +57,6 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               bool entry_validWhat,
                               bool* valid_buf,
                               int32_t* out_len,
-                              int32_t* valid_ptr);
+                              int32_t** valid_ptr);
 
 }
