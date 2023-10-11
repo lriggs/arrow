@@ -1624,7 +1624,7 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
     auto validity = 
         (valid_ptr == nullptr)
             ? nullptr
-            : builder->CreateLoad(valid_ptr->getAllocatedType(), valid_ptr);
+            : builder->CreateLoad(generator_->types()->i32_ptr_type(), valid_ptr);
     std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is DONE. using validity=" << validity << " ptr=" << valid_ptr << std::endl;
     std::cout << "LR LLVMGenerator::Visitor::BuildFunctionCall is DONE. using value_len=" << value_len << " ptr=" << result_len_ptr << std::endl;
     return std::make_shared<LValue>(value, value_len, validity);

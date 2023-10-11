@@ -133,7 +133,7 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
 
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_offsets_len, const int32_t* notSureWhatThisIs, bool entry_valid,
-                              int32_t remove_data, bool entry_validWhat, bool* valid_buf, int32_t* out_len, int32_t* valid_ptr) {
+                              int32_t remove_data, bool entry_validWhat, bool* valid_buf, int32_t* out_len, int32_t** valid_ptr) {
   //std::cout << "LR array_int32_remove data=" << remove_data 
   //  << " entry_offsets_len " << entry_offsets_len << std::endl;
 
@@ -160,8 +160,12 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
     }
   }*/
 
-   entry_validWhat = true;
-  std::bitset<8> outputValidBits;
+  std::cout << "LR notSureWhatThisIs=" << notSureWhatThisIs << std::endl;
+  //<< " *notSureWhatThisIs=" << *notSureWhatThisIs << std::endl;
+  //std::bitset<10> maybeInputBits (*notSureWhatThisIs);
+  //std::cout << "LR maybeInputBits=" << maybeInputBits << std::endl;
+  entry_validWhat = true;
+  std::bitset<10> outputValidBits;
   std::vector<bool> outValid;
   for (int i = 0; i < entry_offsets_len; i++) {
     //std::cout << "LR going to check " << entry_buf + i << std::endl;
@@ -199,10 +203,10 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
   //*valid_len = 1;
   std::cout << "LR valid_buf is " << valid_buf << std::endl;
   std::cout << "LR outputValidBits is " << outputValidBits << std::endl;
-  valid_buf = reinterpret_cast<bool*>(validRet);
+  //valid_buf = reinterpret_cast<bool*>(validRet);
 
-  valid_ptr = reinterpret_cast<int32_t*>(validRet);
-  std::cout << "LR setting valid_ptr=" << valid_ptr << " *valid_ptr=" << *valid_ptr << " valid_ptr bitset data is " << std::bitset<8>(*valid_ptr) 
+  *valid_ptr = reinterpret_cast<int32_t*>(validRet);
+  std::cout << "LR setting valid_ptr=" << valid_ptr << " *valid_ptr=" << *valid_ptr << " **valid_ptr=" << **valid_ptr << " valid_ptr bitset data is " << std::bitset<8>(**valid_ptr) 
     << " return value is " << reinterpret_cast<int32_t*>(ret) << std::endl;
 
 
