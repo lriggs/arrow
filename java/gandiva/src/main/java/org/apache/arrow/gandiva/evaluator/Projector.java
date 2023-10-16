@@ -29,7 +29,6 @@ import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
-import org.apache.arrow.vector.BitVectorHelper;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
 import org.apache.arrow.vector.complex.ListVector;
@@ -415,7 +414,7 @@ public class Projector {
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
 
         //vector valid
-        logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
+        logger.error("LR Projector.java evaluate isVarlistvector Width setting vector validity buffer=" + idx);
         //outAddrs[idx] = ((ListVector) valueVector).getDataVector().getValidityBufferAddress();
         //outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
         outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
@@ -645,7 +644,8 @@ public class Projector {
           simple = 0;
         }
         */
-        int simple = 0;
+       /* int simple = 0;
+       import org.apache.arrow.vector.BitVectorHelper;
         try {
           for (int i = 0; i < selectionVectorRecordCount; i++) {
             BitVectorHelper.setBit(((ListVector) valueVector).getValidityBuffer(), i);
@@ -654,7 +654,7 @@ public class Projector {
         } catch (IndexOutOfBoundsException e) {
           simple = 0;
         }
-
+*/
         
 
 

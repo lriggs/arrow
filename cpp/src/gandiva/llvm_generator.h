@@ -98,7 +98,7 @@ class GANDIVA_EXPORT LLVMGenerator {
             llvm::BasicBlock* entry_block, llvm::Value* arg_addrs,
             llvm::Value* arg_local_bitmaps, llvm::Value* arg_holder_ptrs,
             std::vector<llvm::Value*> slice_offsets, llvm::Value* arg_context_ptr,
-            llvm::Value* loop_var);
+            llvm::Value* loop_var, llvm::Value* validity_index, llvm::Value* arg_offsets);
 
     void Visit(const VectorReadValidityDex& dex) override;
     void Visit(const VectorReadFixedLenValueDex& dex) override;
@@ -112,6 +112,7 @@ class GANDIVA_EXPORT LLVMGenerator {
     void Visit(const NonNullableFuncDex& dex) override;
     void Visit(const NullableNeverFuncDex& dex) override;
     void Visit(const NullableInternalFuncDex& dex) override;
+    //void Visit(const NullableInternalListFuncDex& dex) override;
     void Visit(const IfDex& dex) override;
     void Visit(const BooleanAndDex& dex) override;
     void Visit(const BooleanOrDex& dex) override;
@@ -182,6 +183,8 @@ class GANDIVA_EXPORT LLVMGenerator {
     std::vector<llvm::Value*> slice_offsets_;
     llvm::Value* arg_context_ptr_;
     llvm::Value* loop_var_;
+    llvm::Value* arg_offsets_;
+    llvm::Value* validity_index_var_;
     bool has_arena_allocs_;
   };
 

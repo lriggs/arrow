@@ -463,15 +463,19 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
   }
   buffers.push_back(std::move(data_buffer));
 
+
+  //LR TODO not sure this is needed.
+  ARROW_ASSIGN_OR_RAISE(auto data_valid_buffer, arrow::AllocateResizableBuffer(data_len, pool));
+
   //std::cout << "LR Projector::AllocArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
    // std::cout << "LR Projector::AllocArrayData List. There are number of buffers=" << buffers.size() << std::endl;
     auto internal_type = type->field(0)->type();
     ArrayDataPtr child_data;
     if (arrow::is_primitive(internal_type->id())) {
-      //std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
+      std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
       child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
-                                          {nullptr, std::move(buffers[2])}, 0);
+                                          {std::move(data_valid_buffer), std::move(buffers[2])}, 0);
     }
     if (arrow::is_binary_like(internal_type->id())) {
       //std::cout << "LR Projector::AllocArrayData List 2" << std::endl;

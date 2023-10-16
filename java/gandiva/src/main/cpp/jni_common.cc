@@ -643,6 +643,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
     auto validity = std::shared_ptr<arrow::Buffer>(
         new arrow::Buffer(reinterpret_cast<uint8_t*>(validity_addr), validity_size));
     buffers.push_back(validity);
+    std::cout << "LR make_record_batch_with_buf_addrs  adding validity_addr buffer=" << validity_addr << " idx=" << buf_idx - 1 << std::endl;
 
     if (buf_idx >= in_bufs_len) {
       return Status::Invalid("insufficient number of in_buf_addrs");
@@ -652,6 +653,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
     auto data = std::shared_ptr<arrow::Buffer>(
         new arrow::Buffer(reinterpret_cast<uint8_t*>(value_addr), value_size));
     buffers.push_back(data);
+    std::cout << "LR make_record_batch_with_buf_addrs  adding value_addr buffer=" << value_addr << " idx=" << buf_idx - 1 << std::endl;
 
     if (arrow::is_binary_like(field->type()->id())) {
       if (buf_idx >= in_bufs_len) {
@@ -664,6 +666,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
       auto offsets = std::shared_ptr<arrow::Buffer>(
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
+      std::cout << "LR make_record_batch_with_buf_addrs  adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
     }
 //////////
 
@@ -684,7 +687,12 @@ auto type_id = type->id();
       auto offsets = std::shared_ptr<arrow::Buffer>(
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
-
+      std::cout << "LR make_record_batch_with_buf_addrs 2a adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
+      std::cout << "LR bits are ";
+      for (int i = 0; i < 15; i++) {
+       std::cout << arrow::bit_util::GetBit(reinterpret_cast<uint8_t*>(offsets_addr), i) << ",";
+      }
+      std::cout << std::endl;
 
     if (arrow::is_binary_like(type->field(0)->type()->id())) {
       // child offsets length is internal data length + 1
@@ -696,6 +704,7 @@ auto type_id = type->id();
       auto child_offsets_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
     
       buffers.push_back(std::move(child_offsets_buffer));
+      std::cout << "LR make_record_batch_with_buf_addrs 2b adding child_offsets_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
     }
   }
 
@@ -705,17 +714,22 @@ auto type_id = type->id();
     jlong offsets_addr = in_buf_addrs[buf_idx++];
     jlong offsets_size = in_buf_sizes[sz_idx++];
     auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
-    
+    std::cout << "LR make_record_batch_with_buf_addrs 3 adding data_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
 
     //std::cout << "LR New ArrayData List" << std::endl;
     auto internal_type = type->field(0)->type();
     std::shared_ptr<arrow::ArrayData> child_data;
     if (arrow::is_primitive(internal_type->id())) {
-      //std::cout << "LR New ArrayData List 1" << std::endl;
+      std::cout << "LR New ArrayData List creating child data" << std::endl;
+      for (int i = 0; i < buffers.size(); i++) {
+        std::cout << "buffer for child data " << i << "=" << *buffers[i]->data() << std::endl;
+      }
       child_data = arrow::ArrayData::Make(internal_type, 0,
-                                          {nullptr, std::move(data_buffer)}, 0);
+                                          {std::move(buffers[2]), std::move(data_buffer)});
+      std::cout << "child_data is =" <<  child_data->buffers[0] << " 1=" << child_data->buffers[1] <<  std::endl;
     }
     if (arrow::is_binary_like(internal_type->id())) {
+      //LR TODO need this for strings I think.
       //std::cout << "LR New ArrayData List NYI 2" << std::endl;
       //child_data = arrow::ArrayData::Make(
       //    internal_type, 0,
