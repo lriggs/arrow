@@ -38,7 +38,9 @@ class FieldDescriptor {
         offsets_idx_(offsets_idx),
         data_buffer_ptr_idx_(data_buffer_ptr_idx),
         child_offsets_idx_(child_offsets_idx),
-        child_validity_idx_(child_validity_idx) {}
+        child_validity_idx_(child_validity_idx) {
+          std::cout << "LR FieldDescriptor=" << Name() << " " << data_idx_ << "," << data_buffer_ptr_idx_ << "," << child_validity_idx_ << std::endl;
+         }
 
   /// Index of validity array in the array-of-buffers
   int validity_idx() const { return validity_idx_; }
@@ -55,7 +57,9 @@ class FieldDescriptor {
   /// Index of list type child data offsets
   int child_data_offsets_idx() const { return child_offsets_idx_; }
   int child_data_validity_idx() const { return child_validity_idx_; }
-
+  void set_child_data_validity_idx(int val) {
+    child_validity_idx_ = val;
+  }
   FieldPtr field() const { return field_; }
 
   const std::string& Name() const { return field_->name(); }
