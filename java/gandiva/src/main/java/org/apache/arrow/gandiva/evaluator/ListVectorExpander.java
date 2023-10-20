@@ -17,7 +17,6 @@
 
 package org.apache.arrow.gandiva.evaluator;
 
-import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.vector.complex.ListVector;
 
 /**
@@ -39,7 +38,8 @@ public class ListVectorExpander {
     public long capacity;
     public long offsetaddress;
     public long offsetcapacity;
-    public long validityddress;
+    public long validityaddress;
+    public long outervalidityaddress;
 
     /**
      * fdsfsdfds.
@@ -49,12 +49,13 @@ public class ListVectorExpander {
      * @param offsetcap dfsfs
      * 
      */
-    public ExpandResult(long address, long capacity, long offsetad, long offsetcap, long validAdd) {
+    public ExpandResult(long address, long capacity, long offsetad, long offsetcap, long outValidAdd, long validAdd) {
       this.address = address;
       this.capacity = capacity;
       this.offsetaddress = offsetad;
       this.offsetcapacity = offsetcap;
-      this.validityddress = validAdd;
+      this.outervalidityaddress = outValidAdd;
+      this.validityaddress = validAdd;
     }
   }
 
@@ -72,26 +73,45 @@ public class ListVectorExpander {
       throw new IllegalArgumentException("invalid index " + index);
     }
 
+
+    //ArrowBuf ab = vectors[index].getValidityBuffer();
+    //String s = "Before validity = [";
+    //for (int i = 0; i < 20; i++) {
+    //  s += ab.getInt(i) + ",";
+    //}
+    //System.out.println(s);
+
+
     int valueBufferIndex = 1;
     int validBufferIndex = 0;
     ListVector vector = vectors[index];
     while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
-      vector.reAlloc();
+      //vector.reAlloc();
+      vector.getDataVector().reAlloc();
     }
     System.out.println("LR Expanding ListVector. New capacity=" +
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity());
-    System.out.println("LR Expanding ListVector. Offset data is ");
-    ArrowBuf ab = vector.getOffsetBuffer();
+    System.out.println("LR Expanding ListVector. new data is ");
+    
+    /*ArrowBuf ab2 = vector.getValidityBuffer();
+    s = "After validity = [";
+    for (int i = 0; i < 20; i++) {
+      s += ab2.getInt(i) + ",";
+    }
+    System.out.println(s);*/
+    /*ArrowBuf ab = vector.getOffsetBuffer();
     String s = "offsetBuffer = [";
     for (int i = 0; i < 20; i++) {
       s += ab.getInt(i) + ",";
     }
     System.out.println(s);
+    */
     return new ExpandResult(
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).memoryAddress(),
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity(),
         vector.getOffsetBuffer().memoryAddress(),
         vector.getOffsetBuffer().capacity(),
+        vector.getValidityBuffer().memoryAddress(),
         vector.getDataVector().getFieldBuffers().get(validBufferIndex).memoryAddress());
   }
 

@@ -91,6 +91,7 @@ static jfieldID vector_expander_ret_address_;
 static jfieldID vector_expander_ret_capacity_;
 static jfieldID list_expander_ret_address_;
 static jfieldID list_expander_valid_address_;
+static jfieldID list_expander_outer_valid_address_;
 static jfieldID list_expander_ret_capacity_;
 static jfieldID list_expander_offset_ret_address_;
 static jfieldID list_expander_offset_ret_capacity_;
@@ -166,7 +167,9 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   list_expander_offset_ret_capacity_ =
       env->GetFieldID(list_expander_ret_class_, "offsetcapacity", "J");
   list_expander_valid_address_ =
-      env->GetFieldID(list_expander_ret_class_, "validityddress", "J");
+      env->GetFieldID(list_expander_ret_class_, "validityaddress", "J");
+  list_expander_outer_valid_address_ =
+      env->GetFieldID(list_expander_ret_class_, "outervalidityaddress", "J");
 
   jclass local_cache_class =
       env->FindClass("org/apache/arrow/gandiva/evaluator/JavaSecondaryCacheInterface");
@@ -643,7 +646,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
     auto validity = std::shared_ptr<arrow::Buffer>(
         new arrow::Buffer(reinterpret_cast<uint8_t*>(validity_addr), validity_size));
     buffers.push_back(validity);
-    std::cout << "LR make_record_batch_with_buf_addrs  adding validity_addr buffer=" << validity_addr << " idx=" << buf_idx - 1 << std::endl;
+    //std::cout << "LR make_record_batch_with_buf_addrs  adding validity_addr buffer=" << validity_addr << " idx=" << buf_idx - 1 << std::endl;
 
     if (buf_idx >= in_bufs_len) {
       return Status::Invalid("insufficient number of in_buf_addrs");
@@ -653,7 +656,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
     auto data = std::shared_ptr<arrow::Buffer>(
         new arrow::Buffer(reinterpret_cast<uint8_t*>(value_addr), value_size));
     buffers.push_back(data);
-    std::cout << "LR make_record_batch_with_buf_addrs  adding value_addr buffer=" << value_addr << " idx=" << buf_idx - 1 << std::endl;
+   // std::cout << "LR make_record_batch_with_buf_addrs  adding value_addr buffer=" << value_addr << " idx=" << buf_idx - 1 << std::endl;
 
     if (arrow::is_binary_like(field->type()->id())) {
       if (buf_idx >= in_bufs_len) {
@@ -666,7 +669,7 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
       auto offsets = std::shared_ptr<arrow::Buffer>(
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
-      std::cout << "LR make_record_batch_with_buf_addrs  adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
+     // std::cout << "LR make_record_batch_with_buf_addrs  adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
     }
 //////////
 
@@ -687,12 +690,12 @@ auto type_id = type->id();
       auto offsets = std::shared_ptr<arrow::Buffer>(
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
-      std::cout << "LR make_record_batch_with_buf_addrs 2a adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
-      std::cout << "LR bits are ";
-      for (int i = 0; i < 15; i++) {
-       std::cout << arrow::bit_util::GetBit(reinterpret_cast<uint8_t*>(offsets_addr), i) << ",";
-      }
-      std::cout << std::endl;
+     // std::cout << "LR make_record_batch_with_buf_addrs 2a adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
+     // std::cout << "LR bits are ";
+    //  for (int i = 0; i < 15; i++) {
+    //   std::cout << arrow::bit_util::GetBit(reinterpret_cast<uint8_t*>(offsets_addr), i) << ",";
+    //  }
+    //  std::cout << std::endl;
 
     if (arrow::is_binary_like(type->field(0)->type()->id())) {
       // child offsets length is internal data length + 1
@@ -704,7 +707,7 @@ auto type_id = type->id();
       auto child_offsets_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
     
       buffers.push_back(std::move(child_offsets_buffer));
-      std::cout << "LR make_record_batch_with_buf_addrs 2b adding child_offsets_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
+     // std::cout << "LR make_record_batch_with_buf_addrs 2b adding child_offsets_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
     }
   }
 
@@ -714,19 +717,19 @@ auto type_id = type->id();
     jlong offsets_addr = in_buf_addrs[buf_idx++];
     jlong offsets_size = in_buf_sizes[sz_idx++];
     auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
-    std::cout << "LR make_record_batch_with_buf_addrs 3 adding data_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
+   // std::cout << "LR make_record_batch_with_buf_addrs 3 adding data_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
 
     //std::cout << "LR New ArrayData List" << std::endl;
     auto internal_type = type->field(0)->type();
     std::shared_ptr<arrow::ArrayData> child_data;
     if (arrow::is_primitive(internal_type->id())) {
-      std::cout << "LR New ArrayData List creating child data" << std::endl;
-      for (int i = 0; i < buffers.size(); i++) {
-        std::cout << "buffer for child data " << i << "=" << *buffers[i]->data() << std::endl;
-      }
+    //  std::cout << "LR New ArrayData List creating child data" << std::endl;
+    //  for (int i = 0; i < buffers.size(); i++) {
+     //   std::cout << "buffer for child data " << i << "=" << *buffers[i]->data() << std::endl;
+     // }
       child_data = arrow::ArrayData::Make(internal_type, 0,
                                           {std::move(buffers[2]), std::move(data_buffer)});
-      std::cout << "child_data is =" <<  child_data->buffers[0] << " 1=" << child_data->buffers[1] <<  std::endl;
+     // std::cout << "child_data is =" <<  child_data->buffers[0] << " 1=" << child_data->buffers[1] <<  std::endl;
     }
     if (arrow::is_binary_like(internal_type->id())) {
       //LR TODO need this for strings I think.
@@ -966,6 +969,7 @@ Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
     jlong offset_ret_address = env_->GetLongField(ret, list_expander_offset_ret_address_);
     jlong offset_ret_capacity = env_->GetLongField(ret, list_expander_offset_ret_capacity_);
     jlong valid_address = env_->GetLongField(ret, list_expander_valid_address_);
+    jlong outer_valid_address = env_->GetLongField(ret, list_expander_outer_valid_address_);
 
     std::cout << "Buffer expand: New capacity is " << new_capacity  <<
     " vector id " << vector_idx_ << " expander method " << method_ <<
@@ -980,6 +984,7 @@ Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
     offsetCapacity = offset_ret_capacity;
     std::cout << "LR Setting buffer validityBuffer to " << validityBuffer << std::endl;
     validityBuffer = reinterpret_cast<uint8_t*>(valid_address);
+    outerValidityBuffer = reinterpret_cast<uint8_t*>(outer_valid_address);
   } else {
     jlong ret_address = env_->GetLongField(ret, vector_expander_ret_address_);
     jlong ret_capacity = env_->GetLongField(ret, vector_expander_ret_capacity_);
@@ -1066,15 +1071,15 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     << in_batch->ToString()
     << " there are " << out_bufs_len << " buffers "
     << std::endl;*/
-    std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
-    << " there are " << out_bufs_len << " buffers "
-    << std::endl;
-    for (int i = 0; i < out_bufs_len; i++) {
-      std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
-      << " buffer " << i 
-      << "length " << out_sizes[i]
-      << std::endl;
-    }
+    //std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
+    //<< " there are " << out_bufs_len << " buffers "
+    //<< std::endl;
+    //for (int i = 0; i < out_bufs_len; i++) {
+    //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector "
+    //  << " buffer " << i 
+    //  << "length " << out_sizes[i]
+    //  << std::endl;
+   // }
   
     std::shared_ptr<gandiva::SelectionVector> selection_vector;
     auto selection_buffer = std::make_shared<arrow::Buffer>(
@@ -1111,14 +1116,14 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     for (FieldPtr field : ret_types) {
       std::vector<std::shared_ptr<arrow::Buffer>> buffers;
 
-      std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -2 adding buffer idx=" << buf_idx << std::endl;
+    //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -2 adding buffer idx=" << buf_idx << std::endl;
       CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
       uint8_t* validity_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
       jlong bitmap_sz = out_sizes[sz_idx++];
       buffers.push_back(std::make_shared<arrow::MutableBuffer>(validity_buf, bitmap_sz));
 
       if (arrow::is_binary_like(field->type()->id())) {
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -1 adding bufferbuffer idx=" << buf_idx << std::endl;
+      //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector -1 adding bufferbuffer idx=" << buf_idx << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* offsets_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         jlong offsets_sz = out_sizes[sz_idx++];
@@ -1137,13 +1142,13 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
           break;
         }
 
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 1 adding buffer buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
+     //   std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 1 adding buffer buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
         buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
       } else if (field->type()->id() == arrow::Type::LIST) {
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 2 adding list offset buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
-        std::cout  << " size=" << out_sizes[sz_idx - 1] << " outsize index=" << sz_idx - 1 << " address " << out_bufs[buf_idx - 1] 
-          << " output_vector_idx=" << output_vector_idx << std::endl;
+     //   std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 2 adding list offset buffer idx=" << buf_idx - 1 << " size=" << data_sz << std::endl;
+      //  std::cout  << " size=" << out_sizes[sz_idx - 1] << " outsize index=" << sz_idx - 1 << " address " << out_bufs[buf_idx - 1] 
+     //     << " output_vector_idx=" << output_vector_idx << std::endl;
           buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
       } else {
@@ -1164,19 +1169,20 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         
 
         //LR TODO the two buffers...
+        //LR TODO maybe should all be mutable buffers except for the data buffer?
 
         data_sz = out_sizes[sz_idx++];
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding child nbuffer " << buf_idx 
-          << " size=" << data_sz << std::endl;
+      //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding child nbuffer " << buf_idx 
+       //   << " size=" << data_sz << std::endl;
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
         child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
             env, jListExpander, listvector_expander_method_, output_vector_idx, child_offset_buf, data_sz));
 
         
-        std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding child buffer " << buf_idx 
-          << " size=" << out_sizes[sz_idx] << " outsize index=" << sz_idx << " address " << out_bufs[buf_idx] 
-          << " output_vector_idx=" << output_vector_idx << std::endl;
+      //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 4 adding child buffer " << buf_idx 
+       //   << " size=" << out_sizes[sz_idx] << " outsize index=" << sz_idx << " address " << out_bufs[buf_idx] 
+       //   << " output_vector_idx=" << output_vector_idx << std::endl;
         data_sz = out_sizes[sz_idx++];
         CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
         uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
@@ -1186,6 +1192,8 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         outBufJava->offsetBuffer = reinterpret_cast<uint8_t*>(out_bufs[1]);
         outBufJava->offsetCapacity = out_sizes[1];
         outBufJava->validityBuffer = reinterpret_cast<uint8_t*>(out_bufs[2]);
+        //LR TODO ? 
+        outBufJava->outerValidityBuffer = reinterpret_cast<uint8_t*>(out_bufs[0]);
         child_buffers.push_back(outBufJava);
 
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
@@ -1278,6 +1286,9 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
 
       out_bufs[2] = (jlong) outBufJava->validityBuffer;
       out_sizes[2] = (jlong) outBufJava->offsetCapacity;
+
+      out_bufs[0] = (jlong) outBufJava->outerValidityBuffer;
+      out_sizes[0] = (jlong) outBufJava->offsetCapacity;
 
       env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
       env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);

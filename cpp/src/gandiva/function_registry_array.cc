@@ -29,7 +29,7 @@ std::vector<NativeFunction> GetArrayFunctionRegistry() {
                      kResultNullIfNull, "array_utf8_length",
                      NativeFunction::kNeedsContext | NativeFunction::kCanReturnErrors),
       NativeFunction("array_containsGandiva", {}, DataTypeVector{list(int32()), int32()},
-                     boolean(), kResultNullIfNull, "array_int32_contains_int32",
+                     boolean(), kResultNullInternal, "array_int32_contains_int32",
                      NativeFunction::kNeedsContext),
       NativeFunction("array_contains", {}, DataTypeVector{list(int32()), int32()},
                      boolean(), kResultNullIfNull, "array_int32_contains_int32",

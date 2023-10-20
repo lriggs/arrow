@@ -203,7 +203,7 @@ int32_t gdv_fn_populate_list_int32_t_vector(int64_t context_ptr, int8_t* data_pt
     int SCALE = 4;
     auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);              
     int32_t offset = static_cast<int32_t>(buffer->size());                          
-    std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                           
+    //std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                           
     auto status = buffer->Resize(offset + entry_len * SCALE, false /*shrink*/);     
     if (!status.ok()) {                                                             
       gandiva::ExecutionContext* context =                                          
@@ -211,23 +211,23 @@ int32_t gdv_fn_populate_list_int32_t_vector(int64_t context_ptr, int8_t* data_pt
       context->set_error_msg(status.message().c_str());                             
       return -1;                                                                    
     }                                                                              
-    std::cout << "LR gdv_fn_populate_list_ 2 valid_ptr" << valid_ptr << std::endl;  
-    std::cout << "LR gdv_fn_populate_list_ " << buffer << " " << offset; \
-    std::cout << " " << entry_len << " " << SCALE << "]]" << std::endl; \
+    //std::cout << "LR gdv_fn_populate_list_ 2 valid_ptr" << valid_ptr << std::endl;  
+    //std::cout << "LR gdv_fn_populate_list_ " << buffer << " " << offset; 
+    //std::cout << " " << entry_len << " " << SCALE << "]]" << std::endl; 
     memcpy(buffer->mutable_data() + offset, (char*)entry_buf, entry_len * SCALE);   
-    std::cout << "LR gdv_fn_populate_list_ 3 entry_buf=" << entry_buf << "]" << std::endl;                         
-    std::cout << "LR gdv_fn_populate_list_ 3a entry_len=" << entry_len << " &entry_len=" << &entry_len << "]" << std::endl;           
-    std::cout << "LR gdv_fn_populate_list_ 4 buffer->validityBuffer=" << reinterpret_cast<int32_t*>(buffer->validityBuffer) << "]" << std::endl;                         
+    //std::cout << "LR gdv_fn_populate_list_ 3 entry_buf=" << entry_buf << "]" << std::endl;                         
+    //std::cout << "LR gdv_fn_populate_list_ 3a entry_len=" << entry_len << " &entry_len=" << &entry_len << "]" << std::endl;           
+    //std::cout << "LR gdv_fn_populate_list_ 4 buffer->validityBuffer=" << reinterpret_cast<int32_t*>(buffer->validityBuffer) << "]" << std::endl;                         
     //int v[6] = {255, 255, 255, 255, 255, 255}; 
-    std::cout << "LR gdv_fn_populate_list_ 5 valid_ptr="  << valid_ptr << " *valid_ptr=" << *valid_ptr << std::endl;                          
+                         
     int validbitIndex = offset / SCALE;   
+    //std::cout << "LR gdv_fn_populate_list_ 5 valid_ptr="  << valid_ptr << " *valid_ptr=" << *valid_ptr <<  " validbitIndex=" << validbitIndex << std::endl; 
     //int newValidSize = validbitIndex + entry_len;   
     
-    //TODO need to iterate over bits in valid_ptr since bitset rewuires compile time size.
-    std::bitset<10> bs((unsigned long)(*valid_ptr));                                                   
+    //LR TODO just copy?
     for (int i = 0; i < entry_len; i++) {         
 
-      arrow::bit_util::SetBitTo(buffer->validityBuffer, validbitIndex + i, bs[i]);     
+      arrow::bit_util::SetBitTo(buffer->validityBuffer, validbitIndex + i, arrow::bit_util::GetBit(reinterpret_cast<uint8_t*>(valid_ptr), i));     
     } 
     
     
@@ -240,11 +240,11 @@ int32_t gdv_fn_populate_list_int32_t_vector(int64_t context_ptr, int8_t* data_pt
     std::bitset<newValidSize> existingBits2(buffer->validityBuffer);     
     std::cout << "LR bitset of existingBits2 " << existingBits2 << std::endl; 
     */                  
-    std::cout << "LR bitset of valid ptr is " << bs << std::endl;                   
+    //std::cout << "LR bitset of valid ptr is " << bs << std::endl;                   
     offsets = reinterpret_cast<int32_t*>(buffer->offsetBuffer);                     
     offsets[slot] = offset / SCALE;                                                 
     offsets[slot + 1] = offset / SCALE + entry_len;                                 
-    std::cout << "LR gdv_fn_populate_list_ Done" << std::endl;                      
+    //std::cout << "LR gdv_fn_populate_list_ Done" << std::endl;                      
     return 0;                                                                     
   }
 

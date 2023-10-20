@@ -39,7 +39,7 @@ class FieldDescriptor {
         data_buffer_ptr_idx_(data_buffer_ptr_idx),
         child_offsets_idx_(child_offsets_idx),
         child_validity_idx_(child_validity_idx) {
-          std::cout << "LR FieldDescriptor=" << Name() << " " << data_idx_ << "," << data_buffer_ptr_idx_ << "," << child_validity_idx_ << std::endl;
+          //std::cout << "LR FieldDescriptor=" << Name() << " " << data_idx_ << "," << data_buffer_ptr_idx_ << "," << child_validity_idx_ << std::endl;
          }
 
   /// Index of validity array in the array-of-buffers
