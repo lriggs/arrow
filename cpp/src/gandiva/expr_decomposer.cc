@@ -38,7 +38,7 @@ namespace gandiva {
 Status ExprDecomposer::Visit(const FieldNode& node) {
   auto desc = annotator_.CheckAndAddInputFieldDescriptor(node.field());
 
-  std::cout << "LR ExprDecomposer" << std::endl;
+  //std::cout << "LR ExprDecomposer" << std::endl;
   DexPtr validity_dex = std::make_shared<VectorReadValidityDex>(desc);
   DexPtr value_dex;
   if (desc->HasChildOffsetsIdx()) {

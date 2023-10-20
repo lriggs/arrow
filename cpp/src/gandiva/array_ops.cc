@@ -49,38 +49,30 @@ bool array_utf8_contains_utf8(int64_t context_ptr, const char* entry_buf,
 }
 
 bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
-                              int32_t entry_offsets_len,
-                              int32_t contains_data) {
-  //std::cout << "LR array_int32_contains_int32 offset length=" << entry_offsets_len << std::endl;
-  for (int i = 0; i < entry_offsets_len; i++) {
-    //std::cout << "LR going to check " << entry_buf + i << std::endl;
-    //LR TODO 
-    int32_t entry_len = *(entry_buf + i);
-    //coming as int64 for some reason. *2
-    //int32_t entry_len = *(entry_buf + (i * 2));
-    //std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
-    if (entry_len == contains_data) {
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
+                              int32_t contains_data, bool entry_validWhat, 
+                              int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_row) {
+    if (!combined_row_validity) {
+    *valid_row = false;
+    return false;
+  }
+  *valid_row = true;
+
+  const int32_t* entry_validityAdjusted = entry_validity - (loop_var );
+  int64_t validityBitIndex = validity_index_var - entry_len;
+  
+  for (int i = 0; i < entry_len; i++) {
+    if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(entry_validityAdjusted), validityBitIndex + i)) {
+      continue;
+    }
+    int32_t entry_val = *(entry_buf + i);
+    if (entry_val == contains_data) {
       return true;
     }
   }
   return false;
 }
-
-bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
-                              int32_t entry_offsets_len,
-                              int64_t contains_data) {
-  //std::cout << "LR array_int64_contains_int64 offset length=" << entry_offsets_len << std::endl;
-  for (int i = 0; i < entry_offsets_len; i++) {
-    //std::cout << "LR going to check " << entry_buf + i << std::endl;
-    int64_t entry_len = *(entry_buf + (i*2));  //LR TODO sizeof int64?
-    //std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
-    if (entry_len == contains_data) {
-      return true;
-    }
-  }
-  return false;
-}
-
 
 int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int32_t* out_len) {
   //std::cout << "LR array_int32_make_array offset data=" << contains_data << std::endl;
@@ -96,50 +88,44 @@ int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int3
   //return reinterpret_cast<int32_t*>(ret);
   return reinterpret_cast<int32_t*>(ret);
 }
-/*
-int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
-                              int32_t entry_offsets_len, int32_t remove_data, int32_t* out_len) {
-  //std::cout << "LR array_int32_remove data=" << remove_data 
-  //  << " entry_offsets_len " << entry_offsets_len << std::endl;
 
-  //LR sizes are HACK
-  int* integers = new int[5];
-  int j = 0;
-  for (int i = 0; i < entry_offsets_len; i++) {
-    //std::cout << "LR going to check " << entry_buf + i << std::endl;
-    int32_t entry_len = *(entry_buf + (i * 1));
-    //std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
-    if (entry_len == remove_data) {
+bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
+                              int64_t contains_data, bool entry_validWhat, 
+                              int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_row) {
+  //std::cout << "LR array_int64_contains_int64 offset length=" << entry_offsets_len << std::endl;
+  if (!combined_row_validity) {
+    *valid_row = false;
+    return false;
+  }
+  *valid_row = true;
+
+  const int32_t* entry_validityAdjusted = entry_validity - (loop_var );
+  int64_t validityBitIndex = validity_index_var - entry_len;
+
+  for (int i = 0; i < entry_len; i++) {
+    if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(entry_validityAdjusted), validityBitIndex + i)) {
       continue;
-    } else {
-      integers[j++] = entry_len;
+    }
+    int64_t entry_len = *(entry_buf + (i*2));  //LR TODO sizeof int64?
+    //std::cout << "LR checking value " << entry_len << " against target " << contains_data << std::endl;
+    if (entry_len == contains_data) {
+      return true;
     }
   }
-
-  *out_len = 5;// * 4;
-  //length is number of items, but buffers must account for byte size.
-  uint8_t* ret = gdv_fn_context_arena_malloc(context_ptr, *out_len * 4);
-  memcpy(ret, integers, *out_len * 4);
-  //std::cout << "LR made a buffer length" << *out_len * 4 << " item 3 is = " << int32_t(ret[3*4]) << std::endl; 
-
-  delete [] integers;
-  //return reinterpret_cast<int32_t*>(ret);
-  return reinterpret_cast<int32_t*>(ret);
+  return false;
 }
-*/
-
-
-
 
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
-                              int32_t entry_offsets_len, const int32_t* notSureWhatThisIs, bool combined_validity,
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
                               int32_t remove_data, bool entry_validWhat, 
-                              /*const int32_t* array_valid_bits,*/ int64_t loop_var, int64_t validity_index_var, const int64_t* offsets,
-                              bool* valid_buf, int32_t* out_len, int32_t** valid_ptr) {
+                              /*const int32_t* array_valid_bits,*/ int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_row, int32_t* out_len, int32_t** valid_ptr) {
   //std::cout << "LR array_int32_remove data=" << remove_data 
   //  << " entry_offsets_len " << entry_offsets_len << std::endl;
 
-  std::cout << "LR array_int32_remove " << loop_var << std::endl;
+  //std::cout << "LR array_int32_remove " << loop_var << std::endl;
   std::vector<int> newInts;
   
   
@@ -162,13 +148,17 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
     }
   }*/
 
-  std::cout << "LR entry_buf=" << entry_buf << " *entry_buf=" << entry_buf << std::endl;
-  std::cout << "LR notSureWhatThisIs=" << notSureWhatThisIs << " *notSureWhatThisIs=" << *notSureWhatThisIs << std::endl;
-  std::cout << "LR combined_validity=" << combined_validity << " entry_validWhat=" << entry_validWhat << " validity_index_var=" << validity_index_var << std::endl;
+  //std::cout << "LR entry_buf=" << entry_buf << " *entry_buf=" << entry_buf << std::endl;
+  //std::cout << "LR notSureWhatThisIs=" << notSureWhatThisIs << " *notSureWhatThisIs=" << *notSureWhatThisIs << std::endl;
+  std::cout << "LR combined_row_validity=" << combined_row_validity << " entry_validWhat=" << entry_validWhat << " validity_index_var=" << validity_index_var << 
+  " entry_validity=" << entry_validity << std::endl;
   //<< " *notSureWhatThisIs=" << *notSureWhatThisIs << std::endl;
-  const int32_t* notSureWhatThisIsAdjusted = notSureWhatThisIs - (loop_var );
-  std::bitset<15> maybeInputBits (*notSureWhatThisIsAdjusted);
-  std::cout << "LR maybeInputBits=" << maybeInputBits << std::endl;
+
+  //LR TODO not sure what entry_validWhat is.
+  //LR TODO I'm not sure why entry_validty increases for each loop. It starts as the pointer to the validity buffer, so adjust here.
+  const int32_t* entry_validityAdjusted = entry_validity - (loop_var );
+  //std::bitset<15> maybeInputBits (*notSureWhatThisIsAdjusted);
+  //std::cout << "LR maybeInputBits=" << maybeInputBits << std::endl;
 
 
   int64_t validityBitIndex = 0;
@@ -176,12 +166,14 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
   //  validityBitIndex += *(offsets + i);
   //  std::cout << "LR i=" << i << " adding offset " << *(offsets + i) << " offset is " << offsets << std::endl;
   //}
-validityBitIndex = validity_index_var - entry_offsets_len;
+
+  //The validity index already has the current row length added to it, so decrement.
+validityBitIndex = validity_index_var - entry_len;
   //TODO temp until the buffer is worked out.
   //validityBitIndex -= (loop_var);
   
 
-  std::cout << "Using validityBitIndex=" << validityBitIndex << std::endl;
+  //std::cout << "Using validityBitIndex=" << validityBitIndex << std::endl;
 
 
 
@@ -189,17 +181,16 @@ validityBitIndex = validity_index_var - entry_offsets_len;
   //std::bitset<10> outputValidBits;
   
   std::vector<bool> outValid;
-  for (int i = 0; i < entry_offsets_len; i++) {
+  for (int i = 0; i < entry_len; i++) {
     //std::cout << "LR going to check " << entry_buf + i << std::endl;
     int32_t entry_item = *(entry_buf + (i * 1));
     //std::cout << "LR checking value " << entry_len << " against target " << remove_data << std::endl;
     if (entry_item == remove_data) {
-      outValid.push_back(false);
-      newInts.push_back(42);
-      //outputValidBits[i] = 0;
-       entry_validWhat = false;
+      //outValid.push_back(false);
+      //newInts.push_back(42);
+      //entry_validWhat = false;
     //TODO temp until buffer is worked out } else if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(array_valid_bits), validityBitIndex + i)) {
-      } else if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(notSureWhatThisIsAdjusted), validityBitIndex + i)) {
+      } else if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(entry_validityAdjusted), validityBitIndex + i)) {
       outValid.push_back(false);
       newInts.push_back(0);
       //outputValidBits[i] = 0; 
@@ -227,25 +218,25 @@ validityBitIndex = validity_index_var - entry_offsets_len;
   //std::cout << "LR made a buffer length" << *out_len * 4 << " item 3 is = " << int32_t(ret[3*4]) << std::endl; 
 
 
-  *valid_buf = true;
+  *valid_row = true;
 
 
   //unsigned long ll = outputValidBits.to_ulong();
-  if (!combined_validity) {
+  if (!combined_row_validity) {
     //ll = 0;
     *out_len = 0;
-    *valid_buf = false;  //this one is what works for the top level validity.
+    *valid_row = false;  //this one is what works for the top level validity.
     entry_validWhat = false;
   }
   //LR no need, set along the way. memcpy(validRet, &ll, 1);
   //*valid_len = 1;
-  std::cout << "LR valid_buf is " << valid_buf << std::endl;
+  //std::cout << "LR valid_buf is " << valid_buf << std::endl;
   //std::cout << "LR outputValidBits is " << outputValidBits << std::endl;
   //valid_buf = reinterpret_cast<bool*>(validRet);
 
   *valid_ptr = reinterpret_cast<int32_t*>(validRet);
-  std::cout << "LR setting valid_ptr=" << valid_ptr << " *valid_ptr=" << *valid_ptr << " **valid_ptr=" << **valid_ptr << " valid_ptr bitset data is " << std::bitset<8>(**valid_ptr) 
-    << " return value is " << reinterpret_cast<int32_t*>(ret) << std::endl;
+  //std::cout << "LR setting valid_ptr=" << valid_ptr << " *valid_ptr=" << *valid_ptr << " **valid_ptr=" << **valid_ptr << " valid_ptr bitset data is " << std::bitset<8>(**valid_ptr) 
+  //  << " return value is " << reinterpret_cast<int32_t*>(ret) << std::endl;
 
 
   //return reinterpret_cast<int32_t*>(ret);
@@ -284,9 +275,16 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
                                   reinterpret_cast<void*>(array_utf8_contains_utf8));
 
   args = {types->i64_type(),      // int64_t execution_context
-          types->i32_ptr_type(),   // int8_t* data ptr
-          types->i32_type(),      // int32_t child offsets length
-          types->i32_type()};     // int32_t contains data length
+          types->i64_ptr_type(),   // int8_t* data ptr
+          types->i32_type(),      // int32_t data length
+          types->i32_ptr_type(),   // input validity buffer
+          types->i1_type(),   // bool input row validity
+          types->i32_type(),     // int32_t value to check for
+          types->i1_type(),   // bool validity --Needed?
+          types->i64_type(),      //in loop var  --Needed?
+          types->i64_type(),      //in validity_index_var index into the valdity vector for the current row.
+          types->i1_ptr_type()   //output validity for the row
+          };
 
   engine->AddGlobalMappingForFunc("array_int32_contains_int32",
                                   types->i1_type() /*return_type*/, args,
@@ -294,8 +292,15 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
 
   args = {types->i64_type(),      // int64_t execution_context
           types->i64_ptr_type(),   // int8_t* data ptr
-          types->i32_type(),      // int32_t child offsets length
-          types->i64_type()};     // int32_t contains data length
+          types->i32_type(),      // int32_t data length
+          types->i32_ptr_type(),   // input validity buffer
+          types->i1_type(),   // bool input row validity
+          types->i64_type(),     // int32_t value to check for
+          types->i1_type(),   // bool validity --Needed?
+          types->i64_type(),      //in loop var  --Needed?
+          types->i64_type(),      //in validity_index_var index into the valdity vector for the current row.
+          types->i1_ptr_type()   //output validity for the row
+          };
 
   engine->AddGlobalMappingForFunc("array_int64_contains_int64",
                                   types->i1_type() /*return_type*/, args,
@@ -311,19 +316,17 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
                                   reinterpret_cast<void*>(array_int32_make_array));
 
   args = {types->i64_type(),      // int64_t execution_context
-          types->i32_ptr_type(),   // int8_t* data ptr
-          types->i32_type(),      // int32_t child offsets length
-          types->i32_ptr_type(),   // Not Sure???
-          types->i1_type(),   // bool validity
+          types->i32_ptr_type(),   // int8_t* input data ptr
+          types->i32_type(),      // int32_t  input length
+          types->i32_ptr_type(),   // input validity buffer
+          types->i1_type(),   // bool input row validity
           types->i32_type(),      //value to remove from input
-          types->i1_type(),   // bool validity
-          //types->i32_ptr_type(), //in validity bitmap
-          types->i64_type(),      //in loop var
-          types->i64_type(),      //in validity_index_var
-          types->i64_ptr_type(), //in offsets
-          types->i1_ptr_type(),   //valid buffer
-          types->i32_ptr_type(),   // out array length
-          types->i32_ptr_type()  //valid_ptr
+          types->i1_type(),   // bool validity --Needed?
+          types->i64_type(),      //in loop var  --Needed?
+          types->i64_type(),      //in validity_index_var index into the valdity vector for the current row.
+          types->i1_ptr_type(),   //output validity for the row
+          types->i32_ptr_type(),   // output array length
+          types->i32_ptr_type()  //output pointer to new validity buffer
           
         };
 

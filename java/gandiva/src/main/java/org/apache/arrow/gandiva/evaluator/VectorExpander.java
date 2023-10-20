@@ -57,6 +57,7 @@ public class VectorExpander {
       throw new IllegalArgumentException("invalid index " + index);
     }
 
+    System.out.println("LR Expanding VectorExpander.");
     BaseVariableWidthVector vector = vectors[index];
     while (vector.getDataBuffer().capacity() < toCapacity) {
       vector.reallocDataBuffer();

@@ -394,7 +394,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
       array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
                                           array_data->buffers, {new_child_data},
                                           array_data->null_count, array_data->offset);
-      std::cout << "LR Making array data length " << array_data->length << std::endl;
+     // std::cout << "LR Making array data length " << array_data->length << std::endl;
     }
 
     output->push_back(arrow::MakeArray(array_data));
@@ -473,7 +473,7 @@ Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
     auto internal_type = type->field(0)->type();
     ArrayDataPtr child_data;
     if (arrow::is_primitive(internal_type->id())) {
-      std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
+      //std::cout << "LR Projector::AllocArrayData List 1" << std::endl;
       child_data = arrow::ArrayData::Make(internal_type, 0 /*initialize length*/,
                                           {std::move(data_valid_buffer), std::move(buffers[2])}, 0);
     }

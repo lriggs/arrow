@@ -36,12 +36,16 @@ int64_t array_utf8_length(int64_t context_ptr, const char* entry_buf,
                           int32_t* entry_child_offsets, int32_t entry_offsets_len);
 GANDIVA_EXPORT
 bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
-                              int32_t entry_offsets_len,
-                              int32_t contains_data);
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
+                              int32_t contains_data, bool entry_validWhat, 
+                              int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_buf);
 GANDIVA_EXPORT
 bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
-                              int32_t entry_offsets_len,
-                              int64_t contains_data);
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
+                              int64_t contains_data, bool entry_validWhat, 
+                              int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_buf);
 
 GANDIVA_EXPORT
 int32_t* array_int32_make_array(int64_t context_ptr, 
@@ -50,17 +54,9 @@ int32_t* array_int32_make_array(int64_t context_ptr,
 
 GANDIVA_EXPORT
 int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
-                              int32_t entry_offsets_len,
-                              const int32_t* notSureWhatThisIs,
-                              bool entry_valid, 
-                              int32_t remove_data,
-                              bool entry_validWhat,
-                              //const int32_t* array_valid_bits,
-                              int64_t loop_var,
-                              int64_t validity_index_var,
-                              const int64_t* offsets,
-                              bool* valid_buf,
-                              int32_t* out_len,
-                              int32_t** valid_ptr);
+                              int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
+                              int32_t remove_data, bool entry_validWhat, 
+                              int64_t loop_var, int64_t validity_index_var,
+                              bool* valid_buf, int32_t* out_len, int32_t** valid_ptr);
 
 }

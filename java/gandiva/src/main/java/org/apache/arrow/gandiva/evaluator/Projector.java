@@ -27,7 +27,6 @@ import org.apache.arrow.gandiva.expression.ExpressionTree;
 import org.apache.arrow.gandiva.ipc.GandivaTypes;
 import org.apache.arrow.gandiva.ipc.GandivaTypes.SelectionVectorType;
 import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.memory.ReferenceManager;
 import org.apache.arrow.vector.BaseVariableWidthVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
@@ -547,7 +546,7 @@ public class Projector {
 
 
 
-        
+        /*
         String s = "";
         List<ArrowBuf> fv = ((ListVector) valueVector).getDataVector().getFieldBuffers();
         for (ArrowBuf ab : fv) {
@@ -574,20 +573,25 @@ public class Projector {
         }
         logger.error("LR Projector.java before updating listvector. getOffsetBuffer=" +
             fvvv.capacity() + " buffer=" + s);
-        
+        */
+
+
+
+
+
       
-        ((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount * 5);
+        //((ListVector) valueVector).getDataVector().setValueCount(selectionVectorRecordCount * 5);
 
         ((ListVector) valueVector).setLastSet(selectionVectorRecordCount - 1);
 
-
+        /*
         ArrowBuf mabb2 = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
         s = "validity? buffer mabb2, outAddrs[2]=";
         for (int i = 0; i < 20; i++) {
           s += mabb2.getInt(i) + ",";
         }
         System.out.println(s);
-
+        */
         /*
         //Validity then data.
         ArrowBuf abb = new ArrowBuf(ReferenceManager.NO_OP, null, outSizes[2], outAddrs[2]);
