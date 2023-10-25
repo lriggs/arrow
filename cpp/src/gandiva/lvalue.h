@@ -33,7 +33,6 @@ class GANDIVA_EXPORT LValue {
   explicit LValue(llvm::Value* data, llvm::Value* length = NULLPTR,
                   llvm::Value* validity = NULLPTR)
       : data_(data), length_(length), validity_(validity) {
-        //std::cout << "LR created LValue " << to_string() << std::endl;
       }
   virtual ~LValue() = default;
 
@@ -45,7 +44,6 @@ class GANDIVA_EXPORT LValue {
 
   // Append the params required when passing this as a function parameter.
   virtual void AppendFunctionParams(std::vector<llvm::Value*>* params) {
-   // std::cout << "LR LValue::AppendFunctionParams" << std::endl;
     params->push_back(data_);
     if (length_ != NULLPTR) {
       params->push_back(length_);
@@ -112,7 +110,6 @@ class GANDIVA_EXPORT ListLValue : public LValue {
       : LValue(data, NULLPTR, validity),
         child_offsets_(child_offsets),
         offsets_length_(offsets_length) {
-          //std::cout << "LR Creating ListLValue " << std::endl;
         }
 
   llvm::Value* child_offsets() { return child_offsets_; }
@@ -120,7 +117,6 @@ class GANDIVA_EXPORT ListLValue : public LValue {
   llvm::Value* offsets_length() { return offsets_length_; }
 
   void AppendFunctionParams(std::vector<llvm::Value*>* params) override {
-   // std::cout << "LR ListLValue::AppendFunctionParams" << std::endl;
     LValue::AppendFunctionParams(params);
     params->push_back(child_offsets_);
     params->push_back(offsets_length_);

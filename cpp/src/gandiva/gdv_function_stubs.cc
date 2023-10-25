@@ -166,7 +166,6 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
                                                TYPE* entry_buf, int32_t entry_len, int32_t** valid_ptr) {  \
     auto buffer = reinterpret_cast<arrow::ResizableBuffer*>(data_ptr);                \
     int32_t offset = static_cast<int32_t>(buffer->size());                            \
-    std::cout << "LR gdv_fn_populate_list_" << slot << std::endl;                     \
     auto status = buffer->Resize(offset + entry_len * SCALE, false /*shrink*/);       \
     if (!status.ok()) {                                                               \
       gandiva::ExecutionContext* context =                                            \
