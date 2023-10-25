@@ -690,13 +690,6 @@ auto type_id = type->id();
       auto offsets = std::shared_ptr<arrow::Buffer>(
           new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
       buffers.push_back(offsets);
-     // std::cout << "LR make_record_batch_with_buf_addrs 2a adding offsets_addr buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
-     // std::cout << "LR bits are ";
-    //  for (int i = 0; i < 15; i++) {
-    //   std::cout << arrow::bit_util::GetBit(reinterpret_cast<uint8_t*>(offsets_addr), i) << ",";
-    //  }
-    //  std::cout << std::endl;
-
     if (arrow::is_binary_like(type->field(0)->type()->id())) {
       // child offsets length is internal data length + 1
       // offsets element is int32
@@ -707,29 +700,18 @@ auto type_id = type->id();
       auto child_offsets_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
     
       buffers.push_back(std::move(child_offsets_buffer));
-     // std::cout << "LR make_record_batch_with_buf_addrs 2b adding child_offsets_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
     }
   }
 
-
-  //std::cout << "LR New ArrayData 1" << std::endl;
   if (type->id() == arrow::Type::LIST) {
     jlong offsets_addr = in_buf_addrs[buf_idx++];
     jlong offsets_size = in_buf_sizes[sz_idx++];
     auto data_buffer = std::shared_ptr<arrow::Buffer>(  new arrow::Buffer(reinterpret_cast<uint8_t*>(offsets_addr), offsets_size));
-   // std::cout << "LR make_record_batch_with_buf_addrs 3 adding data_buffer buffer=" << offsets_addr << " idx=" << buf_idx - 1 << std::endl;
-
-    //std::cout << "LR New ArrayData List" << std::endl;
     auto internal_type = type->field(0)->type();
     std::shared_ptr<arrow::ArrayData> child_data;
     if (arrow::is_primitive(internal_type->id())) {
-    //  std::cout << "LR New ArrayData List creating child data" << std::endl;
-    //  for (int i = 0; i < buffers.size(); i++) {
-     //   std::cout << "buffer for child data " << i << "=" << *buffers[i]->data() << std::endl;
-     // }
       child_data = arrow::ArrayData::Make(internal_type, 0,
                                           {std::move(buffers[2]), std::move(data_buffer)});
-     // std::cout << "child_data is =" <<  child_data->buffers[0] << " 1=" << child_data->buffers[1] <<  std::endl;
     }
     if (arrow::is_binary_like(internal_type->id())) {
       //LR TODO need this for strings I think.
@@ -746,13 +728,6 @@ auto type_id = type->id();
     auto array_data = arrow::ArrayData::Make(type, num_rows, std::move(buffers));
     columns.push_back(array_data);
   }
-
-/////////
-//TODO use unique_ptr
-//Was
-//auto array_data = arrow::ArrayData::Make(field->type(), num_rows, std::move(buffers));
-//columns.push_back(array_data);
-
   }
   *batch = arrow::RecordBatch::Make(schema, num_rows, columns);
   return Status::OK();
@@ -949,8 +924,6 @@ class JavaResizableBuffer : public arrow::ResizableBuffer {
 
 Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
   // callback into java to expand the buffer
-
-  //LR TODO listvector_expander_method_  vector_expander_method_
   jobject ret = env_->CallObjectMethod(jexpander_, method_, vector_idx_,
                                        new_capacity);
   if (env_->ExceptionCheck()) {
@@ -1167,10 +1140,6 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
           break;
         }
         
-
-        //LR TODO the two buffers...
-        //LR TODO maybe should all be mutable buffers except for the data buffer?
-
         data_sz = out_sizes[sz_idx++];
       //  std::cout << "LR Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector 3 adding child nbuffer " << buf_idx 
        //   << " size=" << data_sz << std::endl;
@@ -1192,25 +1161,17 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         outBufJava->offsetBuffer = reinterpret_cast<uint8_t*>(out_bufs[1]);
         outBufJava->offsetCapacity = out_sizes[1];
         outBufJava->validityBuffer = reinterpret_cast<uint8_t*>(out_bufs[2]);
-        //LR TODO ? 
         outBufJava->outerValidityBuffer = reinterpret_cast<uint8_t*>(out_bufs[0]);
         child_buffers.push_back(outBufJava);
 
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
         auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
-        //array_data_child->
-        
-
         std::vector<std::shared_ptr<arrow::ArrayData>> kids;
         kids.push_back(array_data_child);
-        //auto array_data = std::make_shared<arrow::ArrayData>(field->type(), output_row_count);
         auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers, kids);
         array_data->child_data = std::move(kids);
         output.push_back(array_data);
         ++output_vector_idx;
-
-        //std::cout << "LR jni_common there are " << buffers.size() << " buffers" << std::endl;
-
       } else {  
       auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers);
       output.push_back(array_data);
@@ -1222,104 +1183,7 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
       break;
     }
 
-    //std::cout << "LR jni_common calling evaluate" << std::endl;
     status = holder->projector()->Evaluate(*in_batch, selection_vector.get(), output);
-    //LRtest1
-    //std::cout << "LR jni_common after evaluating the output size is " << output.size() << std::endl;
-    arrow::ArraySpan sp(*(output[0]));
-    //std::cout << "LR jni_common after evaluating the output 0 is " << sp.ToArray()->ToString() << std::endl;
-    auto array_data = output[0];
-    if (array_data->type->id() == arrow::Type::LIST) {
-      auto child_data = array_data->child_data[0];
-      //std::cout << "LR jni_common child array[3] " << 
-      //int32_t( (*(array_data->child_data[0])->buffers[1])[3*4]) << std::endl;
-      //std::cout << "LR jni_common child array[0] " << 
-      //int32_t( (*(array_data->child_data[0])->buffers[1])[0*4]) << std::endl;
-      //std::cout << "LR jni_common child via data ptr array[0] " << 
-      //int32_t( *(*(array_data->child_data[0])->buffers[1]).data()) << std::endl;
-      //std::cout << "LR jni_common there are records=" << array_data->length << " and the first one is="
-      //  << (array_data->child_data[0])->length << std::endl;
-      
-      //LRTest1 Start
-      int numRecords = (array_data->child_data[0])->length;
-      //int numRecords = (array_data->child_data[0])->length * array_data->length;
-
-      //std::cout << "LR jni_common there are records=" << array_data->length << " and the first one is="
-      //  << (array_data->child_data[0])->length << " using numRecords=" << numRecords << std::endl;
-      //std::cout << "LR jni_common out_bufs[3]=" << out_bufs[3] << " after eval="
-      //  << (jlong)(array_data->child_data[0])->buffers[1]->data() << std::endl;
-      //LR test1
-      out_bufs[3] = (jlong)(array_data->child_data[0])->buffers[1]->data();
-      out_sizes[3] = (jlong)(array_data->child_data[0])->buffers[1]->capacity();
-
-      //Copy the new buffer ptr back to Java. The above two lines don't copy it to java, just to the local array.
-      //env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
-      //env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);
-
-      //array_data.child_data.at(0)->offset)
-      
-      //env->ReleaseLongArrayElements(out_buf_addrs, out_bufs, JNI_ABORT);
-      //memcpy((void*)out_bufs[3], (array_data->child_data[0])->buffers[1]->data(), recordSize);
-      //out_sizes[3] = recordSize;
-      //int test[] = {42,21,42,21,42};
-      //memcpy((void *)out_bufs[3], test, 20);
-
-      /*out_sizes[2] = numRecords * 20;
-      int test[numRecords * 20];
-      for (int i = 0; i < numRecords; i++) {
-        test[i] = 0;
-      }
-      memcpy((void *)out_bufs[2], test, numRecords*4);
-      */
-
-      //LR test1  Havent tried yet.
-      //out_bufs[2] = (jlong)(array_data->child_data[0])->buffers[0]->data();
-      //out_sizes[2] = (jlong)(array_data->child_data[0])->buffers[0]->capacity();
-      
-      //out_bufs[1] = (jlong)(array_data->child_data[0])->buffers[0]->data();
-      //out_sizes[1] = (jlong)(array_data->child_data[0])->buffers[0]->capacity();
-
-      //out_bufs[1] = (jlong)(array_data)->buffers[0]->data();
-      //out_sizes[1] = (jlong)(array_data)->buffers[0]->capacity();
-      out_bufs[1] = (jlong) outBufJava->offsetBuffer;
-      out_sizes[1] = (jlong) outBufJava->offsetCapacity;
-
-      out_bufs[2] = (jlong) outBufJava->validityBuffer;
-      out_sizes[2] = (jlong) outBufJava->offsetCapacity;
-
-      out_bufs[0] = (jlong) outBufJava->outerValidityBuffer;
-      out_sizes[0] = (jlong) outBufJava->offsetCapacity;
-
-      env->SetLongArrayRegion(out_buf_addrs, 0, out_bufs_len, out_bufs);
-      env->SetLongArrayRegion(out_buf_sizes, 0, out_bufs_len, out_sizes);
-
-
-
-
-      //validity buffer?
-      //bool valid[] = {true, true, true, true, true};
-      //memcpy(&out_bufs[2], valid, 5);
-      //out_sizes[2] = 5;
-
-
-
-
-
-
-
-      //offset buffer is not needed.
-      //int32_t offsetsBuffer[] = {0};
-      //memcpy(&out_bufs[1], offsetsBuffer, 1 * 4);
-      //out_sizes[1] = 1;
-
-      //std::cout << "LR jni_common after copy parent buff child array[0] " << 
-      //"," << int32_t( (out_bufs[3])) <<
-      //"," << int32_t( (out_bufs[3]+4)) <<
-      //"," << int32_t( (out_bufs[3])+8) <<
-      //"," << int32_t( (out_bufs[3])+12) << std::endl;
-      //LRTest1 End
-     }
-    
   } while (0);
 
 

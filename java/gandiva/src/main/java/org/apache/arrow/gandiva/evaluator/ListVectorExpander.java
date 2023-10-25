@@ -86,7 +86,7 @@ public class ListVectorExpander {
     int validBufferIndex = 0;
     ListVector vector = vectors[index];
     while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
-      //vector.reAlloc();
+      //Just realloc the data vector.
       vector.getDataVector().reAlloc();
     }
     System.out.println("LR Expanding ListVector. New capacity=" +

@@ -391,13 +391,6 @@ public class Projector {
         outSizes[idx++] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().capacity();
       }
       if (valueVector instanceof ListVector) {
-        
-        /*((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc(); //100 rows
-        ((ListVector) valueVector).reAlloc();
-        ((ListVector) valueVector).reAlloc();*/
-
         hasVariableWidthColumns = true;
         resizableListVectors[outColumnIdx] = (ListVector) valueVector;
         //LR TODO figure out what to use here resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
@@ -421,14 +414,6 @@ public class Projector {
 
         //vector offset
         logger.error("LR Projector.java evaluate ListVector passing data buffer as " + idx);
-
-        
-       
-        //This doesnt actually allocate any memory.
-        //((ListVector) valueVector).setInitialCapacity(1000000);
-        //while (((ListVector) valueVector).getValueCapacity() < 1000000) {
-        //  ((ListVector) valueVector).reAlloc();
-        //}
         
         logger.error("LR Projector.java evaluate isVarlistvector Width setting buffer=" + idx);
         //The realloc avoids dynamic resizing, will have to be fixed later.
