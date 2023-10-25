@@ -53,7 +53,6 @@ FieldDescriptorPtr Annotator::MakeDesc(FieldPtr field, bool is_output) {
   }
 
   if (field->type()->id() == arrow::Type::LIST) {
-    //std::cout << "LR Annotator::MakeDesc 1" << std::endl;
     offsets_idx = buffer_count_++;
     if (arrow::is_binary_like(field->type()->field(0)->type()->id())) {
       child_offsets_idx = buffer_count_++;
@@ -64,10 +63,7 @@ FieldDescriptorPtr Annotator::MakeDesc(FieldPtr field, bool is_output) {
     data_buffer_ptr_idx = buffer_count_++;
   }
   int child_valid_buffer_ptr_idx = FieldDescriptor::kInvalidIdx;
-  //if (is_output) {
-    child_valid_buffer_ptr_idx = buffer_count_++;
-    //std::cout << "LR Annotator::MakeDesc 2 child_valid_buffer_ptr_idx=" << child_valid_buffer_ptr_idx << std::endl;
-  //}
+  child_valid_buffer_ptr_idx = buffer_count_++;
   return std::make_shared<FieldDescriptor>(field, data_idx, validity_idx, offsets_idx,
                                            data_buffer_ptr_idx, child_offsets_idx, child_valid_buffer_ptr_idx);
 }
@@ -86,56 +82,45 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
   // The validity buffer is optional. Use nullptr if it does not have one.
   if (array_data.buffers[buffer_idx]) {
     uint8_t* validity_buf = const_cast<uint8_t*>(array_data.buffers[buffer_idx]->data());
-    //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -6 " << &validity_buf << std::endl;
     eval_batch->SetBuffer(desc.validity_idx(), validity_buf, array_data.offset);
   } else {
-    //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -5 null " << std::endl;
     eval_batch->SetBuffer(desc.validity_idx(), nullptr, array_data.offset);
   }
   ++buffer_idx;
 
   if (desc.HasOffsetsIdx()) {
     uint8_t* offsets_buf = const_cast<uint8_t*>(array_data.buffers[buffer_idx]->data());
-    //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -4 " << &offsets_buf << " using idx=" << buffer_idx << std::endl;
     eval_batch->SetBuffer(desc.offsets_idx(), offsets_buf, array_data.offset);
 
     if (desc.HasChildOffsetsIdx()) {
-      //std::cout << "LR Annotator::PrepareBuffersForField 1 for field " << desc.Name() << " type is " << array_data.type->id() << std::endl;
       if (is_output) {
         // if list field is output field, we should put buffer pointer into eval batch
         // for resizing
         uint8_t* child_offsets_buf = reinterpret_cast<uint8_t*>(
             array_data.child_data.at(0)->buffers[buffer_idx].get());
-        //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -3a " << &child_offsets_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_offsets_buf,
                               array_data.child_data.at(0)->offset);
 
         uint8_t* child_valid_buf = reinterpret_cast<uint8_t*>(
             array_data.child_data.at(0)->buffers[0].get());
-        //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -3b " << &child_valid_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_validity_idx(), child_valid_buf,
                               array_data.child_data.at(0)->offset);
         
       } else {
-        //std::cout << "LR Annotator::PrepareBuffersForField 2" << std::endl;
         // if list field is input field, just put buffer data into eval batch
         uint8_t* child_offsets_buf = const_cast<uint8_t*>(
             array_data.child_data.at(0)->buffers[buffer_idx]->data());
-        //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -2a " << &child_offsets_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_offsets_buf,
                               array_data.child_data.at(0)->offset);
 
         uint8_t* child_valid_buf = const_cast<uint8_t*>(
             array_data.child_data.at(0)->buffers[0]->data());
-        //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -2b " << &child_valid_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_offsets_idx(), child_valid_buf,
                               array_data.child_data.at(0)->offset);
       }
     }
     if (array_data.type->id() != arrow::Type::LIST ||
         arrow::is_binary_like(array_data.type->field(0)->type()->id())) {
-          //std::cout << "LR Annotator::PrepareBuffersForField 3" << std::endl;
-        
         // primitive type list data buffer index is 1
         // binary like type list data buffer index is 2
         ++buffer_idx;
@@ -143,39 +128,15 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
   }
 
   if (array_data.type->id() != arrow::Type::LIST) {
-    //std::cout << "LR Annotator::PrepareBuffersForField 4" << std::endl;
-
-    //std::cout << "LR Annotator::PrepareBuffersForField 4 buffer_idx " << buffer_idx << std::endl;
     uint8_t* data_buf = const_cast<uint8_t*>(array_data.buffers[buffer_idx]->data());
-    //std::cout << "LR Annotator::PrepareBuffersForField 4a" << std::endl;
-    //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer -1 " << &data_buf << std::endl;
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.offset);
-    //std::cout << "LR Annotator::PrepareBuffersForField 4b" << std::endl;
   } else {
-    //std::cout << "LR Annotator::PrepareBuffersForField 5 " << desc.Name() << " buffer_idx " << buffer_idx << std::endl;
-    //std::cout << "LR Annotator::PrepareBuffersForField 5 array_data child size " << array_data.child_data.size() << std::endl;
-    
-    //std::cout << "LR array_data.child_data.at(0)->buffers[0]=" << array_data.child_data.at(0)->buffers[0] << std::endl;
-    //uint8_t* data_valid_buf =
-    //    const_cast<uint8_t*>(array_data.child_data.at(0)->buffers[0]->data());
-    //std::cout << "LR Annotator::PrepareBuffersForField setting offset eval data_valid_buf idx=" << 0 << " data_valid_buf=" << &data_valid_buf << std::endl;
-    //eval_batch->SetBuffer(desc.child_data_validity_idx(), data_valid_buf, array_data.child_data.at(0)->offset);
-
-
     uint8_t* data_buf =
         const_cast<uint8_t*>(array_data.child_data.at(0)->buffers[buffer_idx]->data());
-    //std::cout << "LR Annotator::PrepareBuffersForField setting data buffer desc.data_idx()=" << desc.data_idx() << " idx=" << buffer_idx << " data=" << data_buf << std::endl;
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.child_data.at(0)->offset);
-    //std::cout << "LR Annotator::PrepareBuffersForField 5a" << std::endl;
-
-  
-    //std::cout << "LR array_data.child_data.at(0)->buffers[0]->data() is " << array_data.child_data.at(0)->buffers[0] << std::endl;
     if (array_data.child_data.at(0)->buffers[0] ) {
     uint8_t* child_valid_buf = const_cast<uint8_t*>(
             array_data.child_data.at(0)->buffers[0]->data());
-        //desc.set_child_data_validity_idx(4);
-       // std::cout << "LR Annotator::PrepareBuffersForField setting child valid buffer -5b " <<
-        //" name=" << desc.Name() << " idx=" << desc.child_data_validity_idx() << " child_data_buf=" << *child_valid_buf << std::endl;
         eval_batch->SetBuffer(desc.child_data_validity_idx(), child_valid_buf, 0);
     }
 
@@ -187,16 +148,11 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
     if (array_data.type->id() != arrow::Type::LIST) {
       uint8_t* data_buf_ptr =
           reinterpret_cast<uint8_t*>(array_data.buffers[buffer_idx].get());
-      //std::cout << "LR Annotator::PrepareBuffersForField setting eval buffer 1 " << &data_buf_ptr << std::endl;
       eval_batch->SetBuffer(desc.data_buffer_ptr_idx(), data_buf_ptr, array_data.offset);
     } else {
-        //std::cout << "LR Annotator::PrepareBuffersForField is_output index " << desc.data_buffer_ptr_idx() << std::endl;
-  
       // list data buffer is in child data buffer
       uint8_t* data_buf_ptr = reinterpret_cast<uint8_t*>(
           array_data.child_data.at(0)->buffers[buffer_idx].get());
-      //std::cout << "LR Annotator::PrepareBuffersForField setting eval data buffer " << buffer_idx << " data=" << &data_buf_ptr << std::endl;
-  
       eval_batch->SetBuffer(desc.data_buffer_ptr_idx(), data_buf_ptr,
                             array_data.child_data.at(0)->offset);
     }
@@ -209,7 +165,6 @@ EvalBatchPtr Annotator::PrepareEvalBatch(const arrow::RecordBatch& record_batch,
   EvalBatchPtr eval_batch = std::make_shared<EvalBatch>(
       record_batch.num_rows(), buffer_count_, local_bitmap_count_);
 
-  //std::cout << "LR PrepareEvalBatch 1" << std::endl;
   // Fill in the entries for the input fields.
   for (int i = 0; i < record_batch.num_columns(); ++i) {
     const std::string& name = record_batch.column_name(i);
@@ -218,28 +173,17 @@ EvalBatchPtr Annotator::PrepareEvalBatch(const arrow::RecordBatch& record_batch,
       // skip columns not involved in the expression.
       continue;
     }
-
-    /*std::cout << "LR PrepareEvalBatch 1a i=" << i << " record batch schema " << record_batch.schema()->ToString() 
-    << "  num rows " << record_batch.num_rows()
-    << " num columns " << record_batch.num_columns()
-    << " data size " << record_batch.column_data().size()
-    << " col 1 " << record_batch.column(0)->ToString()
-    << std::endl;*/
-    
-    //std::cout << "LR PrepareEvalBatch 1a i=" << i << " record batch data " << record_batch.ToString() << std::endl;
     PrepareBuffersForField(*(found->second), *(record_batch.column_data(i)),
                            eval_batch.get(), false /*is_output*/);
   }
 
   // Fill in the entries for the output fields.
-  //std::cout << "LR PrepareEvalBatch preparing output fields" << std::endl;
   int idx = 0;
   for (auto& arraydata : out_vector) {
     const FieldDescriptorPtr& desc = out_descs_.at(idx);
     PrepareBuffersForField(*desc, *arraydata, eval_batch.get(), true /*is_output*/);
     ++idx;
   }
-  //std::cout << "LR PrepareEvalBatch 2" << std::endl;
   return eval_batch;
 }
 

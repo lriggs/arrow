@@ -37,11 +37,9 @@ class GANDIVA_EXPORT BitMapAccumulator : public DexDefaultVisitor {
 
   void Visit(const VectorReadValidityDex& dex) {
     int idx = dex.ValidityIdx();
-    //std::cout << "LR BitMapAccumulator visiting " << idx << std::endl;
     auto bitmap = eval_batch_.GetBuffer(idx);
     // The bitmap could be null. Ignore it in this case.
     if (bitmap != NULLPTR) {
-      //std::cout << "LR BitMapAccumulator is not null " << bitmap << std::endl;
       src_maps_.push_back(bitmap);
       src_map_offsets_.push_back(eval_batch_.GetBufferOffset(idx));
     }

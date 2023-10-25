@@ -20,41 +20,34 @@ package org.apache.arrow.gandiva.evaluator;
 import org.apache.arrow.vector.complex.ListVector;
 
 /**
- * This class provides the functionality to expand output vectors using a callback mechanism from
+ * This class provides the functionality to expand output ListVectors using a callback mechanism from
  * gandiva.
  */
 public class ListVectorExpander {
-  private final ListVector[] vectors;
+  private final ListVector[] bufferVectors;
 
-  public ListVectorExpander(ListVector[] vectors) {
-    this.vectors = vectors;
+  public ListVectorExpander(ListVector[] bufferVectors) {
+    this.bufferVectors = bufferVectors;
   }
 
   /**
-   * Result of vector expansion.
+   * Result of ListVector expansion.
    */
   public static class ExpandResult {
     public long address;
     public long capacity;
-    public long offsetaddress;
-    public long offsetcapacity;
     public long validityaddress;
-    public long outervalidityaddress;
 
     /**
-     * fdsfsdfds.
-     * @param address dsfds
-     * @param capacity dfsdf
-     * @param offsetad dsfdsfsd
-     * @param offsetcap dfsfs
+     * Result of expanding the buffer.
+     * @param address Data buffer address
+     * @param capacity Capacity
+     * @param validAdd Validity buffer address
      * 
      */
-    public ExpandResult(long address, long capacity, long offsetad, long offsetcap, long outValidAdd, long validAdd) {
+    public ExpandResult(long address, long capacity, long validAdd) {
       this.address = address;
       this.capacity = capacity;
-      this.offsetaddress = offsetad;
-      this.offsetcapacity = offsetcap;
-      this.outervalidityaddress = outValidAdd;
       this.validityaddress = validAdd;
     }
   }
@@ -69,50 +62,22 @@ public class ListVectorExpander {
    * @return address and size  of the buffer after expansion.
    */
   public ExpandResult expandOutputVectorAtIndex(int index, long toCapacity) {
-    if (index >= vectors.length || vectors[index] == null) {
+    if (index >= bufferVectors.length || bufferVectors[index] == null) {
       throw new IllegalArgumentException("invalid index " + index);
     }
 
-
-    //ArrowBuf ab = vectors[index].getValidityBuffer();
-    //String s = "Before validity = [";
-    //for (int i = 0; i < 20; i++) {
-    //  s += ab.getInt(i) + ",";
-    //}
-    //System.out.println(s);
-
-
     int valueBufferIndex = 1;
-    int validBufferIndex = 0;
-    ListVector vector = vectors[index];
+    int validityBufferIndex = 0;
+    ListVector vector = bufferVectors[index];
     while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
       //Just realloc the data vector.
       vector.getDataVector().reAlloc();
     }
-    System.out.println("LR Expanding ListVector. New capacity=" +
-        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity());
-    System.out.println("LR Expanding ListVector. new data is ");
     
-    /*ArrowBuf ab2 = vector.getValidityBuffer();
-    s = "After validity = [";
-    for (int i = 0; i < 20; i++) {
-      s += ab2.getInt(i) + ",";
-    }
-    System.out.println(s);*/
-    /*ArrowBuf ab = vector.getOffsetBuffer();
-    String s = "offsetBuffer = [";
-    for (int i = 0; i < 20; i++) {
-      s += ab.getInt(i) + ",";
-    }
-    System.out.println(s);
-    */
     return new ExpandResult(
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).memoryAddress(),
         vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity(),
-        vector.getOffsetBuffer().memoryAddress(),
-        vector.getOffsetBuffer().capacity(),
-        vector.getValidityBuffer().memoryAddress(),
-        vector.getDataVector().getFieldBuffers().get(validBufferIndex).memoryAddress());
+        vector.getDataVector().getFieldBuffers().get(validityBufferIndex).memoryAddress());
   }
 
 }
