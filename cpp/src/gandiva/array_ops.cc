@@ -74,18 +74,6 @@ bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
   return false;
 }
 
-//LR TODO
-int32_t* array_int32_make_array(int64_t context_ptr, int32_t contains_data, int32_t* out_len) {
-
-  int integers[] = { contains_data, 21, 3, contains_data, 5 };
-  *out_len = 5;// * 4;
-  //length is number of items, but buffers must account for byte size.
-  uint8_t* ret = gdv_fn_context_arena_malloc(context_ptr, *out_len * 4);
-  memcpy(ret, integers, *out_len * 4);
-
-  return reinterpret_cast<int32_t*>(ret);
-}
-
 bool array_int64_contains_int64(int64_t context_ptr, const int64_t* entry_buf,
                               int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
                               int64_t contains_data, bool entry_validWhat, 
@@ -226,15 +214,6 @@ void ExportedArrayFunctions::AddMappings(Engine* engine) const {
   engine->AddGlobalMappingForFunc("array_int64_contains_int64",
                                   types->i1_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(array_int64_contains_int64));
-
-
-  args = {types->i64_type(),      // int64_t execution_context
-          types->i32_type(),   // array item input
-          types->i32_ptr_type()};     // out array length
-
-  engine->AddGlobalMappingForFunc("array_int32_make_array",
-                                  types->i32_ptr_type(), args,
-                                  reinterpret_cast<void*>(array_int32_make_array));
 
   args = {types->i64_type(),      // int64_t execution_context
           types->i32_ptr_type(),   // int8_t* input data ptr

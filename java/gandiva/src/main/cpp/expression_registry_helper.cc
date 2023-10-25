@@ -136,10 +136,6 @@ void ArrowToProtobuf(DataTypePtr type, types::ExtGandivaType* gandiva_data_type)
       gandiva_data_type->set_type(types::GandivaType::INTERVAL);
       gandiva_data_type->set_intervaltype(types::IntervalType::DAY_TIME);
       break;
-    //LR TODO
-    case arrow::Type::STRUCT:
-      gandiva_data_type->set_type(types::GandivaType::STRUCT);
-      break;
     case arrow::Type::LIST:
       gandiva_data_type->set_type(types::GandivaType::LIST);
       break;

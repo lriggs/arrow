@@ -195,7 +195,7 @@ struct SchemaExporter {
   }
 
   Status ExportSchema(const Schema& schema) {
-    static const StructType dummy_struct_type = StructType();
+    static const StructType dummy_struct_type({});
     flags_ = 0;
 
     RETURN_NOT_OK(ExportFormat(dummy_struct_type));

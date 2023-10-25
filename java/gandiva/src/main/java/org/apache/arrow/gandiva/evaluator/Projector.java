@@ -31,7 +31,6 @@ import org.apache.arrow.vector.BaseVariableWidthVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VariableWidthVector;
 import org.apache.arrow.vector.complex.ListVector;
-import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.ipc.message.ArrowBuffer;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -376,10 +375,6 @@ public class Projector {
 
         // save vector to allow for resizing.
         resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
-      }
-      if (valueVector instanceof StructVector) {
-        outAddrs[idx] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().memoryAddress();
-        outSizes[idx++] = ((StructVector) valueVector).getChild("lattitude").getDataBuffer().capacity();
       }
       if (valueVector instanceof ListVector) {
         hasVariableWidthColumns = true;
