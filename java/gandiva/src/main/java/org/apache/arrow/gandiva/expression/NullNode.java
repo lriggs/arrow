@@ -32,7 +32,7 @@ class NullNode implements TreeNode {
   @Override
   public GandivaTypes.TreeNode toProtobuf() throws GandivaException {
     GandivaTypes.NullNode.Builder nullNode = GandivaTypes.NullNode.newBuilder();
-    nullNode.setType(ArrowTypeHelper.arrowTypeToProtobuf(type));
+    nullNode.setType(ArrowTypeHelper.arrowTypeToProtobuf(type, null));
 
     GandivaTypes.TreeNode.Builder builder = GandivaTypes.TreeNode.newBuilder();
     builder.setNullNode(nullNode.build());

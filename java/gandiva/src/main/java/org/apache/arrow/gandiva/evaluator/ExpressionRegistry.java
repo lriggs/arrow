@@ -116,12 +116,13 @@ public class ExpressionRegistry {
 
         String functionName = protoFunctionSignature.getName();
         ArrowType returnType = getArrowType(protoFunctionSignature.getReturnType());
+        ArrowType returnListType = getArrowTypeSimple(protoFunctionSignature.getReturnType().getListType());
         List<ArrowType> paramTypes = Lists.newArrayList();
         for (ExtGandivaType type : protoFunctionSignature.getParamTypesList()) {
           paramTypes.add(getArrowType(type));
         }
         FunctionSignature functionSignature = new FunctionSignature(functionName,
-                                                                    returnType, paramTypes);
+                                                                    returnType, returnListType, paramTypes);
         supportedTypes.add(functionSignature);
       }
     } catch (InvalidProtocolBufferException invalidProtException) {
@@ -130,8 +131,8 @@ public class ExpressionRegistry {
     return supportedTypes;
   }
 
-  private static ArrowType getArrowType(ExtGandivaType type) {
-    switch (type.getType().getNumber()) {
+  private static ArrowType getArrowTypeSimple(GandivaType type) {
+    switch (type.getNumber()) {
       case GandivaType.BOOL_VALUE:
         return ArrowType.Bool.INSTANCE;
       case GandivaType.UINT8_VALUE:
@@ -164,20 +165,10 @@ public class ExpressionRegistry {
         return new ArrowType.Date(DateUnit.DAY);
       case GandivaType.DATE64_VALUE:
         return new ArrowType.Date(DateUnit.MILLISECOND);
-      case GandivaType.TIMESTAMP_VALUE:
-        return new ArrowType.Timestamp(mapArrowTimeUnit(type.getTimeUnit()), null);
-      case GandivaType.TIME32_VALUE:
-        return new ArrowType.Time(mapArrowTimeUnit(type.getTimeUnit()),
-                BIT_WIDTH_32);
-      case GandivaType.TIME64_VALUE:
-        return new ArrowType.Time(mapArrowTimeUnit(type.getTimeUnit()),
-                BIT_WIDTH_64);
       case GandivaType.NONE_VALUE:
         return new ArrowType.Null();
       case GandivaType.DECIMAL_VALUE:
         return new ArrowType.Decimal(0, 0, 128);
-      case GandivaType.INTERVAL_VALUE:
-        return new ArrowType.Interval(mapArrowIntervalUnit(type.getIntervalType()));
       case GandivaType.STRUCT_VALUE:
         return new ArrowType.Struct();
       case GandivaType.LIST_VALUE:
@@ -190,6 +181,23 @@ public class ExpressionRegistry {
         assert false;
     }
     return null;
+  }
+
+  private static ArrowType getArrowType(ExtGandivaType type) {
+    switch (type.getType().getNumber()) {
+      case GandivaType.TIMESTAMP_VALUE:
+        return new ArrowType.Timestamp(mapArrowTimeUnit(type.getTimeUnit()), null);
+      case GandivaType.TIME32_VALUE:
+        return new ArrowType.Time(mapArrowTimeUnit(type.getTimeUnit()),
+                BIT_WIDTH_32);
+      case GandivaType.TIME64_VALUE:
+        return new ArrowType.Time(mapArrowTimeUnit(type.getTimeUnit()),
+                BIT_WIDTH_64);
+      case GandivaType.INTERVAL_VALUE:
+        return new ArrowType.Interval(mapArrowIntervalUnit(type.getIntervalType()));
+      default:
+        return getArrowTypeSimple(type.getType());
+    }
   }
 
   private static TimeUnit mapArrowTimeUnit(GandivaTypes.TimeUnit timeUnit) {

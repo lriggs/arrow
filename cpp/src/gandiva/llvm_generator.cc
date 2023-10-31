@@ -113,6 +113,7 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
     ARROW_RETURN_NOT_OK(Add(expr, output));
   }
 
+std::cout << "LR TODO LLVMGenerator::Build 2 IR is " << engine_->DumpIR() << std::endl;
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
   
@@ -590,6 +591,7 @@ void LLVMGenerator::ComputeBitMapsForExpr(const CompiledExpr& compiled_expr,
 llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
                                             llvm::Type* ret_type,
                                             const std::vector<llvm::Value*>& args) {
+  std::cout << "LR TODO AddFunctionCall "  << full_name << " ret type is " << printType(ret_type) << std::endl;
   // find the llvm function.
   llvm::Function* fn = module()->getFunction(full_name);
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
@@ -600,6 +602,10 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     ADD_TRACE("invoke native fn " + full_name);
   }
 
+  std::cout << "LR TODO AddFunctionCall 2" << std::endl;
+  for (llvm::Value* lv : args) {
+    std::cout << "LR TODO arg is " << printType(lv) << std::endl;
+  }
   // build a call to the llvm function.
   llvm::Value* value;
   if (ret_type->isVoidTy()) {
@@ -607,7 +613,7 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     value = ir_builder()->CreateCall(fn, args);
   } else {
     value = ir_builder()->CreateCall(fn, args, full_name);
-
+std::cout << "LR TODO AddFunctionCall 3" << std::endl;
     std::string str;
     llvm::raw_string_ostream output(str);
     std::string str2;
@@ -699,22 +705,34 @@ void LLVMGenerator::Visitor::Visit(const VectorReadFixedLenValueListDex& dex) {
   auto types = generator_->types();
   auto type = types->IRType(dex.FieldType()->id());
 
-  arrow::Type::type at = arrow::Type::INT32;
-  type = types->IRType(at);
+  std::cout << "LR VectorReadFixedLenValueListDex dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
+
+  auto dt = dex.FieldType();
+  if (dt->id() == arrow::Type::LIST) {
+    if (dt->num_fields() > 0) {                                                                                                                                                                                    
+    std::cout << "LR TODO creating listtype" << std::endl;
+    std::cout << "LR TODO listtype id=" << dt->fields()[0]->type()->id() << std::endl;
+    type = types->IRType(dt->fields()[0]->type()->id() );
+    }
+  }
+  std::cout << "LR TODO using type " << printType(type) << std::endl;
+
+  arrow::Type::type at32 = arrow::Type::INT32;
+  auto type32 = types->IRType(at32);
 
   // compute list len from the offsets array.
   llvm::Value* offsets_slot_ref =
       GetBufferReference(dex.OffsetsIdx(), kBufferTypeOffsets, dex.Field());
   llvm::Value* offsets_slot_index =
       builder->CreateAdd(loop_var_, GetSliceOffset(dex.OffsetsIdx()));
-  slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index);
-  llvm::Value* offset_start = builder->CreateLoad(type, slot, "offset_start");
+  slot = builder->CreateGEP(type32, offsets_slot_ref, offsets_slot_index);
+  llvm::Value* offset_start = builder->CreateLoad(type32, slot, "offset_start");
 
   // => offset_end = offsets[loop_var + 1]
   llvm::Value* offsets_slot_index_next = builder->CreateAdd(
       offsets_slot_index, generator_->types()->i64_constant(1), "loop_var+1");
-  slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index_next);
-  llvm::Value* offset_end = builder->CreateLoad(type,slot, "offset_end");
+  slot = builder->CreateGEP(type32, offsets_slot_ref, offsets_slot_index_next);
+  llvm::Value* offset_end = builder->CreateLoad(type32, slot, "offset_end");
 
   // => offsets_len_value = offset_end - offset_start
   llvm::Value* list_len = builder->CreateSub(offset_end, offset_start, "offsets_len");
@@ -738,7 +756,7 @@ llvm::Value* updated_validity_index_var = builder->CreateAdd(
   llvm::Value* b_slot_index =
       builder->CreateAdd(loop_var_, GetSliceOffset(dex.ValidityIdx()));
   llvm::Value* b_slot_ref = GetBufferReference(dex.ChildValidityIdx(), kBufferTypeValidity, dex.Field());
-  llvm::Value* validity = builder->CreateGEP(type, b_slot_ref, b_slot_index);
+  llvm::Value* validity = builder->CreateGEP(type32, b_slot_ref, b_slot_index);
 
   std::string str3 = "validity:";
   if (validity) {

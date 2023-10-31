@@ -94,6 +94,56 @@ public class TreeBuilder {
   public static TreeNode makeFunction(String function,
                                       List<TreeNode> children,
                                       ArrowType retType) {
+    System.out.println("LR TODO TreeNode makeFunction Type");
+    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+    for (int i = 1; i < elements.length; i++) {
+      StackTraceElement s = elements[i];
+      System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() +
+          "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+    }
+    return new FunctionNode(function, children, retType);
+  }
+
+  /**
+   * Invoke this function to create a node representing a function.
+   *
+   * @param function Name of the function, e.g. add
+   * @param children The arguments to the function
+   * @param retType  The type of the return value of the operator
+   * @param listType  The type of the list return value of the operator
+   * @return Node representing a function
+   */
+  public static TreeNode makeFunction(String function,
+                                      List<TreeNode> children,
+                                      ArrowType retType, ArrowType listType) {
+    System.out.println("LR TODO TreeNode makeFunction Type2");
+    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+    for (int i = 1; i < elements.length; i++) {
+      StackTraceElement s = elements[i];
+      System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() +
+          "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+    }
+    return new FunctionNode(function, children, retType, listType);
+  }
+
+  /**
+   * Invoke this function to create a node representing a function.
+   *
+   * @param function Name of the function, e.g. add
+   * @param children The arguments to the function
+   * @param retType  The field of the return value of the operator, could be a complex type.
+   * @return Node representing a function
+   */
+  public static TreeNode makeFunction(String function,
+                                      List<TreeNode> children,
+                                      Field retType) {
+    System.out.println("LR TODO TreeNode makeFunction Field");
+    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+    for (int i = 1; i < elements.length; i++) {
+      StackTraceElement s = elements[i];
+      System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() +
+          "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+    }
     return new FunctionNode(function, children, retType);
   }
 
@@ -161,7 +211,7 @@ public class TreeBuilder {
       children.add(makeField(field));
     }
 
-    TreeNode root = makeFunction(function, children, resultField.getType());
+    TreeNode root = makeFunction(function, children, resultField);
     return makeExpression(root, resultField);
   }
 

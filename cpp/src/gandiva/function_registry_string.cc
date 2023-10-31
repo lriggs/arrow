@@ -307,8 +307,6 @@ std::vector<NativeFunction> GetStringFunctionRegistry() {
 
       // concat treats null inputs as empty strings whereas concatOperator returns null if
       // one of the inputs is null
-      NativeFunction("concatGandiva", {}, DataTypeVector{utf8(), utf8()}, utf8(),
-                     kResultNullNever, "concat_utf8_utf8", NativeFunction::kNeedsContext),
       NativeFunction("concat", {}, DataTypeVector{utf8(), utf8()}, utf8(),
                      kResultNullNever, "concat_utf8_utf8", NativeFunction::kNeedsContext),
       NativeFunction("concat", {}, DataTypeVector{utf8(), utf8(), utf8()}, utf8(),

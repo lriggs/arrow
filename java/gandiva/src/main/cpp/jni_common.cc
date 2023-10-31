@@ -198,6 +198,8 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
   env->DeleteGlobalRef(cache_buf_ret_class_);
 }
 
+DataTypePtr SimpleProtoTypeToDataType(const types::GandivaType& gandiva_type);
+
 DataTypePtr ProtoTypeToTime32(const types::ExtGandivaType& ext_type) {
   switch (ext_type.timeunit()) {
     case types::SEC:
@@ -250,8 +252,14 @@ DataTypePtr ProtoTypeToInterval(const types::ExtGandivaType& ext_type) {
   }
 }
 
-DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
-  switch (ext_type.type()) {
+DataTypePtr ProtoTypeToList(const types::ExtGandivaType& ext_type) {
+  std::cout << "LR TODO 2 checking a field type " << ext_type.type() << " and it has listType:" << ext_type.listtype() << std::endl;
+  DataTypePtr childType = SimpleProtoTypeToDataType(ext_type.listtype());
+  return arrow::list(childType);
+}
+
+DataTypePtr SimpleProtoTypeToDataType(const types::GandivaType& gandiva_type) {
+  switch (gandiva_type) {
     case types::NONE:
       return arrow::null();
     case types::BOOL:
@@ -286,6 +294,16 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
       return arrow::date32();
     case types::DATE64:
       return arrow::date64();
+    default:
+      std::cerr << "Unknown data type: " << gandiva_type << "\n";
+      return nullptr;
+  }
+}
+
+
+
+DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
+  switch (ext_type.type()) {
     case types::DECIMAL:
       // TODO: error handling
       return arrow::decimal(ext_type.precision(), ext_type.scale());
@@ -298,25 +316,36 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
     case types::INTERVAL:
       return ProtoTypeToInterval(ext_type);
     case types::LIST:
-      //LR TODO
-      return arrow::list(arrow::int32());
-      //return arrow::list(arrow::utf8());
+      return ProtoTypeToList(ext_type);
     case types::FIXED_SIZE_BINARY:
     case types::UNION:
     case types::DICTIONARY:
     case types::MAP:
       std::cerr << "Unhandled data type: " << ext_type.type() << "\n";
       return nullptr;
-
     default:
-      std::cerr << "Unknown data type: " << ext_type.type() << "\n";
+      return SimpleProtoTypeToDataType(ext_type.type());
+  }
+}
+
+DataTypePtr ProtoTypeToDataType(const types::Field& f) {
+  const types::ExtGandivaType& ext_type = f.type();
+  std::cout << "LR TODO checking a field type " << ext_type.type() << " and it has listType:" << ext_type.listtype() << std::endl;
+  if (ext_type.type() == types::LIST) {
+      if (f.children().size() > 0 && f.children()[0].type().type() != types::LIST) {
+        DataTypePtr childType = ProtoTypeToDataType(f.children()[0].type());
+        return arrow::list(childType);
+      }
+      std::cerr << "Unhandled list data type: " << ext_type.type() << "\n";
       return nullptr;
+  } else {
+    return ProtoTypeToDataType(ext_type);
   }
 }
 
 FieldPtr ProtoTypeToField(const types::Field& f) {
   const std::string& name = f.name();
-  DataTypePtr type = ProtoTypeToDataType(f.type());
+  DataTypePtr type = ProtoTypeToDataType(f);
   bool nullable = true;
   if (f.has_nullable()) {
     nullable = f.nullable();
@@ -350,7 +379,7 @@ NodePtr ProtoTypeToFnNode(const types::FunctionNode& node) {
 
     children.push_back(n);
   }
-
+  
   DataTypePtr return_type = ProtoTypeToDataType(node.returntype());
   if (return_type == nullptr) {
     std::cerr << "Unknown return type for function: " << name << "\n";
@@ -1109,7 +1138,15 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         //outBufJava->outerValidityBuffer = reinterpret_cast<uint8_t*>(out_bufs[0]);
         child_buffers.push_back(outBufJava);
 
+        //LR TODO
+
+        std::cout << "LR Creating array for type: " << field->type()->ToString() << std::endl;
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
+        if (field->type()->id() == arrow::Type::LIST && field->type()->num_fields() > 0) {
+          dt2 = field->type()->fields()[0]->type();
+        }
+        std::cout << "LR using sub type: " << dt2->ToString() << std::endl;
+        
         auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
         std::vector<std::shared_ptr<arrow::ArrayData>> kids;
         kids.push_back(array_data_child);

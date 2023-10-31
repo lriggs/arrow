@@ -18,6 +18,7 @@
 #include "gandiva/function_signature.h"
 
 #include <cstddef>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -58,6 +59,7 @@ FunctionSignature::FunctionSignature(std::string base_name, DataTypeVector param
     : base_name_(std::move(base_name)),
       param_types_(std::move(param_types)),
       ret_type_(std::move(ret_type)) {
+  std::cout << "LR TODO creating FunctionSignature " << ret_type_->ToString() << std::endl;
   DCHECK_GT(base_name_.length(), 0);
   for (auto it = param_types_.begin(); it != param_types_.end(); it++) {
     DCHECK(*it);

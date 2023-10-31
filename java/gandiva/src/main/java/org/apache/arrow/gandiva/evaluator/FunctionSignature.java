@@ -30,10 +30,15 @@ import com.google.common.base.Objects;
 public class FunctionSignature {
   private final String name;
   private final ArrowType returnType;
+  private final ArrowType returnListType;
   private final List<ArrowType> paramTypes;
 
   public ArrowType getReturnType() {
     return returnType;
+  }
+
+  public ArrowType getReturnListType() {
+    return returnListType;
   }
 
   public List<ArrowType> getParamTypes() {
@@ -48,11 +53,13 @@ public class FunctionSignature {
    * Ctor.
    * @param name - name of the function.
    * @param returnType - data type of return
+   * @param returnListType optional list type
    * @param paramTypes - data type of input args.
    */
-  public FunctionSignature(String name, ArrowType returnType, List<ArrowType> paramTypes) {
+  public FunctionSignature(String name, ArrowType returnType, ArrowType returnListType, List<ArrowType> paramTypes) {
     this.name = name;
     this.returnType = returnType;
+    this.returnListType = returnListType;
     this.paramTypes = paramTypes;
   }
 
@@ -71,12 +78,13 @@ public class FunctionSignature {
     final FunctionSignature other = (FunctionSignature) signature;
     return this.name.equalsIgnoreCase(other.name) &&
         Objects.equal(this.returnType, other.returnType) &&
+        Objects.equal(this.returnListType, other.returnListType) &&
         Objects.equal(this.paramTypes, other.paramTypes);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(this.name.toLowerCase(), this.returnType, this.paramTypes);
+    return Objects.hashCode(this.name.toLowerCase(), this.returnType, this.returnListType, this.paramTypes);
   }
 
   @Override
@@ -84,6 +92,7 @@ public class FunctionSignature {
     return MoreObjects.toStringHelper(this)
             .add("name ", name)
             .add("return type ", returnType)
+            .add("return list type", returnListType)
             .add("param types ", paramTypes)
             .toString();
 
