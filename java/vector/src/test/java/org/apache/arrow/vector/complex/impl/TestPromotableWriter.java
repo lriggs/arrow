@@ -595,6 +595,7 @@ public class TestPromotableWriter {
       assertEquals("row3", new String(uv.get(2)));
       assertEquals("row4", new String(uv.get(3)));
     }
+  }
 
   @Test
   public void testPromoteToUnionFromDecimal() throws Exception {

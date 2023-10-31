@@ -114,7 +114,7 @@ class ExpressionCacheKey {
     std::stringstream s;
 
     s << schema_->ToString() << "\n";
-    s << mode_ << configuration_->Hash() << uniqifier_ << "\n";
+    s << mode_ << configuration_->Hash() << uniquifier_ << "\n";
     for (std::string expr : expressions_as_strings_) {
       s << expr << "\n";
     }

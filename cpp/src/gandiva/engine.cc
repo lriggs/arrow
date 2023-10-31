@@ -112,7 +112,6 @@ extern const size_t kPrecompiledBitcodeSize;
 std::once_flag llvm_init_once_flag;
 static bool llvm_init = false;
 static llvm::StringRef cpu_name;
-static llvm::SmallVector<std::string, 10> cpu_attrs;
 static char* cpu_details_;
 static std::vector<std::string> cpu_attrs;
 std::once_flag register_exported_funcs_flag;

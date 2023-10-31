@@ -309,6 +309,7 @@ public class UnionVector extends AbstractContainerVector implements FieldVector 
       ${uncappedName}Vector = internalStruct.getChild(fieldName(MinorType.${name?upper_case}), ${name}Vector.class);
       if (${uncappedName}Vector == null) {
         throw new IllegalArgumentException("No ${uncappedName} present. Provide ArrowType argument to create a new vector");
+      }
       int vectorCount = internalStruct.size();
       ${uncappedName}Vector = addOrGet(name, MinorType.${name?upper_case}, ${name}Vector.class);
       if (internalStruct.size() > vectorCount) {
