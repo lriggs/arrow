@@ -253,7 +253,6 @@ DataTypePtr ProtoTypeToInterval(const types::ExtGandivaType& ext_type) {
 }
 
 DataTypePtr ProtoTypeToList(const types::ExtGandivaType& ext_type) {
-  std::cout << "LR TODO 2 checking a field type " << ext_type.type() << " and it has listType:" << ext_type.listtype() << std::endl;
   DataTypePtr childType = SimpleProtoTypeToDataType(ext_type.listtype());
   return arrow::list(childType);
 }
@@ -330,7 +329,6 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
 
 DataTypePtr ProtoTypeToDataType(const types::Field& f) {
   const types::ExtGandivaType& ext_type = f.type();
-  std::cout << "LR TODO checking a field type " << ext_type.type() << " and it has listType:" << ext_type.listtype() << std::endl;
   if (ext_type.type() == types::LIST) {
       if (f.children().size() > 0 && f.children()[0].type().type() != types::LIST) {
         DataTypePtr childType = ProtoTypeToDataType(f.children()[0].type());
@@ -689,7 +687,6 @@ Status make_record_batch_with_buf_addrs(SchemaPtr schema, int num_rows,
 
 auto type = field->type();
 auto type_id = type->id();
-//num_rows = num_records or ??
     if (type_id == arrow::Type::LIST) {
 
             if (buf_idx >= in_bufs_len) {
@@ -888,7 +885,7 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_gandiva_evaluator_JniWrapper_build
   status = Projector::Make(schema_ptr, expr_vector, mode, config, sec_cache, &projector);
 
   if (!status.ok()) {
-    ss << "Failed to make LLVM module [1]cdue to " << status.message() << "\n";
+    ss << "Failed to make LLVM module due to " << status.message() << "\n";
     releaseProjectorInput(schema_arr, schema_bytes, exprs_arr, exprs_bytes, env);
     goto err_out;
   }
@@ -953,21 +950,11 @@ Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
     jlong ret_capacity = env_->GetLongField(ret, list_expander_ret_capacity_);
     jlong outer_valid_address = env_->GetLongField(ret, list_expander_outer_valid_address_);
 
-    std::cout << "Buffer expand: New capacity is " << new_capacity  <<
-    " vector id " << vector_idx_ << " expander method " << method_ <<
-    " jexpander_ " << jexpander_ << " returned size is " << ret_capacity << 
-    " and the original buffer ptr=" << reinterpret_cast<jlong>(data_) << " and the new ptr=" << ret_address << std::endl;
-
     data_ = reinterpret_cast<uint8_t*>(ret_address);
     capacity_ = ret_capacity;
   } else {
     jlong ret_address = env_->GetLongField(ret, vector_expander_ret_address_);
     jlong ret_capacity = env_->GetLongField(ret, vector_expander_ret_capacity_);
-
-    std::cout << "Buffer expand: New capacity is " << new_capacity  <<
-      " vector id " << vector_idx_ << " expander method " << method_ <<
-      " jexpander_ " << jexpander_ << " returned size is " << ret_capacity << 
-      " and the original buffer ptr=" << reinterpret_cast<jlong>(data_) << " and the new ptr=" << ret_address << std::endl;
 
     data_ = reinterpret_cast<uint8_t*>(ret_address);
     capacity_ = ret_capacity;
@@ -1135,17 +1122,12 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
         outBufJava->offsetBuffer = reinterpret_cast<uint8_t*>(out_bufs[1]);
         outBufJava->offsetCapacity = out_sizes[1];
         outBufJava->validityBuffer = reinterpret_cast<uint8_t*>(out_bufs[2]);
-        //outBufJava->outerValidityBuffer = reinterpret_cast<uint8_t*>(out_bufs[0]);
         child_buffers.push_back(outBufJava);
 
-        //LR TODO
-
-        std::cout << "LR Creating array for type: " << field->type()->ToString() << std::endl;
         std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
         if (field->type()->id() == arrow::Type::LIST && field->type()->num_fields() > 0) {
           dt2 = field->type()->fields()[0]->type();
         }
-        std::cout << "LR using sub type: " << dt2->ToString() << std::endl;
         
         auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
         std::vector<std::shared_ptr<arrow::ArrayData>> kids;

@@ -36,30 +36,4 @@ TEST(TestArrayOps, TestInt32ContainsInt32) {
       true);
 }
 
-TEST(TestArrayOps, TestUtf8ContainsUtf8) {
-  gandiva::ExecutionContext ctx;
-  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
-  const char* entry_buf = "trianglecirclerectangle";
-  int32_t entry_child_offsets[] = {0, 8, 14, 24};
-  int32_t entry_offsets_len = 3;
-  const char* contains_data = "triangle";
-  int32_t contains_data_length = 8;
-
-  EXPECT_EQ(
-      array_utf8_contains_utf8(ctx_ptr, entry_buf, entry_child_offsets, entry_offsets_len,
-                               contains_data, contains_data_length),
-      true);
-}
-
-TEST(TestArrayOps, TestUtf8Length) {
-  gandiva::ExecutionContext ctx;
-  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
-  const char* entry_buf = "trianglecirclerectangle";
-  int32_t entry_child_offsets[] = {0, 8, 14, 24};
-  int32_t entry_offsets_len = 3;
-
-  EXPECT_EQ(array_utf8_length(ctx_ptr, entry_buf, entry_child_offsets, entry_offsets_len),
-            3);
-}
-
 }  // namespace gandiva

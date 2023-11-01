@@ -27,12 +27,7 @@ class VectorType;
 
 /// Array functions that can be accessed from LLVM.
 extern "C" {
-GANDIVA_EXPORT
-bool array_utf8_contains_utf8(int64_t context_ptr, const char* entry_buf,
-                              int32_t* entry_child_offsets, int32_t entry_offsets_len,
-                              const char* contains_data, int32_t contains_data_length,
-                              int64_t loop_var, int64_t validity_index_var,
-                              bool* valid_row);
+
 GANDIVA_EXPORT
 bool array_int32_contains_int32(int64_t context_ptr, const int32_t* entry_buf,
                               int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,

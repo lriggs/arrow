@@ -169,8 +169,6 @@ public class ExpressionRegistry {
         return new ArrowType.Null();
       case GandivaType.DECIMAL_VALUE:
         return new ArrowType.Decimal(0, 0, 128);
-      case GandivaType.STRUCT_VALUE:
-        return new ArrowType.Struct();
       case GandivaType.LIST_VALUE:
         return new ArrowType.List();
       case GandivaType.FIXED_SIZE_BINARY_VALUE:

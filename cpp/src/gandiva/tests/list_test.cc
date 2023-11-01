@@ -199,28 +199,14 @@ TEST_F(TestList, TestConcatWS) {
   // prepare input record batch
   auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b, array_c});
 
-  // build expressions.
-  // array_contains(a, b)
-  
-  //auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
-
-  //std::vector<NodePtr> field_nodes;
-  //auto node2 = TreeExprBuilder::MakeLiteral(42);
-  //field_nodes.push_back(node2);
-  
-  //auto func_node = TreeExprBuilder::MakeFunction("array_makeGandiva", {field_b}, res->type());
-  //auto expr = TreeExprBuilder::MakeExpression(func_node, res);
-  std::cout << "LR test is about to make expression " << std::endl;
   auto expr = TreeExprBuilder::MakeExpression("concat_ws", {field_a, field_b, field_c}, res);
-  ////////
+
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok()) << status.message();
 
-  std::cout << "LR Test 2 " << std::endl;
-  //std::cout << "LR IR IS " << projector->DumpIR() << std::endl;
   // Evaluate expression
   arrow::ArrayVector outputs;
   status = projector->Evaluate(*in_batch, pool_, &outputs);
@@ -255,26 +241,11 @@ TEST_F(TestList, TestArrayRemove) {
       {10, 30, 70, 80},
       {2, 2}, {true, true}, {true, true, true, true}, pool_, &exp1);
 
- // auto exp = MakeArrowArrayArray({ 42, 42, 44, 45, 46},
- //                               {true, true, true, true, true});
 
   // prepare input record batch
   auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b});
 
-  // build expressions.
-  // array_contains(a, b)
-  
-  //auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
-
-  //std::vector<NodePtr> field_nodes;
-  //auto node2 = TreeExprBuilder::MakeLiteral(42);
-  //field_nodes.push_back(node2);
-  
-  //auto func_node = TreeExprBuilder::MakeFunction("array_makeGandiva", {field_b}, res->type());
-  //auto expr = TreeExprBuilder::MakeExpression(func_node, res);
-  std::cout << "LR test is about to make expression " << std::endl;
-  auto expr = TreeExprBuilder::MakeExpression("array_removeGandiva", {field_a, field_b}, res);
-  ////////
+  auto expr = TreeExprBuilder::MakeExpression("array_remove", {field_a, field_b}, res);
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
@@ -282,17 +253,12 @@ TEST_F(TestList, TestArrayRemove) {
   EXPECT_TRUE(status.ok()) << status.message();
 
   std::cout << "LR Test 2 " << std::endl;
-  //std::cout << "LR IR IS " << projector->DumpIR() << std::endl;
   // Evaluate expression
   arrow::ArrayVector outputs;
   status = projector->Evaluate(*in_batch, pool_, &outputs);
   EXPECT_TRUE(status.ok()) << status.message();
   // Validate results
   EXPECT_ARROW_ARRAY_EQUALS(exp1, outputs.at(0));
-
-  std::cout << "LR ==============================SECOND=WAY==================================================== " << std::endl;
-
-
 
   //Try the second method.
   arrow::ArrayDataVector outputs2;
@@ -303,9 +269,6 @@ TEST_F(TestList, TestArrayRemove) {
        int num_records2 = 5;
         std::vector<std::shared_ptr<arrow::Buffer>> buffers;
 
-
-
-  //int64_t size = arrow::bit_util::BytesForBits(num_records2);
   int64_t size = 20;
   auto bitmap_buffer =  arrow::AllocateBuffer(size, pool_);
   buffers.push_back(*std::move(bitmap_buffer));
@@ -313,12 +276,6 @@ TEST_F(TestList, TestArrayRemove) {
 
     auto offsets_buffer = arrow::AllocateBuffer(offsets_len*10, pool_);
     buffers.push_back(*std::move(offsets_buffer));
-
-   std::cout << "LR Test buffers [0] is " << buffers[0] << std::endl; 
-        //auto array_data = arrow::ArrayData::Make(dt, num_records2, buffers, 0, offsets_len);
-        //outputs2.push_back(array_data);
-
-
 
 std::vector<std::shared_ptr<arrow::Buffer>> buffers2;
 auto bitmap_buffer2 =  arrow::AllocateBuffer(size, pool_);
@@ -339,9 +296,6 @@ auto array_data = arrow::ArrayData::Make(dt, num_records2, buffers, kids, 0, 0);
 array_data->buffers = std::move(buffers);
 outputs2.push_back(array_data);
 
-std::cout << "LR Test " << array_data << " arra_data 0 is " << array_data->buffers[0] << std::endl;
-  //std::cout << "LR Test buffers [0] is " << buffers[0] << std::endl; 
-  std::cout << "LR about to evaluate 2nd " << std::endl;
   
   status = projector->Evaluate(*(in_batch.get()), outputs2);
   EXPECT_TRUE(status.ok()) << status.message();
@@ -405,176 +359,6 @@ ArrayDataPtr output_data;
  }
 }
 
-
-TEST_F(TestList, TestMakeArray) {
-  // schema for input fields
-  auto field_b = field("b", int32());
-  auto schema = arrow::schema({field_b});
-
-  // output fields
-  auto res = field("res", list(int32()));
-
-  // Create a row-batch with some sample data
-  int num_records = 5;
-  auto array_b =
-      MakeArrowArrayInt32({42, 43, 44, 45, 46}, {true, true, true, true, true});
-
-  // expected output
-  auto exp1 = MakeArrowArrayInt32({ 1, 2, 3, 42, 5},
-                                {true, true, true, true, true});
-
- // auto exp = MakeArrowArrayArray({ 42, 42, 44, 45, 46},
- //                               {true, true, true, true, true});
-
-  // prepare input record batch
-  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_b});
-
-  // build expressions.
-  // array_contains(a, b)
-  
-  //auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
-
-  //std::vector<NodePtr> field_nodes;
-  //auto node2 = TreeExprBuilder::MakeLiteral(42);
-  //field_nodes.push_back(node2);
-  
-  //auto func_node = TreeExprBuilder::MakeFunction("array_makeGandiva", {field_b}, res->type());
-  //auto expr = TreeExprBuilder::MakeExpression(func_node, res);
-  std::cout << "LR test is about to make expression " << std::endl;
-  auto expr = TreeExprBuilder::MakeExpression("array_makeGandiva", {field_b}, res);
-  ////////
-
-  // Build a projector for the expressions.
-  std::shared_ptr<Projector> projector;
-  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  std::cout << "LR Test 2 " << std::endl;
-  //std::cout << "LR IR IS " << projector->DumpIR() << std::endl;
-  // Evaluate expression
-  arrow::ArrayVector outputs;
-  status = projector->Evaluate(*in_batch, pool_, &outputs);
-  EXPECT_TRUE(status.ok()) << status.message();
-  // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(exp1, outputs.at(0));
-
-  std::cout << "LR ==============================SECOND=WAY==================================================== " << std::endl;
-
-
-
-  //Try the second method.
-  arrow::ArrayDataVector outputs2;
-  std::shared_ptr<arrow::DataType> listDt = std::make_shared<arrow::Int32Type>();
-  std::shared_ptr<arrow::DataType> dt = std::make_shared<arrow::ListType>(listDt);
-
-
-       int num_records2 = 5;
-        std::vector<std::shared_ptr<arrow::Buffer>> buffers;
-
-
-
-  //int64_t size = arrow::bit_util::BytesForBits(num_records2);
-  int64_t size = 20;
-  auto bitmap_buffer =  arrow::AllocateBuffer(size, pool_);
-  buffers.push_back(*std::move(bitmap_buffer));
-    auto offsets_len = arrow::bit_util::BytesForBits((num_records2 + 1) * 32);
-
-    auto offsets_buffer = arrow::AllocateBuffer(offsets_len*10, pool_);
-    buffers.push_back(*std::move(offsets_buffer));
-
-   std::cout << "LR Test buffers [0] is " << buffers[0] << std::endl; 
-        //auto array_data = arrow::ArrayData::Make(dt, num_records2, buffers, 0, offsets_len);
-        //outputs2.push_back(array_data);
-
-
-
-std::vector<std::shared_ptr<arrow::Buffer>> buffers2;
-auto bitmap_buffer2 =  arrow::AllocateBuffer(size, pool_);
-  buffers2.push_back(*std::move(bitmap_buffer2));
-
-    auto offsets_buffer2 = arrow::AllocateBuffer(offsets_len, pool_);
-    buffers2.push_back(*std::move(offsets_buffer2));
-std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
- 
-        auto array_data_child = arrow::ArrayData::Make(dt2, num_records2, buffers2, 0, 0);
-        array_data_child->buffers = std::move(buffers2);
-
-        std::vector<std::shared_ptr<arrow::ArrayData>> kids;
-        kids.push_back(array_data_child);
-
-
-auto array_data = arrow::ArrayData::Make(dt, num_records2, buffers, kids, 0, 0);
-array_data->buffers = std::move(buffers);
-outputs2.push_back(array_data);
-
-std::cout << "LR Test " << array_data << " arra_data 0 is " << array_data->buffers[0] << std::endl;
-  //std::cout << "LR Test buffers [0] is " << buffers[0] << std::endl; 
-  std::cout << "LR about to evaluate 2nd " << std::endl;
-  
-  status = projector->Evaluate(*(in_batch.get()), outputs2);
-  EXPECT_TRUE(status.ok()) << status.message();
-  arrow::ArrayData ad = *outputs2.at(0);
-  arrow::ArraySpan sp(*ad.child_data.at(0));
-  EXPECT_ARROW_ARRAY_EQUALS(exp1, sp.ToArray());
-
-
-
-
-for (auto& array_data : outputs2) {
-      auto child_data = array_data->child_data[0];
-      int64_t child_data_size = 1;
-      if (arrow::is_binary_like(child_data->type->id())) {
-        /* when allocate array data, child data length is an initialized value,
-         * after calculating, child data offsets buffer has been resized for results,
-         * but array data length is unchanged.
-         * We should recalculate child data length and make ArrayData with new length
-         *
-         * Otherwise, child data offsets buffer length is data length + 1
-         * and offset data is int32_t, need use buffer->size()/4 - 1
-         */
-        child_data_size = child_data->buffers[1]->size() / 4 - 1;
-      } else if (child_data->type->id() == arrow::Type::INT32) {
-        child_data_size = child_data->buffers[1]->size() / 4;
-      } else if (child_data->type->id() == arrow::Type::INT64) {
-        child_data_size = child_data->buffers[1]->size() / 8;
-      } else if (child_data->type->id() == arrow::Type::FLOAT) {
-        child_data_size = child_data->buffers[1]->size() / 4;
-      } else if (child_data->type->id() == arrow::Type::DOUBLE) {
-        child_data_size = child_data->buffers[1]->size() / 8;
-      }
-      auto new_child_data = arrow::ArrayData::Make(
-          child_data->type, child_data_size, child_data->buffers, child_data->offset);
-      array_data = arrow::ArrayData::Make(array_data->type, array_data->length,
-                                          array_data->buffers, {new_child_data},
-                                          array_data->null_count, array_data->offset);
-    
-
-    auto newArray = arrow::MakeArray(array_data);
-      //arrow::ArraySpan sp(newArray);
-  EXPECT_ARROW_ARRAY_EQUALS(exp1, newArray);
-}
-
-
-
- std::cout << "LR ====================THIRD=WAY================================== " << std::endl;
- {
-  std::shared_ptr<arrow::DataType> listDt = std::make_shared<arrow::Int32Type>();
-  std::shared_ptr<arrow::DataType> dt = std::make_shared<arrow::ListType>(listDt);
-
-ArrayDataPtr output_data;
-      auto s = projector->AllocArrayData(dt, num_records2, pool_, &output_data);
-      ArrayDataVector output_data_vecs;
-    output_data_vecs.push_back(output_data);
-
-      status = projector->Evaluate(*(in_batch.get()), output_data_vecs);
-  EXPECT_TRUE(status.ok()) << status.message();
-  arrow::ArraySpan sp(*output_data_vecs.at(0));
-  EXPECT_ARROW_ARRAY_EQUALS(exp1, sp.ToArray());
- }
-}
-
-
-/*
 TEST_F(TestList, TestListArrayInt32) {
   gandiva::ExecutionContext ctx;
   uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
@@ -615,11 +399,6 @@ TEST_F(TestList, TestListInt32LiteralContains) {
   // prepare input record batch
   auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b});
 
-  // build expressions.
-  // array_contains(a, b)
-  
-  //auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
-
   std::vector<NodePtr> field_nodes;
   auto node = TreeExprBuilder::MakeField(field_a);
   field_nodes.push_back(node);
@@ -627,7 +406,7 @@ TEST_F(TestList, TestListInt32LiteralContains) {
   auto node2 = TreeExprBuilder::MakeLiteral(42);
   field_nodes.push_back(node2);
   
-  auto func_node = TreeExprBuilder::MakeFunction("array_containsGandiva", field_nodes, res->type());
+  auto func_node = TreeExprBuilder::MakeFunction("array_contains", field_nodes, res->type());
   auto expr = TreeExprBuilder::MakeExpression(func_node, res);
   ////////
 
@@ -673,7 +452,7 @@ TEST_F(TestList, TestListInt32Contains) {
 
   // build expressions.
   // array_contains(a, b)
-  auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
+  auto expr = TreeExprBuilder::MakeExpression("array_contains", {field_a, field_b}, res);
 
   // Build a projector for the expressions.
   std::shared_ptr<Projector> projector;
@@ -707,129 +486,4 @@ TEST_F(TestList, TestListFloat64) {
   _test_list_type_field_alias(list(float64()), array, pool_);
 }
 
-
-TEST_F(TestList, TestListUtf8Length) {
-  // schema for input fields
-  auto field_a = field("a", list(utf8()));
-  auto schema = arrow::schema({field_a});
-
-  // output fields
-  auto res = field("res", int64());
-
-  // Create a row-batch with some sample data
-  int num_records = 5;
-  ArrayPtr array_a;
-  _build_list_array<string, arrow::StringBuilder>(
-      {"a", "b", "bb", "c", "cc", "ccc", "d", "dd", "ddd", "dddd", "e", "ee", "eee",
-       "eeee", "eeeee"},
-      {1, 2, 3, 4, 5}, {true, true, true, true, true}, pool_, &array_a);
-
-  // expected output
-  auto exp = MakeArrowArrayInt64({1, 2, 3, 4, 5}, {true, true, true, true, true});
-
-  // prepare input record batch
-  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a});
-
-  // build expressions.
-  // array_length(a)
-  auto expr = TreeExprBuilder::MakeExpression("array_lengthGandiva", {field_a}, res);
-
-  // Build a projector for the expressions.
-  std::shared_ptr<Projector> projector;
-  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Evaluate expression
-  arrow::ArrayVector outputs;
-  status = projector->Evaluate(*in_batch, pool_, &outputs);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
-}
-
-TEST_F(TestList, TestListUtf8LengthWithInvalidData) {
-  // schema for input fields
-  auto field_a = field("a", list(utf8()));
-  auto schema = arrow::schema({field_a});
-
-  // output fields
-  auto res = field("res", int64());
-
-  // Create a row-batch with some sample data
-  int num_records = 5;
-  ArrayPtr array_a;
-  _build_list_array<string, arrow::StringBuilder>(
-      {"a", "b", "bb", "cc", "cc", "ccc", "d", "dd", "ddd"}, {1, 2, 2, 3, 1},
-      {true, false, true, false, true}, pool_, &array_a);
-
-  // expected output
-  auto exp = MakeArrowArrayInt64({1, 2, 2, 3, 1}, {true, false, true, false, true});
-
-  // prepare input record batch
-  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a});
-
-  // build expressions.
-  // array_length(a)
-  auto expr = TreeExprBuilder::MakeExpression("array_lengthGandiva", {field_a}, res);
-
-  // Build a projector for the expressions.
-  std::shared_ptr<Projector> projector;
-  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Evaluate expression
-  arrow::ArrayVector outputs;
-  status = projector->Evaluate(*in_batch, pool_, &outputs);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
-}
-
-
-TEST_F(TestList, TestListUtf8Contains) {
-  // schema for input fields
-  auto field_a = field("a", list(utf8()));
-  auto field_b = field("b", utf8());
-  auto schema = arrow::schema({field_a, field_b});
-
-  // output fields
-  auto res = field("res", boolean());
-
-  // Create a row-batch with some sample data
-  int num_records = 5;
-  ArrayPtr array_a;
-  _build_list_array<string, arrow::StringBuilder>(
-      {"rectangle", "circle", "rectangle", "circle", "triangle", "triangle", "circle",
-       "rectangle"},
-      {2, 3, 1, 1, 1}, {true, true, true, true, true}, pool_, &array_a);
-  auto array_b =
-      MakeArrowArrayUtf8({"rectangle", "circle", "circle", "circle", "rectangll"});
-
-  // expected output
-  auto exp = MakeArrowArrayBool({true, true, false, true, false},
-                                {true, true, true, true, true});
-
-  // prepare input record batch
-  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b});
-
-  // build expressions.
-  // array_contains(a, b)
-  auto expr = TreeExprBuilder::MakeExpression("array_containsGandiva", {field_a, field_b}, res);
-
-  // Build a projector for the expressions.
-  std::shared_ptr<Projector> projector;
-  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Evaluate expression
-  arrow::ArrayVector outputs;
-  status = projector->Evaluate(*in_batch, pool_, &outputs);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
-}
-*/
 }  // namespace gandiva

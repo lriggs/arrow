@@ -17,7 +17,6 @@
 
 #include "gandiva/function_registry.h"
 
-#include <iostream>
 #include <iterator>
 #include <utility>
 #include <vector>

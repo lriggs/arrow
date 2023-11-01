@@ -300,10 +300,7 @@ Status Engine::FinalizeModule() {
   if (!cached_) {
     ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
 
-    //LR TODO
-    //LR Turning this off seems to provide better error messages with compilation/generation failures.
-    //if (optimize_) {
-    if (false) {
+    if (optimize_) {
       // misc passes to allow for inlining, vectorization, ..
       std::unique_ptr<llvm::legacy::PassManager> pass_manager(
           new llvm::legacy::PassManager());

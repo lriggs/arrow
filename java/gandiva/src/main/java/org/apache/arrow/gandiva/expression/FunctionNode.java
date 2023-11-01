@@ -67,7 +67,6 @@ class FunctionNode implements TreeNode {
   public GandivaTypes.TreeNode toProtobuf() throws GandivaException {
     GandivaTypes.FunctionNode.Builder fnNode = GandivaTypes.FunctionNode.newBuilder();
     fnNode.setFunctionName(function);
-    System.out.println("LR TODO retType, retListType)=" + retType + "==" + retListType);
     fnNode.setReturnType(ArrowTypeHelper.arrowTypeToProtobuf(retType, retListType));
 
     for (TreeNode arg : children) {

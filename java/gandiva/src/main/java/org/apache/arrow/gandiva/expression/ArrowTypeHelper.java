@@ -309,7 +309,6 @@ public class ArrowTypeHelper {
         break;
       }
       case Type.Struct_: { // 13
-        ArrowTypeHelper.initArrowTypeStruct((ArrowType.Struct) arrowType, builder);
         break;
       }
       case Type.Union: { // 14
@@ -373,19 +372,15 @@ public class ArrowTypeHelper {
     builder.setName(field.getName());
     builder.setNullable(field.isNullable());
 
-    //LR TODO
     ArrowType subType = null;
     if (field.getChildren().size() > 0 && field.getChildren().get(0)
         .getType().getTypeID().getFlatbufID() != Type.List) {
-      //builder.setListType(arrowTypeToProtobuf(f.getChildren().get(0).getType(), null));
       subType = field.getChildren().get(0).getType();
     }
 
     builder.setType(ArrowTypeHelper.arrowTypeToProtobuf(field.getType(), subType));
     for (Field child : field.getChildren()) {
-      System.out.println("LR TODO arrowFieldToProtobuf child field id is " + child.getType().getTypeID() );
       if (child.getType() != ArrowType.Null.INSTANCE) {
-        System.out.println("LR TODO adding child=" + child.getName() + " type=" + child.getType());
         builder.addChildren(ArrowTypeHelper.arrowFieldToProtobuf(child));
       }
     }

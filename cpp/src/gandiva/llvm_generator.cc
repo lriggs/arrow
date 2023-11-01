@@ -17,7 +17,6 @@
 
 #include "gandiva/llvm_generator.h"
 
-#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,27 +34,6 @@ namespace gandiva {
   if (enable_ir_traces_) { \
     AddTrace(__VA_ARGS__); \
   }
-
-namespace {
-  std::string printType(llvm::Type* t) {
-    if (t == nullptr) {
-      return std::string("null");
-    }
-    std::string str;
-    llvm::raw_string_ostream output(str);
-    t->print(output);
-    return str;
-  }
-    std::string printType(llvm::Value* t) {
-    if (t == nullptr) {
-      return std::string("null");
-    }
-    std::string str;
-    llvm::raw_string_ostream output(str);
-    t->print(output);
-    return str;
-  }
-}
 
 LLVMGenerator::LLVMGenerator(bool cached) : cached_(cached), enable_ir_traces_(false) {}
 
@@ -113,7 +91,6 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
     ARROW_RETURN_NOT_OK(Add(expr, output));
   }
 
-std::cout << "LR TODO LLVMGenerator::Build 2 IR is " << engine_->DumpIR() << std::endl;
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
   
@@ -300,7 +277,6 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
                                        FieldDescriptorPtr output, int suffix_idx,
                                        std::string& fn_name,
                                        SelectionVector::Mode selection_vector_mode) {
-  try {
   llvm::IRBuilder<>* builder = ir_builder();
   // Create fn prototype :
   //   int expr_1 (long **addrs, long *offsets, long **bitmaps,
@@ -390,11 +366,6 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
 
   // define loop_var : start with 0, +1 after each iter
   llvm::PHINode* loop_var = builder->CreatePHI(types()->i64_type(), 2, "loop_var");
-//LR-VAR
-  //Define counter for index into list validity vector.
-  //llvm::PHINode* validity_index_var = builder->CreatePHI(types()->i64_type(), 2, "validity_index_var");
-
-
 
   llvm::Value* position_var = loop_var;
   if (selection_vector_mode != SelectionVector::MODE_NONE) {
@@ -500,10 +471,6 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   builder->SetInsertPoint(loop_exit);
   builder->CreateRet(types()->i32_constant(0));
   return Status::OK();
-  } catch (std::exception& e) {
-    std::cout << e.what() << std::endl;
-    throw e;
-  }
 }
 
 /// Return value of a bit in bitMap.
@@ -591,21 +558,16 @@ void LLVMGenerator::ComputeBitMapsForExpr(const CompiledExpr& compiled_expr,
 llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
                                             llvm::Type* ret_type,
                                             const std::vector<llvm::Value*>& args) {
-  std::cout << "LR TODO AddFunctionCall "  << full_name << " ret type is " << printType(ret_type) << std::endl;
   // find the llvm function.
   llvm::Function* fn = module()->getFunction(full_name);
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
 
-  if (!full_name.compare("printf") &&
+  if (enable_ir_traces_ && !full_name.compare("printf") &&
       !full_name.compare("printff")) {
     // Trace for debugging
     ADD_TRACE("invoke native fn " + full_name);
   }
 
-  std::cout << "LR TODO AddFunctionCall 2" << std::endl;
-  for (llvm::Value* lv : args) {
-    std::cout << "LR TODO arg is " << printType(lv) << std::endl;
-  }
   // build a call to the llvm function.
   llvm::Value* value;
   if (ret_type->isVoidTy()) {
@@ -613,13 +575,7 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
     value = ir_builder()->CreateCall(fn, args);
   } else {
     value = ir_builder()->CreateCall(fn, args, full_name);
-std::cout << "LR TODO AddFunctionCall 3" << std::endl;
-    std::string str;
-    llvm::raw_string_ostream output(str);
-    std::string str2;
-    llvm::raw_string_ostream output2(str2);
-    ret_type->print(output);
-    value->getType()->print(output2);
+
     DCHECK(value->getType() == ret_type);
   }
 
@@ -638,7 +594,9 @@ std::shared_ptr<DecimalLValue> LLVMGenerator::BuildDecimalLValue(llvm::Value* va
 }
 
 #define ADD_VISITOR_TRACE(...)         \
+  if (generator_->enable_ir_traces_) { \
     generator_->AddTrace(__VA_ARGS__); \
+  }
 
 // Visitor for generating the code for a decomposed expression.
 LLVMGenerator::Visitor::Visitor(LLVMGenerator* generator, llvm::Function* function,
@@ -705,17 +663,10 @@ void LLVMGenerator::Visitor::Visit(const VectorReadFixedLenValueListDex& dex) {
   auto types = generator_->types();
   auto type = types->IRType(dex.FieldType()->id());
 
-  std::cout << "LR VectorReadFixedLenValueListDex dex.FieldType()->id() " << dex.FieldType()->id() << " types->DataVecType( " << printType(types->DataVecType(dex.FieldType())) << std::endl;
-
   auto dt = dex.FieldType();
   if (dt->id() == arrow::Type::LIST) {
-    if (dt->num_fields() > 0) {                                                                                                                                                                                    
-    std::cout << "LR TODO creating listtype" << std::endl;
-    std::cout << "LR TODO listtype id=" << dt->fields()[0]->type()->id() << std::endl;
     type = types->IRType(dt->fields()[0]->type()->id() );
-    }
   }
-  std::cout << "LR TODO using type " << printType(type) << std::endl;
 
   arrow::Type::type at32 = arrow::Type::INT32;
   auto type32 = types->IRType(at32);
@@ -1075,7 +1026,6 @@ void LLVMGenerator::Visitor::Visit(const NullableInternalFuncDex& dex) {
 
 
   auto arrow_return_type = dex.func_descriptor()->return_type();
-  auto arrow_return_type_id = arrow_return_type->id();
   
   bool passLoopVars = false;
   for (auto& p : dex.func_descriptor()->params()) {
@@ -1086,16 +1036,9 @@ void LLVMGenerator::Visitor::Visit(const NullableInternalFuncDex& dex) {
   }
   if (passLoopVars)
   {
-  std::string str32 = "loopvar:";
-  if (loop_var_) {
-    llvm::raw_string_ostream output3(str32);
-    loop_var_->print(output3);
-  }
-
-  params.push_back(loop_var_);
-  auto valid_var = builder->CreateLoad(types->i64_type(), validity_index_var_, "loaded_var");
-  params.push_back(valid_var);
-
+    params.push_back(loop_var_);
+    auto valid_var = builder->CreateLoad(types->i64_type(), validity_index_var_, "loaded_var");
+    params.push_back(valid_var);
   }
 
   // add an extra arg for validity (allocated on stack).
@@ -1103,7 +1046,6 @@ void LLVMGenerator::Visitor::Visit(const NullableInternalFuncDex& dex) {
       new llvm::AllocaInst(types->i8_type(), 0, "result_valid", entry_block_);
   params.push_back(result_valid_ptr);
 
-  //auto arrow_return_type = dex.func_descriptor()->return_type();
   result_ = BuildFunctionCall(native_function, arrow_return_type, &params);
 
   // load the result validity and truncate to i1.
@@ -1731,7 +1673,6 @@ void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
     dmsg = ReplaceFormatInTrace(dmsg, value, &print_fn_name);
   }
   trace_strings_.push_back(dmsg);
-  std::cout << dmsg << std::endl;
 
   // cast this to an llvm pointer.
   const char* str = trace_strings_.back().c_str();

@@ -48,7 +48,6 @@ import org.apache.arrow.vector.IntervalDayVector;
 import org.apache.arrow.vector.IntervalYearVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.VarCharVector;
-import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.holders.NullableIntervalDayHolder;
 import org.apache.arrow.vector.holders.NullableIntervalYearHolder;
 import org.apache.arrow.vector.ipc.message.ArrowFieldNode;
@@ -58,7 +57,6 @@ import org.apache.arrow.vector.types.IntervalUnit;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -283,54 +281,6 @@ public class ProjectorTest extends BaseEvaluatorTest {
     for (int i = 8; i < 16; i++) {
       assertTrue(intVector.isNull(i));
     }
-
-    // free buffers
-    releaseRecordBatch(batch);
-    releaseValueVectors(output);
-    eval.close();
-  }
-
-  @Test
-  public void testEvaluateArray() throws GandivaException, Exception {
-    ArrowType int32 = new ArrowType.Int(32, true);
-    ArrowType listInt32 = new ArrowType.List();
-    
-    Field a = Field.nullable("a", int32);
-    List<Field> args = Lists.newArrayList(a);
-
-    Field retType = Field.nullable("c", listInt32);
-    ExpressionTree root = TreeBuilder.makeExpression("array_makeGandiva", args, retType);
-
-    List<ExpressionTree> exprs = Lists.newArrayList(root);
-
-    Schema schema = new Schema(args);
-    Projector eval = Projector.make(schema, exprs);
-
-    int numRows = 16;
-    byte[] validity = new byte[]{(byte) 255, 0};
-    // second half is "undefined"
-    int[] aValues = new int[]{1, 2, 3, 42, 5};
-
-
-    ArrowBuf validitya = buf(validity);
-    ArrowBuf valuesa = intBuf(aValues);
-    ArrowRecordBatch batch =
-        new ArrowRecordBatch(
-            numRows,
-            Lists.newArrayList(new ArrowFieldNode(numRows, 5)),
-            Lists.newArrayList(validitya, valuesa));
-
-    FieldType ft = new FieldType(true, int32, null);
-    ListVector intVector = new ListVector("result", allocator, ft, null);
-    //ListVector.allocateNew(numRows);
-
-    List<ValueVector> output = new ArrayList<ValueVector>();
-    output.add(intVector);
-    eval.evaluate(batch, output);
-
-    System.out.println(intVector.getDataVector());
-
-
 
     // free buffers
     releaseRecordBatch(batch);

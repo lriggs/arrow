@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <vector>
 
 #include "arrow/util/macros.h"

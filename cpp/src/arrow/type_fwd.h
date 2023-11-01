@@ -123,11 +123,6 @@ class StringArray;
 class StringBuilder;
 struct StringScalar;
 
-class StructType;
-class StructArray;
-class StructBuilder;
-struct StructScalar;
-
 class LargeStringType;
 class LargeStringArray;
 class LargeStringBuilder;
@@ -152,6 +147,11 @@ class FixedSizeListType;
 class FixedSizeListArray;
 class FixedSizeListBuilder;
 struct FixedSizeListScalar;
+
+class StructType;
+class StructArray;
+class StructBuilder;
+struct StructScalar;
 
 class Decimal128;
 class Decimal256;

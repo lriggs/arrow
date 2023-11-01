@@ -36,8 +36,7 @@ class CompiledExpr {
 
   ValueValidityPairPtr value_validity() const { return value_validity_; }
 
-  FieldDescriptorPtr output() const { 
-    return output_; }
+  FieldDescriptorPtr output() const { return output_; }
 
   void SetFunctionName(SelectionVector::Mode mode, std::string& name) {
     ir_functions_[static_cast<int>(mode)] = name;

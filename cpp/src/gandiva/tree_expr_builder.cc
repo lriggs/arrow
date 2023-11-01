@@ -161,7 +161,7 @@ ExpressionPtr TreeExprBuilder::MakeExpression(const std::string& function,
     auto node = MakeField(field);
     field_nodes.push_back(node);
   }
-  std::cout << "LR TODO creating TreeExpression " << out_field->type()->ToString() << std::endl;
+
   auto func_node = MakeFunction(function, field_nodes, out_field->type());
   return MakeExpression(func_node, out_field);
 }

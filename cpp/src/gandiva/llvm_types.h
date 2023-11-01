@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <map>
 #include <vector>
 
@@ -46,10 +45,6 @@ class GANDIVA_EXPORT LLVMTypes {
   llvm::Type* i64_type() { return llvm::Type::getInt64Ty(context_); }
 
   llvm::Type* i128_type() { return llvm::Type::getInt128Ty(context_); }
-
-  llvm::StructType* struct_type() {
-    return llvm::StructType::get(context_, {double_type(), double_type()}, false);
-  }
 
   llvm::VectorType* list_type() { return llvm::ScalableVectorType::get(i8_type(), (unsigned int)0); }
 
@@ -126,11 +121,7 @@ class GANDIVA_EXPORT LLVMTypes {
     // offsets buffer is to separate data into list
     // not support nested list
     if (data_type->id() == arrow::Type::LIST) {
-      //LR TODO
-      std::cout << "LR Returning list type as type " << data_type->field(0)->type()->id()<< " for IR " << std::endl;
       return IRType(data_type->field(0)->type()->id());
-      //return IRType(data_type->id());
-      //return i32_ptr_type();
     }
     return IRType(data_type->id());
   }

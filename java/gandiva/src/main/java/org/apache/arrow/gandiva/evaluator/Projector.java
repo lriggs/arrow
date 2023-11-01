@@ -368,7 +368,6 @@ public class Projector {
       outAddrs[idx] = valueVector.getValidityBuffer().memoryAddress();
       outSizes[idx++] = valueVector.getValidityBuffer().capacity();
       if (isVarWidth) {
-        logger.error("LR Projector.java evaluate isVarWidth setting buffer=" + idx);
         outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
         hasVariableWidthColumns = true;
@@ -408,7 +407,6 @@ public class Projector {
 
     for (ValueVector valueVector : outColumns) {
       if (valueVector instanceof ListVector) {
-        //LR TODO check if this is necessary.
         ((ListVector) valueVector).setLastSet(selectionVectorRecordCount - 1);
       }
     }
