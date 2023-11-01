@@ -90,7 +90,7 @@ static jmethodID listvector_expander_method_;
 static jfieldID vector_expander_ret_address_;
 static jfieldID vector_expander_ret_capacity_;
 static jfieldID list_expander_ret_address_;
-static jfieldID list_expander_outer_valid_address_;
+static jfieldID list_expander_valid_address_;
 static jfieldID list_expander_ret_capacity_;
 
 static jclass secondary_cache_class_;
@@ -159,7 +159,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
       env->GetFieldID(list_expander_ret_class_, "address", "J");
   list_expander_ret_capacity_ =
       env->GetFieldID(list_expander_ret_class_, "capacity", "J");
-  list_expander_outer_valid_address_ =
+  list_expander_valid_address_ =
       env->GetFieldID(list_expander_ret_class_, "validityaddress", "J");
 
   jclass local_cache_class =
@@ -948,10 +948,11 @@ Status JavaResizableBuffer::Reserve(const int64_t new_capacity) {
   if (isList) {
     jlong ret_address = env_->GetLongField(ret, list_expander_ret_address_);
     jlong ret_capacity = env_->GetLongField(ret, list_expander_ret_capacity_);
-    jlong outer_valid_address = env_->GetLongField(ret, list_expander_outer_valid_address_);
+    jlong valid_address = env_->GetLongField(ret, list_expander_valid_address_);
 
     data_ = reinterpret_cast<uint8_t*>(ret_address);
     capacity_ = ret_capacity;
+    validityBuffer = reinterpret_cast<uint8_t*>(valid_address);
   } else {
     jlong ret_address = env_->GetLongField(ret, vector_expander_ret_address_);
     jlong ret_capacity = env_->GetLongField(ret, vector_expander_ret_capacity_);
