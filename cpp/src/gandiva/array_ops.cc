@@ -46,17 +46,14 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   std::vector<bool> outValid;
   for (int i = 0; i < entry_len; i++) {
     Type entry_item = *(entry_buf + (i * 1));
-    std::cout << "LR TODO checking " << entry_item << std::endl;
     if (entry_item == remove_data) {
       //Do not add the item to remove.
       } else if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(entry_validityAdjusted), validityBitIndex + i)) {
       outValid.push_back(false);
       newInts.push_back(0);
-      std::cout << "LR TODO not valid! " << i << std::endl;
     } else {
       outValid.push_back(true);
       newInts.push_back(entry_item);
-      std::cout << "LR TODO valid " << i << std::endl;
     }
   }
 
@@ -65,11 +62,9 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   //Since this function can remove values we don't know the length ahead of time.
   //A fast way to compute Math.ceil(input / 8.0).
   int validByteSize = (unsigned int)((*out_len) + 7) >> 3;
-  std::cout << "LR TODO out_len=" << *out_len << " valid byte length is " << validByteSize << std::endl;
 
   uint8_t* validRet = gdv_fn_context_arena_malloc(context_ptr, validByteSize);
   for (int i = 0; i < outValid.size(); i++) {
-    std::cout << "LR TODO setting bit " << i << " to value " << outValid[i] << std::endl;
     arrow::bit_util::SetBitTo(validRet, i, outValid[i]);
   }
 

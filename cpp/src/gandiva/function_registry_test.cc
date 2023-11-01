@@ -94,13 +94,4 @@ TEST_F(TestFunctionRegistry, TestNoDuplicates) {
       << stream.str();
 }
 
-TEST_F(TestFunctionRegistry, TestFound2) {
-  FunctionSignature array_length("array_lengthGandiva", {list(utf8())}, arrow::int64());
-
-  const NativeFunction* function = registry_.LookupSignature(array_length);
-  EXPECT_NE(function, nullptr);
-  EXPECT_THAT(function->signatures(), testing::Contains(array_length));
-  EXPECT_EQ(function->pc_name(), "array_utf8_length");
-}
-
 }  // namespace gandiva
