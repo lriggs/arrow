@@ -32,7 +32,7 @@
 template <typename Type>
 Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
                               int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
-                              Type remove_data, bool entry_validWhat, 
+                              Type remove_data, 
                               int64_t loop_var, int64_t validity_index_var,
                               bool* valid_row, int32_t* out_len, int32_t** valid_ptr)
 {
@@ -42,7 +42,6 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   int64_t validityBitIndex = 0;
   //The validity index already has the current row length added to it, so decrement.
   validityBitIndex = validity_index_var - entry_len;
-  entry_validWhat = true;
   std::vector<bool> outValid;
   for (int i = 0; i < entry_len; i++) {
     Type entry_item = *(entry_buf + (i * 1));
@@ -64,7 +63,7 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   int validByteSize = (unsigned int)((*out_len) + 7) >> 3;
 
   uint8_t* validRet = gdv_fn_context_arena_malloc(context_ptr, validByteSize);
-  for (int i = 0; i < outValid.size(); i++) {
+  for (size_t i = 0; i < outValid.size(); i++) {
     arrow::bit_util::SetBitTo(validRet, i, outValid[i]);
   }
 
@@ -76,7 +75,6 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   if (!combined_row_validity) {
     *out_len = 0;
     *valid_row = false;  //this one is what works for the top level validity.
-    entry_validWhat = false;
   }
   *valid_ptr = reinterpret_cast<int32_t*>(validRet);
   return reinterpret_cast<Type*>(ret);
@@ -85,7 +83,7 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
 template <typename Type>
 bool array_contains_template(const Type* entry_buf,
                               int32_t entry_len, const int32_t* entry_validity, bool combined_row_validity,
-                              int32_t contains_data,
+                              Type contains_data,
                               int64_t loop_var, int64_t validity_index_var,
                               bool* valid_row) {
   if (!combined_row_validity) {
@@ -160,7 +158,7 @@ int32_t* array_int32_remove(int64_t context_ptr, const int32_t* entry_buf,
                               bool* valid_row, int32_t* out_len, int32_t** valid_ptr) {
   return array_remove_template<int32_t>(context_ptr, entry_buf,
                                entry_len, entry_validity, combined_row_validity,
-                              remove_data, entry_validWhat, 
+                              remove_data, 
                               loop_var, validity_index_var,
                               valid_row, out_len, valid_ptr);
 }
@@ -172,7 +170,7 @@ int64_t* array_int64_remove(int64_t context_ptr, const int64_t* entry_buf,
                               bool* valid_row, int32_t* out_len, int32_t** valid_ptr){
   return array_remove_template<int64_t>(context_ptr, entry_buf,
                                entry_len, entry_validity, combined_row_validity,
-                              remove_data, entry_validWhat, 
+                              remove_data, 
                               loop_var, validity_index_var,
                               valid_row, out_len, valid_ptr);
 }
@@ -184,7 +182,7 @@ float* array_float32_remove(int64_t context_ptr, const float* entry_buf,
                               bool* valid_row, int32_t* out_len, int32_t** valid_ptr){
   return array_remove_template<float>(context_ptr, entry_buf,
                                entry_len, entry_validity, combined_row_validity,
-                              remove_data, entry_validWhat, 
+                              remove_data, 
                               loop_var, validity_index_var,
                               valid_row, out_len, valid_ptr);
 }
@@ -197,7 +195,7 @@ double* array_float64_remove(int64_t context_ptr, const double* entry_buf,
                               bool* valid_row, int32_t* out_len, int32_t** valid_ptr){
   return array_remove_template<double>(context_ptr, entry_buf,
                                entry_len, entry_validity, combined_row_validity,
-                              remove_data, entry_validWhat, 
+                              remove_data, 
                               loop_var, validity_index_var,
                               valid_row, out_len, valid_ptr);
 }

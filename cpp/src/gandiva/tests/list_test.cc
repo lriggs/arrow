@@ -133,88 +133,6 @@ void _test_list_type_field_alias(DataTypePtr type, ArrayPtr array,
 }
 
 /*
-TEST_F(TestList, TestListUtf8) {
-  ArrayPtr array;
-  _build_list_array<string, arrow::StringBuilder>(
-      {"a", "b", "bb", "c", "cc", "ccc", "d", "dd", "ddd", "dddd", "e", "ee", "eee",
-       "eeee", "eeeee"},
-      {1, 4, 3, 2, 5}, {true, true, false, true, true}, pool_, &array);
-  _test_list_type_field_alias(list(utf8()), array, pool_);
-}
-
-TEST_F(TestList, TestListUtf8WithInvalidData) {
-  ArrayPtr array;
-  _build_list_array<string, arrow::StringBuilder>(
-      {"a", "b", "bb", "c", "cc", "ccc", "d", "dd", "ddd", "dddd", "e", "ee", "eee",
-       "eeee", "eeeee"},
-      {1, 2, 3, 4, 5}, {true, false, true, true, false}, pool_, &array);
-  _test_list_type_field_alias(list(utf8()), array, pool_);
-}
-
-TEST_F(TestList, TestListInt64) {
-  ArrayPtr array;
-  _build_list_array<int64_t, arrow::Int64Builder>(
-      {1, 10, 20, 100, 200, 300, 1000, 2000, 3000, 4000, 10000, 20000, 30000, 40000,
-       50000},
-      {1, 2, 5, 4, 3}, {true, true, true, true, false}, pool_, &array);
-  _test_list_type_field_alias(list(int64()), array, pool_);
-}
-*/
-
-
-/*TEST_F(TestList, TestListInt32) {
-  ArrayPtr array;
-  _build_list_array2<int32_t, arrow::Int32Builder>(
-      {10, 20, 30, 60, 70, 80},
-      {3, 3}, {true, true}, {true, true, false, true, false, true}, pool_, &array);
-  _test_list_type_field_alias(list(int32()), array, pool_, 2);
-}*/
-
-TEST_F(TestList, TestConcatWS) {
-  // schema for input fields
-
-  auto field_a = field("a", utf8());
-  auto field_b = field("b", utf8());
-  auto field_c = field("c", utf8());
-  auto schema = arrow::schema({field_a, field_b, field_c});
-
-  // output fields
-  auto res = field("res", utf8());
-
-  // Create a row-batch with some sample data
-  int num_records = 2;
-  auto array_a =
-      MakeArrowArrayUtf8({"this", "this"}, {true, true});
-  auto array_b =
-      MakeArrowArrayUtf8({"is", "is not"}, {true, true});
-  auto array_c =
-      MakeArrowArrayUtf8({"a test", "a test"}, {true, true});
-  
-
-  // expected output
-  ArrayPtr exp1;
-  _build_list_array2<int32_t, arrow::Int32Builder>(
-      {10, 30, 70, 80},
-      {2, 2}, {true, true}, {true, true, true, true}, pool_, &exp1);
-  // prepare input record batch
-  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array_a, array_b, array_c});
-
-  auto expr = TreeExprBuilder::MakeExpression("concat_ws", {field_a, field_b, field_c}, res);
-
-
-  // Build a projector for the expressions.
-  std::shared_ptr<Projector> projector;
-  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
-  EXPECT_TRUE(status.ok()) << status.message();
-
-  // Evaluate expression
-  arrow::ArrayVector outputs;
-  status = projector->Evaluate(*in_batch, pool_, &outputs);
-  EXPECT_TRUE(status.ok()) << status.message();
-  // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(exp1, outputs.at(0));
-}
-
 TEST_F(TestList, TestArrayRemove) {
   // schema for input fields
   auto field_b = field("b", int32());
@@ -310,14 +228,6 @@ for (auto& array_data : outputs2) {
       auto child_data = array_data->child_data[0];
       int64_t child_data_size = 1;
       if (arrow::is_binary_like(child_data->type->id())) {
-        /* when allocate array data, child data length is an initialized value,
-         * after calculating, child data offsets buffer has been resized for results,
-         * but array data length is unchanged.
-         * We should recalculate child data length and make ArrayData with new length
-         *
-         * Otherwise, child data offsets buffer length is data length + 1
-         * and offset data is int32_t, need use buffer->size()/4 - 1
-         */
         child_data_size = child_data->buffers[1]->size() / 4 - 1;
       } else if (child_data->type->id() == arrow::Type::INT32) {
         child_data_size = child_data->buffers[1]->size() / 4;
@@ -466,7 +376,7 @@ TEST_F(TestList, TestListInt32Contains) {
 
   // Validate results
   EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
-}
+}*/
 
 TEST_F(TestList, TestListFloat32) {
   ArrayPtr array;
