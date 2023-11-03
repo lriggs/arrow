@@ -93,5 +93,4 @@ TEST_F(TestFunctionRegistry, TestNoDuplicates) {
          "different precompiled functions:\n"
       << stream.str();
 }
-
 }  // namespace gandiva

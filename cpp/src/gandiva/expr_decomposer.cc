@@ -17,7 +17,6 @@
 
 #include "gandiva/expr_decomposer.h"
 
-#include <iostream>
 #include <memory>
 #include <stack>
 #include <string>

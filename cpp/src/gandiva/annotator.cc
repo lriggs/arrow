@@ -17,7 +17,6 @@
 
 #include "gandiva/annotator.h"
 
-#include <iostream>
 #include <memory>
 #include <string>
 

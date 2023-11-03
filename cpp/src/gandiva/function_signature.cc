@@ -18,7 +18,6 @@
 #include "gandiva/function_signature.h"
 
 #include <cstddef>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <utility>

@@ -44,8 +44,6 @@ class LocalBitMapsHolder {
     return local_bitmaps_array_.get()[idx];
   }
 
-  int64_t GetNumRecords() { return num_records_; }
-
  private:
   /// number of records in the current batch.
   int64_t num_records_;

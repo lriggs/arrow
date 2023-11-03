@@ -147,6 +147,9 @@ ExpressionPtr TreeExprBuilder::MakeExpression(NodePtr root_node, FieldPtr result
   if (result_field == nullptr) {
     return nullptr;
   }
+  if (print_expr) {
+    std::cout << "Expression: " << root_node->ToString() << "\n";
+  }
   return ExpressionPtr(new Expression(root_node, result_field));
 }
 
@@ -161,7 +164,6 @@ ExpressionPtr TreeExprBuilder::MakeExpression(const std::string& function,
     auto node = MakeField(field);
     field_nodes.push_back(node);
   }
-
   auto func_node = MakeFunction(function, field_nodes, out_field->type());
   return MakeExpression(func_node, out_field);
 }

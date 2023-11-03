@@ -114,4 +114,5 @@ TEST_F(TestLLVMGenerator, TestAdd) {
   EXPECT_THAT(out, testing::ElementsAre(6, 8, 10, 12));
   EXPECT_EQ(out_bitmap, 0ULL);
 }
+
 }  // namespace gandiva

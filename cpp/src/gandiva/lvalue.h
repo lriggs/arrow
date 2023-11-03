@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <vector>
 
 #include "arrow/util/macros.h"
@@ -32,8 +31,7 @@ class GANDIVA_EXPORT LValue {
  public:
   explicit LValue(llvm::Value* data, llvm::Value* length = NULLPTR,
                   llvm::Value* validity = NULLPTR)
-      : data_(data), length_(length), validity_(validity) {
-      }
+      : data_(data), length_(length), validity_(validity) {}
   virtual ~LValue() = default;
 
   llvm::Value* data() { return data_; }
@@ -125,9 +123,7 @@ class GANDIVA_EXPORT ListLValue : public LValue {
 
   virtual std::string to_string() override {
     std::string s = "List LValue";
-    
     s += " " + LValue::to_string();
-
 
     std::string str1 = "child_offsets_:";
     if (child_offsets_) {
