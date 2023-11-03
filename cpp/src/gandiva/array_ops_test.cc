@@ -29,10 +29,12 @@ TEST(TestArrayOps, TestInt32ContainsInt32) {
   int32_t data[] = {1, 2, 3, 4};
   int32_t entry_offsets_len = 3;
   int32_t contains_data = 2;
+  int32_t entry_validity = 15;
+  bool valid = false;
 
   EXPECT_EQ(
-      array_int32_contains_int32(ctx_ptr, data, entry_offsets_len,
-                               contains_data),
+      array_int32_contains_int32(ctx_ptr, data, entry_offsets_len, &entry_validity,
+                              true, contains_data, true, 0, 0, &valid),
       true);
 }
 

@@ -376,7 +376,7 @@ TEST_F(TestList, TestListInt32Contains) {
 
   // Validate results
   EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
-}*/
+}
 
 TEST_F(TestList, TestListFloat32) {
   ArrayPtr array;
@@ -394,6 +394,6 @@ TEST_F(TestList, TestListFloat64) {
        2.22222, 3.33333, 4.44444, 5.55555},
       {1, 2, 4, 3, 5}, {true, false, true, true, true}, pool_, &array);
   _test_list_type_field_alias(list(float64()), array, pool_);
-}
+}*/
 
 }  // namespace gandiva

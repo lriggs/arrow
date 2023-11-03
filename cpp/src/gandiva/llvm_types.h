@@ -121,6 +121,10 @@ class GANDIVA_EXPORT LLVMTypes {
     // offsets buffer is to separate data into list
     // not support nested list
     if (data_type->id() == arrow::Type::LIST) {
+      //Nested lists aren't supported yet.
+      if (data_type->field(0)->type()->id() == arrow::Type::LIST) {
+        return NULL;
+      }
       return IRType(data_type->field(0)->type()->id());
     }
     return IRType(data_type->id());
