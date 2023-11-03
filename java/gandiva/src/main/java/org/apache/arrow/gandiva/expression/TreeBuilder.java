@@ -94,12 +94,6 @@ public class TreeBuilder {
   public static TreeNode makeFunction(String function,
                                       List<TreeNode> children,
                                       ArrowType retType) {
-    StackTraceElement[] elements = Thread.currentThread().getStackTrace();
-    for (int i = 1; i < elements.length; i++) {
-      StackTraceElement s = elements[i];
-      System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() +
-          "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
-    }
     return new FunctionNode(function, children, retType);
   }
 

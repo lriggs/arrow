@@ -151,11 +151,6 @@ public class ArrowTypeHelper {
   private static void initArrowTypeList(ArrowType.List listType,
                                         ArrowType subType,
                                         GandivaTypes.ExtGandivaType.Builder builder) throws GandivaException {
-    /*if (f != null && f.getChildren().size() > 0 && f.getChildren().get(0)
-        .getType().getTypeID().getFlatbufID() != Type.List) {
-      //builder.setListType(arrowTypeToProtobuf(f.getChildren().get(0).getType(), null));
-      builder.setListType(arrowTypeToProtobuf(f.getChildren().get(0).getType(), null, builder).getType());
-    }*/
     if (subType != null) {
       builder.setListType(arrowTypeToProtobuf(subType).getType());
     }

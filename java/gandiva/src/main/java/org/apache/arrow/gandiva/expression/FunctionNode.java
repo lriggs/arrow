@@ -41,7 +41,6 @@ class FunctionNode implements TreeNode {
     this.retType = inField.getType();
     if (inField.getChildren().size() > 0 && inField.getChildren().get(0)
         .getType().getTypeID().getFlatbufID() != Type.List) {
-      //builder.setListType(arrowTypeToProtobuf(f.getChildren().get(0).getType(), null));
       this.retListType = inField.getChildren().get(0).getType();
     } else {
       this.retListType = null;

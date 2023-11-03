@@ -43,7 +43,7 @@ class IfNode implements TreeNode {
     ifNodeBuilder.setCond(condition.toProtobuf());
     ifNodeBuilder.setThenNode(thenNode.toProtobuf());
     ifNodeBuilder.setElseNode(elseNode.toProtobuf());
-    ifNodeBuilder.setReturnType(ArrowTypeHelper.arrowTypeToProtobuf(retType, null));
+    ifNodeBuilder.setReturnType(ArrowTypeHelper.arrowTypeToProtobuf(retType));
 
     GandivaTypes.TreeNode.Builder builder = GandivaTypes.TreeNode.newBuilder();
     builder.setIfNode(ifNodeBuilder.build());
