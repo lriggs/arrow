@@ -786,7 +786,6 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueListDex& dex) {
   llvm::Value* offsets_slot_index =
       builder->CreateAdd(loop_var_, GetSliceOffset(dex.OffsetsIdx()));
 
-  int i = 0;
   // => offset_start = offsets[loop_var]
   slot = builder->CreateGEP(type, offsets_slot_ref, offsets_slot_index);
   llvm::Value* offset_start = builder->CreateLoad(type, slot, "offset_start");

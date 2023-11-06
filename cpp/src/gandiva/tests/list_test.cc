@@ -251,9 +251,7 @@ for (auto& array_data : outputs2) {
 }
 
 
-
- std::cout << "LR ====================THIRD=WAY================================== " << std::endl;
- {
+{
   std::shared_ptr<arrow::DataType> listDt = std::make_shared<arrow::Int32Type>();
   std::shared_ptr<arrow::DataType> dt = std::make_shared<arrow::ListType>(listDt);
 
