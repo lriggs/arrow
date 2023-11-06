@@ -62,7 +62,9 @@ FieldDescriptorPtr Annotator::MakeDesc(FieldPtr field, bool is_output) {
     data_buffer_ptr_idx = buffer_count_++;
   }
   int child_valid_buffer_ptr_idx = FieldDescriptor::kInvalidIdx;
-  child_valid_buffer_ptr_idx = buffer_count_++;
+  if (field->type()->id() == arrow::Type::LIST) {
+    child_valid_buffer_ptr_idx = buffer_count_++;
+  }
   return std::make_shared<FieldDescriptor>(field, data_idx, validity_idx, offsets_idx,
                                            data_buffer_ptr_idx, child_offsets_idx, child_valid_buffer_ptr_idx);
 }
