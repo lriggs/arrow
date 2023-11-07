@@ -218,6 +218,9 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
       llvm_generator_->Execute(batch, selection_vector, output_data_vecs));
 
   // Create and return array arrays.
+  int const child_data_buffer_index = 1;
+  int const int_data_size = 4;
+  int const double_data_size = 8;
   output->clear();
   for (auto& array_data : output_data_vecs) {
     if (array_data->type->id() == arrow::Type::LIST) {
@@ -232,15 +235,15 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
          * Otherwise, child data offsets buffer length is data length + 1
          * and offset data is int32_t, need use buffer->size()/4 - 1
          */
-        child_data_size = child_data->buffers[1]->size() / 4 - 1;
+        child_data_size = child_data->buffers[child_data_buffer_index]->size() / int_data_size - 1;
       } else if (child_data->type->id() == arrow::Type::INT32) {
-        child_data_size = child_data->buffers[1]->size() / 4;
+        child_data_size = child_data->buffers[child_data_buffer_index]->size() / int_data_size;
       } else if (child_data->type->id() == arrow::Type::INT64) {
-        child_data_size = child_data->buffers[1]->size() / 8;
+        child_data_size = child_data->buffers[child_data_buffer_index]->size() / double_data_size;
       } else if (child_data->type->id() == arrow::Type::FLOAT) {
-        child_data_size = child_data->buffers[1]->size() / 4;
+        child_data_size = child_data->buffers[child_data_buffer_index]->size() / int_data_size;
       } else if (child_data->type->id() == arrow::Type::DOUBLE) {
-        child_data_size = child_data->buffers[1]->size() / 8;
+        child_data_size = child_data->buffers[child_data_buffer_index]->size() / double_data_size;
       }
       auto new_child_data = arrow::ArrayData::Make(
           child_data->type, child_data_size, child_data->buffers, child_data->offset);

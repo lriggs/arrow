@@ -128,16 +128,19 @@ void Annotator::PrepareBuffersForField(const FieldDescriptor& desc,
         }
   }
 
+  int const childDataIndex = 0;
   if (array_data.type->id() != arrow::Type::LIST) {
     uint8_t* data_buf = const_cast<uint8_t*>(array_data.buffers[buffer_idx]->data());
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.offset);
   } else {
     uint8_t* data_buf =
-        const_cast<uint8_t*>(array_data.child_data.at(0)->buffers[buffer_idx]->data());
+        const_cast<uint8_t*>(array_data.child_data.at(childDataIndex)->buffers[buffer_idx]->data());
     eval_batch->SetBuffer(desc.data_idx(), data_buf, array_data.child_data.at(0)->offset);
-    if (array_data.child_data.at(0)->buffers[0] ) {
+    
+    int const childDataBufferIndex = 0;
+    if (array_data.child_data.at(childDataIndex)->buffers[childDataBufferIndex] ) {
     uint8_t* child_valid_buf = const_cast<uint8_t*>(
-            array_data.child_data.at(0)->buffers[0]->data());
+            array_data.child_data.at(childDataIndex)->buffers[childDataBufferIndex]->data());
         eval_batch->SetBuffer(desc.child_data_validity_idx(), child_valid_buf, 0);
     }
 

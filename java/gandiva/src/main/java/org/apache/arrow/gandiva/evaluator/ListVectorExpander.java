@@ -25,6 +25,8 @@ import org.apache.arrow.vector.complex.ListVector;
  */
 public class ListVectorExpander {
   private final ListVector[] bufferVectors;
+  public static final int valueBufferIndex = 1;
+  public static final int validityBufferIndex = 0;
 
   public ListVectorExpander(ListVector[] bufferVectors) {
     this.bufferVectors = bufferVectors;
@@ -66,18 +68,16 @@ public class ListVectorExpander {
       throw new IllegalArgumentException("invalid index " + index);
     }
 
-    int valueBufferIndex = 1;
-    int validityBufferIndex = 0;
     ListVector vector = bufferVectors[index];
-    while (vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity() < toCapacity) {
+    while (vector.getDataVector().getFieldBuffers().get(ListVectorExpander.valueBufferIndex).capacity() < toCapacity) {
       //Just realloc the data vector.
       vector.getDataVector().reAlloc();
     }
     
     return new ExpandResult(
-        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).memoryAddress(),
-        vector.getDataVector().getFieldBuffers().get(valueBufferIndex).capacity(),
-        vector.getDataVector().getFieldBuffers().get(validityBufferIndex).memoryAddress());
+        vector.getDataVector().getFieldBuffers().get(ListVectorExpander.valueBufferIndex).memoryAddress(),
+        vector.getDataVector().getFieldBuffers().get(ListVectorExpander.valueBufferIndex).capacity(),
+        vector.getDataVector().getFieldBuffers().get(ListVectorExpander.validityBufferIndex).memoryAddress());
   }
 
 }

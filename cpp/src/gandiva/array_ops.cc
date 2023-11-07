@@ -44,7 +44,7 @@ Type* array_remove_template(int64_t context_ptr, const Type* entry_buf,
   validityBitIndex = validity_index_var - entry_len;
   std::vector<bool> outValid;
   for (int i = 0; i < entry_len; i++) {
-    Type entry_item = *(entry_buf + (i * 1));
+    Type entry_item = *(entry_buf + i);
     if (entry_item == remove_data) {
       //Do not add the item to remove.
       } else if (!arrow::bit_util::GetBit(reinterpret_cast<const uint8_t*>(entry_validityAdjusted), validityBitIndex + i)) {

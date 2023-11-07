@@ -358,10 +358,11 @@ public class Projector {
 
     idx = 0;
     int outColumnIdx = 0;
+    final int listVectorBufferCount = 5;
     for (ValueVector valueVector : outColumns) {
       if (valueVector instanceof ListVector) {
-        outAddrs = new long[5 * outColumns.size()];
-        outSizes = new long[5 * outColumns.size()];
+        outAddrs = new long[listVectorBufferCount * outColumns.size()];
+        outSizes = new long[listVectorBufferCount * outColumns.size()];
       }
 
       boolean isVarWidth = valueVector instanceof VariableWidthVector;
@@ -383,12 +384,16 @@ public class Projector {
         outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
 
         //vector valid
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).memoryAddress();
-        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(0).capacity();
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers()
+            .get(ListVectorExpander.validityBufferIndex).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers()
+            .get(ListVectorExpander.validityBufferIndex).capacity();
 
         //vector offset
-        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).memoryAddress();
-        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers().get(1).capacity();
+        outAddrs[idx] = ((ListVector) valueVector).getDataVector().getFieldBuffers()
+            .get(ListVectorExpander.valueBufferIndex).memoryAddress();
+        outSizes[idx++] = ((ListVector) valueVector).getDataVector().getFieldBuffers()
+            .get(ListVectorExpander.valueBufferIndex).capacity();
       } else {
         outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
         outSizes[idx++] = valueVector.getDataBuffer().capacity();
