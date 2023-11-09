@@ -39,7 +39,7 @@ public class ExpressionRegistryTest {
   public void testFunctions() throws GandivaException {
     ArrowType.Int uint8 = new ArrowType.Int(8, false);
     FunctionSignature signature =
-        new FunctionSignature("add", uint8, ArrowType.Null(), Lists.newArrayList(uint8, uint8));
+        new FunctionSignature("add", uint8, Lists.newArrayList(uint8, uint8));
     Set<FunctionSignature> functions = ExpressionRegistry.getInstance().getSupportedFunctions();
     Assert.assertTrue(functions.contains(signature));
   }
@@ -48,7 +48,7 @@ public class ExpressionRegistryTest {
   public void testFunctionAliases() throws GandivaException {
     ArrowType.Int int64 = new ArrowType.Int(64, true);
     FunctionSignature signature =
-        new FunctionSignature("modulo", int64, ArrowType.Null(), Lists.newArrayList(int64, int64));
+        new FunctionSignature("modulo", int64, Lists.newArrayList(int64, int64));
     Set<FunctionSignature> functions = ExpressionRegistry.getInstance().getSupportedFunctions();
     Assert.assertTrue(functions.contains(signature));
   }
@@ -58,7 +58,7 @@ public class ExpressionRegistryTest {
     ArrowType.Utf8 utf8 = new ArrowType.Utf8();
     ArrowType.Int int64 = new ArrowType.Int(64, true);
     FunctionSignature signature =
-        new FunctionSignature("castvarchar", utf8, ArrowType.Null(), Lists.newArrayList(utf8, int64));
+        new FunctionSignature("castvarchar", utf8, Lists.newArrayList(utf8, int64));
     Set<FunctionSignature> functions = ExpressionRegistry.getInstance().getSupportedFunctions();
     Assert.assertTrue(functions.contains(signature));
   }

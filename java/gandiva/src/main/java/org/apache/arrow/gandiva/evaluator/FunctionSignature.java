@@ -64,6 +64,20 @@ public class FunctionSignature {
   }
 
   /**
+   * Ctor.
+   * @param name - name of the function.
+   * @param returnType - data type of return
+   * @param returnListType optional list type
+   * @param paramTypes - data type of input args.
+   */
+  public FunctionSignature(String name, ArrowType returnType, List<ArrowType> paramTypes) {
+    this.name = name;
+    this.returnType = returnType;
+    this.returnListType = ArrowType.Null.INSTANCE;
+    this.paramTypes = paramTypes;
+  }
+
+  /**
    * Override equals.
    * @param signature - signature to compare
    * @return true if equal and false if not.
