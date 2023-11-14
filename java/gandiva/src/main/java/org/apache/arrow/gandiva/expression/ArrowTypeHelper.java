@@ -143,11 +143,6 @@ public class ArrowTypeHelper {
     }
   }
 
-  private static void initArrowTypeStruct(ArrowType.Struct structType,
-                                        GandivaTypes.ExtGandivaType.Builder builder) {
-    builder.setType(GandivaTypes.GandivaType.STRUCT);
-  }
-
   private static void initArrowTypeList(ArrowType.List listType,
                                         ArrowType subType,
                                         GandivaTypes.ExtGandivaType.Builder builder) throws GandivaException {
