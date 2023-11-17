@@ -17,6 +17,7 @@
 
 package org.apache.arrow.gandiva.evaluator;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.arrow.vector.types.pojo.ArrowType;
@@ -31,7 +32,7 @@ public class FunctionSignature {
   private final String name;
   private final ArrowType returnType;
   private final ArrowType returnListType;
-  private final List<ArrowType> paramTypes;
+  private final List<List<ArrowType>> paramTypes;
 
   public ArrowType getReturnType() {
     return returnType;
@@ -41,7 +42,7 @@ public class FunctionSignature {
     return returnListType;
   }
 
-  public List<ArrowType> getParamTypes() {
+  public List<List<ArrowType>> getParamTypes() {
     return paramTypes;
   }
 
@@ -56,7 +57,8 @@ public class FunctionSignature {
    * @param returnListType optional list type
    * @param paramTypes - data type of input args.
    */
-  public FunctionSignature(String name, ArrowType returnType, ArrowType returnListType, List<ArrowType> paramTypes) {
+  public FunctionSignature(String name, ArrowType returnType, ArrowType returnListType, 
+      List<List<ArrowType>> paramTypes) {
     this.name = name;
     this.returnType = returnType;
     this.returnListType = returnListType;
@@ -73,7 +75,13 @@ public class FunctionSignature {
     this.name = name;
     this.returnType = returnType;
     this.returnListType = ArrowType.Null.INSTANCE;
-    this.paramTypes = paramTypes;
+    this.paramTypes = new ArrayList<List<ArrowType>>();
+    for (ArrowType paramType : paramTypes) {
+      List<ArrowType> paramArrowList = new ArrayList<ArrowType>();
+      paramArrowList.add(paramType);
+      this.paramTypes.add(paramArrowList);
+    }
+    
   }
 
   /**
