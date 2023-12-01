@@ -56,6 +56,7 @@
       <groupId>org.apache.arrow</groupId>
       <artifactId>arrow-jdbc</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.google.guava</groupId>
@@ -74,6 +75,7 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.derby</groupId>
