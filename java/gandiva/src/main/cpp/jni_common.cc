@@ -261,7 +261,6 @@ DataTypePtr ProtoTypeToList(const types::ExtGandivaType& ext_type) {
 DataTypePtr SimpleProtoTypeToDataType(const types::GandivaType& gandiva_type) {
   switch (gandiva_type) {
     case types::NONE:
->>>>>>> a225426e1 (DX-64328 Array types for Gandiva (#58))
       return arrow::null();
     case gandiva::types::BOOL:
       return arrow::boolean();
@@ -295,9 +294,9 @@ DataTypePtr SimpleProtoTypeToDataType(const types::GandivaType& gandiva_type) {
       return arrow::date32();
     case gandiva::types::DATE64:
       return arrow::date64();
-<<<<<<< HEAD
     case gandiva::types::DECIMAL:
-=======
+          // TODO: error handling
+      return arrow::decimal(ext_type.precision(), ext_type.scale());
     default:
       std::cerr << "Unknown data type: " << gandiva_type << "\n";
       return nullptr;
@@ -309,7 +308,6 @@ DataTypePtr SimpleProtoTypeToDataType(const types::GandivaType& gandiva_type) {
 DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
   switch (ext_type.type()) {
     case types::DECIMAL:
->>>>>>> a225426e1 (DX-64328 Array types for Gandiva (#58))
       // TODO: error handling
       return arrow::decimal(ext_type.precision(), ext_type.scale());
     case gandiva::types::TIME32:
@@ -320,21 +318,13 @@ DataTypePtr ProtoTypeToDataType(const types::ExtGandivaType& ext_type) {
       return ProtoTypeToTimestamp(ext_type);
     case gandiva::types::INTERVAL:
       return ProtoTypeToInterval(ext_type);
-<<<<<<< HEAD
-    case gandiva::types::FIXED_SIZE_BINARY:
     case gandiva::types::LIST:
+      return ProtoTypeToList(ext_type);
+    case gandiva::types::FIXED_SIZE_BINARY:
     case gandiva::types::STRUCT:
     case gandiva::types::UNION:
     case gandiva::types::DICTIONARY:
     case gandiva::types::MAP:
-=======
-    case types::LIST:
-      return ProtoTypeToList(ext_type);
-    case types::FIXED_SIZE_BINARY:
-    case types::UNION:
-    case types::DICTIONARY:
-    case types::MAP:
->>>>>>> a225426e1 (DX-64328 Array types for Gandiva (#58))
       std::cerr << "Unhandled data type: " << ext_type.type() << "\n";
       return nullptr;
     default:
