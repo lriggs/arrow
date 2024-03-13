@@ -82,38 +82,43 @@ class TestSecondaryCache : public ::testing::Test {
 };
 
 TEST_F(TestSecondaryCache, TestProjectSecCache) {
+  std::cout << "test1" << std::endl;
   // schema for input fields
   auto field0 = field("f0", int32());
   auto field1 = field("f2", int32());
   auto schema = arrow::schema({field0, field1});
-
+std::cout << "test2" << std::endl;
   // output fields
   auto field_sum = field("add", int32());
   auto field_sub = field("subtract", int32());
 
   // Build expression
   auto sum_expr = TreeExprBuilder::MakeExpression("add", {field0, field1}, field_sum);
+  std::cout << "test3" << std::endl;
   auto sub_expr =
       TreeExprBuilder::MakeExpression("subtract", {field0, field1}, field_sub);
-
+std::cout << "test4" << std::endl;
   auto configuration = TestConfiguration();
 
   std::shared_ptr<Projector> projector;
+  //projector->Clear();
   auto status = Projector::Make(schema, {sum_expr, sub_expr}, configuration, sec_cache_,
                                 &projector);
   ASSERT_OK(status);
   EXPECT_FALSE(projector->GetBuiltFromCache());
-  projector->Clear();
-
+  //projector->Clear();
+std::cout << "test5" << std::endl;
   // everything is same, should return the same projector.
   auto schema_same = arrow::schema({field0, field1});
   std::shared_ptr<Projector> cached_projector;
+  std::cout << "test5b" << std::endl;
   status = Projector::Make(schema_same, {sum_expr, sub_expr}, configuration, sec_cache_,
                            &cached_projector);
+                           std::cout << "test6" << std::endl;
   ASSERT_OK(status);
   EXPECT_TRUE(cached_projector->GetBuiltFromCache());
-  cached_projector->Clear();
-
+  //cached_projector->Clear();
+std::cout << "test7" << std::endl;
   // schema is different should return a new projector.
   auto field2 = field("f2", int32());
   auto different_schema = arrow::schema({field0, field1, field2});
@@ -122,19 +127,20 @@ TEST_F(TestSecondaryCache, TestProjectSecCache) {
                            sec_cache_, &should_be_new_projector);
   ASSERT_OK(status);
   EXPECT_FALSE(should_be_new_projector->GetBuiltFromCache());
-  should_be_new_projector->Clear();
-
+  //should_be_new_projector->Clear();
+std::cout << "test8" << std::endl;
   // expression list is different should return a new projector.
   std::shared_ptr<Projector> should_be_new_projector1;
   status = Projector::Make(schema, {sum_expr}, configuration, sec_cache_,
                            &should_be_new_projector1);
   ASSERT_OK(status);
   EXPECT_FALSE(should_be_new_projector1->GetBuiltFromCache());
-  should_be_new_projector1->Clear();
+  //should_be_new_projector1->Clear();
 
   // another instance of the same configuration, should return the same projector.
   status = Projector::Make(schema, {sum_expr, sub_expr}, TestConfiguration(), sec_cache_,
                            &cached_projector);
+                           std::cout << "test9" << std::endl;
   ASSERT_OK(status);
   EXPECT_TRUE(cached_projector->GetBuiltFromCache());
 }
@@ -149,7 +155,7 @@ TEST_F(TestSecondaryCache, TestProjectCacheDecimalCast) {
   ASSERT_OK(
       Projector::Make(schema, {expr0}, TestConfiguration(), sec_cache_, &projector0));
   EXPECT_FALSE(projector0->GetBuiltFromCache());
-  projector0->Clear();
+  //projector0->Clear();
 
   // if the output scale is different, the cache can't be used.
   auto res_31_14 = field("result", arrow::decimal(31, 14));
@@ -158,7 +164,7 @@ TEST_F(TestSecondaryCache, TestProjectCacheDecimalCast) {
   ASSERT_OK(
       Projector::Make(schema, {expr1}, TestConfiguration(), sec_cache_, &projector1));
   EXPECT_FALSE(projector1->GetBuiltFromCache());
-  projector1->Clear();
+  //projector1->Clear();
 
   // if the output scale/precision are same, should get a cache hit.
   auto res_31_13_alt = field("result", arrow::decimal(31, 13));
@@ -191,14 +197,14 @@ TEST_F(TestSecondaryCache, TestFilterCache) {
   auto status = Filter::Make(schema, condition, configuration, sec_cache_, &filter);
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(filter->GetBuiltFromCache());
-  filter->Clear();
+  //filter->Clear();
 
   // same schema and condition, should return the same filter as above.
   std::shared_ptr<Filter> cached_filter;
   status = Filter::Make(schema, condition, configuration, sec_cache_, &cached_filter);
   EXPECT_TRUE(status.ok());
   EXPECT_TRUE(cached_filter->GetBuiltFromCache());
-  cached_filter->Clear();
+  //cached_filter->Clear();
 
   // schema is different should return a new filter.
   auto field2 = field("f2", int32());
