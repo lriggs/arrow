@@ -38,11 +38,6 @@ add_gandiva_test(projector-test
                  to_string_test.cc
                  utf8_test.cc)
 
-add_gandiva_test(secondary-projector-test
-                 SOURCES
-                 secondary_cache_test.cc
-                 test_util.cc)
-
 if(ARROW_BUILD_STATIC)
   add_gandiva_test(projector_test_static
                    SOURCES

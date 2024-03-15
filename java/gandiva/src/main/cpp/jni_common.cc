@@ -151,7 +151,6 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
   env->DeleteGlobalRef(listvector_expander_class_);
   env->DeleteGlobalRef(vector_expander_ret_class_);
   env->DeleteGlobalRef(list_expander_ret_class_);
-  env->DeleteGlobalRef(cache_buf_ret_class_);
 }
 
 DataTypePtr SimpleProtoTypeToDataType(const gandiva::types::GandivaType& gandiva_type);
