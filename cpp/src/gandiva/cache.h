@@ -50,11 +50,6 @@ class Cache {
     cache_.insert(cache_key, module);
   }
 
-  void Clear() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    cache_.clear();
-  }
-
  private:
   LruCache<KeyType, ValueType> cache_;
   std::mutex mtx_;

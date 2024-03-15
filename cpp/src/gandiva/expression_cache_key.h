@@ -19,7 +19,6 @@
 
 #include <stddef.h>
 
-#include <sstream>
 #include <thread>
 
 #include "arrow/util/hash_util.h"

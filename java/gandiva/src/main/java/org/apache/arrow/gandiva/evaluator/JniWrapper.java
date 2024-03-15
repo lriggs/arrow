@@ -31,7 +31,6 @@ public class JniWrapper {
    * Generates the projector module to evaluate the expressions with
    * custom configuration.
    *
-   * @param cache       SecondaryCacheInterface object. Used for callbacks from cpp.
    * @param schemaBuf   The schema serialized as a protobuf. See Types.proto
    *                    to see the protobuf specification
    * @param exprListBuf The serialized protobuf of the expression vector. Each
@@ -41,7 +40,7 @@ public class JniWrapper {
    * @return A moduleId that is passed to the evaluateProjector() and closeProjector() methods
    *
    */
-  native long buildProjector(Object cache, byte[] schemaBuf, byte[] exprListBuf,
+  native long buildProjector(byte[] schemaBuf, byte[] exprListBuf,
                              int selectionVectorType,
                              long configId) throws GandivaException;
 
@@ -81,7 +80,6 @@ public class JniWrapper {
    * Generates the filter module to evaluate the condition expression with
    * custom configuration.
    *
-   * @param cache        SecondaryCacheInterface object. Used for callbacks from cpp.
    * @param schemaBuf    The schema serialized as a protobuf. See Types.proto
    *                     to see the protobuf specification
    * @param conditionBuf The serialized protobuf of the condition expression. Each
@@ -90,7 +88,7 @@ public class JniWrapper {
    * @return A moduleId that is passed to the evaluateFilter() and closeFilter() methods
    *
    */
-  native long buildFilter(Object cache, byte[] schemaBuf, byte[] conditionBuf,
+  native long buildFilter(byte[] schemaBuf, byte[] conditionBuf,
                           long configId) throws GandivaException;
 
   /**
@@ -121,4 +119,3 @@ public class JniWrapper {
    */
   native void closeFilter(long moduleId);
 }
-
