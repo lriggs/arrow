@@ -20,6 +20,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "arrow/util/logging.h"
 
@@ -127,9 +128,9 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   // Set the object cache for LLVM
   ARROW_RETURN_NOT_OK(llvm_gen->SetLLVMObjectCache(obj_cache));
-
+std::cout << "LR P 1" << std::endl;
   ARROW_RETURN_NOT_OK(llvm_gen->Build(exprs, selection_vector_mode));
-
+std::cout << "LR P 2" << std::endl;
   // save the output field types. Used for validation at Evaluate() time.
   std::vector<FieldPtr> output_fields;
   output_fields.reserve(exprs.size());

@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "gandiva/bitmap_accumulator.h"
 #include "gandiva/decimal_ir.h"
@@ -96,9 +97,10 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
     ARROW_RETURN_NOT_OK(Add(expr, output));
   }
 
+std::cout << "LR gen 1" << std::endl;
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
-  
+  std::cout << "LR gen 2" << std::endl;
   // setup the jit functions for each expression.
   for (auto& compiled_expr : compiled_exprs_) {
     auto fn_name = compiled_expr->GetFunctionName(mode);
