@@ -332,6 +332,9 @@ public class Projector {
       throw new EvaluatorClosedException();
     }
 
+    logger.info("Projector::evaluate 1");
+    System.out.println("Projector::evaluate 1");
+    
     if (numExprs != outColumns.size()) {
       logger.info("Expected " + numExprs + " columns, got " + outColumns.size());
       throw new GandivaException("Incorrect number of columns for the output vector");
