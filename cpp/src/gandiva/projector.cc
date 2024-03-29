@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <utility>
-#include <iostream>
 #include <vector>
 
 #include "arrow/util/logging.h"
@@ -163,10 +162,10 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
                            const ArrayDataVector& output_data_vecs) const {
   ARROW_RETURN_NOT_OK(ValidateEvaluateArgsCommon(batch));
 
-  std::cout << "Projector::Evaluate 1:" << std::endl;
-  std::cout << "Projector::Evaluate 1: batch=" << &batch << std::endl;
-  std::cout << "Projector::Evaluate 1: selection_vector=" << selection_vector << std::endl;
-  std::cout << "Projector::Evaluate 1: output_data_vecs=" << &output_data_vecs << std::endl;
+  ARROW_LOG(INFO) << "Projector::Evaluate 1:";
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 1: batch=" << &batch;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 1: selection_vector=" << selection_vector;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 1: output_data_vecs=" << &output_data_vecs;
 
   if (output_data_vecs.size() != output_fields_.size()) {
     std::stringstream ss;
@@ -205,11 +204,11 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   ARROW_RETURN_IF(output == nullptr, Status::Invalid("Output must be non-null."));
   ARROW_RETURN_IF(pool == nullptr, Status::Invalid("Memory pool must be non-null."));
 
-  std::cout << "Projector::Evaluate 2:" << std::endl;
-  std::cout << "Projector::Evaluate 2: batch=" << &batch << std::endl;
-  std::cout << "Projector::Evaluate 2: selection_vector=" << selection_vector << std::endl;
-  std::cout << "Projector::Evaluate 2: pool=" << pool << std::endl;
-  std::cout << "Projector::Evaluate 2: output=" << output << std::endl;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 2:";
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 2: batch=" << &batch;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 2: selection_vector=" << selection_vector;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 2: pool=" << pool;
+  ARROW_LOG(INFO) <<  << "Projector::Evaluate 2: output=" << output;
 
   auto num_rows =
       selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
