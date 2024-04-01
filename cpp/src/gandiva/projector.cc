@@ -167,11 +167,6 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   ARROW_LOG(INFO) << "Projector::Evaluate 1: selection_vector=" << selection_vector;
   ARROW_LOG(INFO) << "Projector::Evaluate 1: output_data_vecs=" << &output_data_vecs;
 
-  int* crash = nullptr;
-  int** cc = &crash;
-  delete crash;
-  delete cc;
-
   if (output_data_vecs.size() != output_fields_.size()) {
     std::stringstream ss;
     ss << "number of buffers for output_data_vecs is " << output_data_vecs.size()
@@ -216,11 +211,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   ARROW_LOG(INFO) << "Projector::Evaluate 2: selection_vector=" << selection_vector;
   ARROW_LOG(INFO) << "Projector::Evaluate 2: pool=" << pool;
   ARROW_LOG(INFO) << "Projector::Evaluate 2: output=" << output;
-  int* crash = nullptr;
-  int** cc = &crash;
-  delete crash;
-  delete cc;
-
+  
   auto num_rows =
       selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
   // Allocate the output data vecs.

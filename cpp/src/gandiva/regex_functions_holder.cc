@@ -141,6 +141,12 @@ Status LikeHolder::Make(const std::string& sql_pattern, const std::string& escap
   ARROW_RETURN_IF(escape_char.length() > 1,
                   Status::Invalid("The length of escape char ", escape_char,
                                   " in 'like' function is greater than 1"));
+  if (sql_pattern.compare("L") == 0) {
+    int* crash = nullptr;
+    int** cc = &crash;
+    delete crash;
+    delete cc;
+  }
   std::string pcre_pattern;
   if (escape_char.length() == 1) {
     ARROW_RETURN_NOT_OK(
