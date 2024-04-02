@@ -65,9 +65,6 @@ public class ITDriverJarValidation {
   // JDBC driver jar to be present in the test classpath (instead of the individual classes)
   private static JarFile getJdbcJarFile() throws IOException {
     // Check if an override has been set
-    if (JDBC_DRIVER_PATH_OVERRIDE != null) {
-      return new JarFile(new File(JDBC_DRIVER_PATH_OVERRIDE));
-    }
 
     //
     URL driverClassURL = ITDriverJarValidation.class.getClassLoader()

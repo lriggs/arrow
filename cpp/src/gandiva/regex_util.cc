@@ -17,6 +17,8 @@
 
 #include "gandiva/regex_util.h"
 
+#include "arrow/util/logging.h"
+
 namespace gandiva {
 
 const std::set<char> RegexUtil::pcre_regex_specials_ = {
@@ -26,6 +28,7 @@ Status RegexUtil::SqlLikePatternToPcre(const std::string& sql_pattern, char esca
                                        std::string& pcre_pattern) {
   /// Characters that are considered special by pcre regex. These needs to be
   /// escaped with '\\'.
+  ARROW_LOG(INFO) << "SqlLikePatternToPcre sql=" << sql_pattern;
   pcre_pattern.clear();
   for (size_t idx = 0; idx < sql_pattern.size(); ++idx) {
     auto cur = sql_pattern.at(idx);
@@ -46,7 +49,7 @@ Status RegexUtil::SqlLikePatternToPcre(const std::string& sql_pattern, char esca
       if (cur == '_' || cur == '%' || cur == escape_char) {
         pcre_pattern += cur;
       } else {
-        return Status::Invalid("Invalid escape sequence in pattern ", sql_pattern,
+        return Status::Invalid("Invalid TEST escape sequence in pattern ", sql_pattern,
                                " at offset ", idx);
       }
     } else if (cur == '_') {
@@ -57,6 +60,7 @@ Status RegexUtil::SqlLikePatternToPcre(const std::string& sql_pattern, char esca
       pcre_pattern += cur;
     }
   }
+  ARROW_LOG(INFO) << "SqlLikePatternToPcre compiled=" << pcre_pattern;
   return Status::OK();
 }
 
