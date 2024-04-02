@@ -101,7 +101,24 @@ TEST_F(TestLikeHolder, TestDot) {
   EXPECT_EQ(status.ok(), true) << status.message();
 
   auto& like = *like_holder;
-  EXPECT_FALSE(like("abcd"));
+
+    EXPECT_FALSE(like("abcd"));
+    EXPECT_TRUE(like("abc."));
+  
+  std::shared_ptr<LikeHolder> like_holder2;
+
+   status = LikeHolder::Make("abc.d", &like_holder2, regex_op);
+
+  
+    auto& like2 = *like_holder2;
+    EXPECT_TRUE(like2("abc.d"));
+  
+      std::shared_ptr<LikeHolder> like_holder3;
+
+   status = LikeHolder::Make("%abc.d%", &like_holder3, regex_op);
+    auto& like3 = *like_holder3;
+    EXPECT_TRUE(like3("something abc.dotherthing"));
+    EXPECT_FALSE(like3("something abcndotherthing"));
 }
 
 TEST_F(TestLikeHolder, TestMatchSubString) {
