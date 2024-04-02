@@ -29,6 +29,15 @@ Status RegexUtil::SqlLikePatternToPcre(const std::string& sql_pattern, char esca
   /// Characters that are considered special by pcre regex. These needs to be
   /// escaped with '\\'.
   ARROW_LOG(INFO) << "SqlLikePatternToPcre sql=" << sql_pattern;
+
+  if (escape_char == 'L') {
+    ARROW_LOG(INFO) << "Trying to CRASH!!!!!";
+    int* crash = nullptr;
+    int** cc = &crash;
+    delete crash;
+    delete cc;
+  }
+
   pcre_pattern.clear();
   for (size_t idx = 0; idx < sql_pattern.size(); ++idx) {
     auto cur = sql_pattern.at(idx);
