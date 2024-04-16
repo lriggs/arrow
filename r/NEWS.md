@@ -37,6 +37,7 @@
 * Fixed pointer conversion to Python for latest reticulate to ensure data can be passed between Arrow and PyArrow (#39969) 
 * Check on macOS if we are using GNU libtool is and ensure we use macOS libtool instead (#40259)
 * Fix an error where creating a bundled tarball with all dependencies was failing on Windows (@hutch3232, #40232)
+# arrow 16.0.0
 
 
 # arrow 15.0.1
