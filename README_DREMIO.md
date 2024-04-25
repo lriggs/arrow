@@ -1,3 +1,5 @@
+58cfafafd5b63c1bc4530a325ff6bf605b02d0a7 Fri Apr 19 18:59:06 2024 +0300-DX-88565 Fixed gandiva native library loading option to be global [DenisTarasyuk]
+21c87a3206ec7dd7145c8d5ddbcdd288e706c55f Fri Apr 12 13:16:57 2024 +0300-GH-40968: [C++][Gandiva] add  RE2::Options set_dot_nl(true) for Like function (#40970) (#68) [GitHub]
 6397aeaa33926d30c2749d8496882b09c75f9830 Thu Apr 4 18:11:10 2024 -0700- Revert "GH-37848: [C++][Gandiva] Migrate LLVM JIT engine from MCJIT to ORC v2/LLJIT (#39098)" [Logan Riggs]
 d2f89c2cd74f4e83c61991c7f0f47259ca2f62fd Wed Apr 3 10:43:35 2024 -0700- Remove moduel-info.java which was not present in repo when cherry-picking other change. [Logan Riggs]
 78e946080c3c4562d8bf424c93aac97bcd0f5346 Tue Apr 2 14:34:53 2024 -0700- Fix license issue with RAT check. The new files were not being properly excluded. [Logan Riggs]
