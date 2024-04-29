@@ -53,7 +53,7 @@ export ARROW_ORC
 : ${ARROW_PARQUET:=ON}
 : ${ARROW_S3:=ON}
 : ${ARROW_USE_CCACHE:=OFF}
-: ${CMAKE_BUILD_TYPE:=release}
+: ${CMAKE_BUILD_TYPE:=Debug}
 : ${CMAKE_UNITY_BUILD:=ON}
 : ${VCPKG_ROOT:=/opt/vcpkg}
 : ${VCPKG_FEATURE_FLAGS:=-manifests}
