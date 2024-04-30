@@ -91,7 +91,7 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - { runs_on: ["macos-latest"], arch: "x86_64"}
+          - { runs_on: ["macos-12"], arch: "x86_64"}
     env:
       MACOSX_DEPLOYMENT_TARGET: "10.15"
     steps:
@@ -197,7 +197,7 @@ jobs:
 
   package-jars:
     name: Build jar files
-    runs-on: macos-latest
+    runs-on: macos-12
     needs:
       - build-cpp-ubuntu
       - build-cpp-macos
