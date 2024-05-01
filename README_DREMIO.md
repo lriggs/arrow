@@ -1,3 +1,4 @@
+0721d676ed232e33b47ab7634d0aa17f0ed5e765 DX-90092 Log exceptions when closing BaseAllocator. (#70)
 58cfafafd5b63c1bc4530a325ff6bf605b02d0a7 Fri Apr 19 18:59:06 2024 +0300-DX-88565 Fixed gandiva native library loading option to be global [DenisTarasyuk]
 21c87a3206ec7dd7145c8d5ddbcdd288e706c55f Fri Apr 12 13:16:57 2024 +0300-GH-40968: [C++][Gandiva] add  RE2::Options set_dot_nl(true) for Like function (#40970) (#68) [GitHub]
 6397aeaa33926d30c2749d8496882b09c75f9830 Thu Apr 4 18:11:10 2024 -0700- Revert "GH-37848: [C++][Gandiva] Migrate LLVM JIT engine from MCJIT to ORC v2/LLJIT (#39098)" [Logan Riggs]
