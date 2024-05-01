@@ -408,6 +408,20 @@ abstract class BaseAllocator extends Accountant implements BufferAllocator {
 
   @Override
   public synchronized void close() {
+    try {
+      closeImpl();
+    } catch (Exception e) {
+      logger.warn(
+            "BufferAllocator.close() of {} got an exception {} - Details {}",
+            this,
+            e,
+            this.toVerboseString());
+
+      throw e;    
+    }
+  }
+
+  private synchronized void closeImpl() {
     /*
      * Some owners may close more than once because of complex cleanup and shutdown
      * procedures.
@@ -474,6 +488,7 @@ abstract class BaseAllocator extends Accountant implements BufferAllocator {
       String msg = String.format("Memory was leaked by query. Memory leaked: (%d)\n%s%s", allocated,
           outstandingChildAllocators.toString(), toString());
       logger.error(msg);
+
       throw new IllegalStateException(msg);
     }
 
@@ -489,8 +504,6 @@ abstract class BaseAllocator extends Accountant implements BufferAllocator {
       historicalLog.recordEvent("closed");
       logger.debug(String.format("closed allocator[%s].", name));
     }
-
-
   }
 
   @Override
