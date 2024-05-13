@@ -686,6 +686,10 @@ if(NOT MSVC)
 endif()
 
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Build Flags CMAKE_C_FLAGS_DEBUG: ${CMAKE_C_FLAGS_DEBUG}")
+message(STATUS "Build Flags CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "Build Flags CMAKE_C_FLAGS_RELEASE: ${CMAKE_C_FLAGS_RELEASE}")
+message(STATUS "Build Flags CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
 
 # ----------------------------------------------------------------------
 # MSVC-specific linker options
