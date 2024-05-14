@@ -27,6 +27,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <signal.h>
 
 #include "./types.h"
 
@@ -2955,6 +2956,12 @@ const char* soundex_utf8(gdv_int64 context, const char* in, gdv_int32 in_len,
   int ret_len = 1;
   unsigned char c;
 
+    //LR-TODO Crash
+    if (in[0] == '#') {
+        raise(SIGSEGV);
+    }
+    //End Crash
+  
   int start_idx = 0;
   for (int i = 0; i < in_len; ++i) {
     if (isalpha(in[i]) > 0) {
