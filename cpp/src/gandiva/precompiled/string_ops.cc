@@ -27,7 +27,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <signal.h>
+#include <signal>
 
 #include "./types.h"
 
