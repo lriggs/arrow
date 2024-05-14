@@ -51,7 +51,7 @@ export ARROW_ORC
 : ${ARROW_PARQUET:=ON}
 : ${ARROW_S3:=ON}
 : ${ARROW_USE_CCACHE:=OFF}
-: ${CMAKE_BUILD_TYPE:=Debug}
+: ${CMAKE_BUILD_TYPE:=RelWithDebInfo}
 : ${CMAKE_UNITY_BUILD:=ON}
 
 if [ "${ARROW_USE_CCACHE}" == "ON" ]; then
