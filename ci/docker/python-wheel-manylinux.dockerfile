@@ -65,7 +65,7 @@ ENV VCPKG_ROOT=/opt/vcpkg
 RUN arrow/ci/scripts/install_vcpkg.sh ${VCPKG_ROOT} ${vcpkg}
 ENV PATH="${PATH}:${VCPKG_ROOT}"
 
-ARG build_type=debug
+ARG build_type=release
 ENV CMAKE_BUILD_TYPE=${build_type} \
     VCPKG_FORCE_SYSTEM_BINARIES=1 \
     VCPKG_OVERLAY_TRIPLETS=/arrow/ci/vcpkg \
