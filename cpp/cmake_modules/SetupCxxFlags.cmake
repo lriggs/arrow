@@ -23,6 +23,8 @@ include(CheckCXXSourceCompiles)
 
 message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
 
+set(CMAKE_BUILD_TYPE "Debug")
+
 if(NOT DEFINED ARROW_CPU_FLAG)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|amd64|X86|x86|i[3456]86|x64")
     set(ARROW_CPU_FLAG "x86")
