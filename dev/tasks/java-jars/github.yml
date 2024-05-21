@@ -52,6 +52,7 @@ jobs:
         run: |
             df -h
             sudo rm -rf /opt/hostedtoolcache/CodeQL || :
+            sudo rm -rf /opt/hostedtoolcache || :
             df -h
       - name: Set Swap Space
         continue-on-error: true
