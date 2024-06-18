@@ -40,7 +40,7 @@ jobs:
             archery_arch: "amd64"
             archery_arch_alias: "x86_64"
             archery_arch_short: "amd64"
-          - runs_on: ["buildjet-8vcpu-ubuntu-2204-arm"]
+          - runs_on: ["ubuntu-latest"]
             arch: "aarch_64"
             archery_arch: "arm64v8"
             archery_arch_alias: "aarch64"
