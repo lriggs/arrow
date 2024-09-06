@@ -18,6 +18,7 @@ package org.apache.arrow.gandiva.evaluator;
 
 import com.google.common.collect.Sets;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.apache.arrow.gandiva.exceptions.GandivaException;
