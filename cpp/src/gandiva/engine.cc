@@ -188,6 +188,7 @@ void AddProcessSymbol(llvm::orc::LLJIT& lljit) {
     AddAbsoluteSymbol(lljit, "atexit", reinterpret_cast<void*>(atexit));
   }
 #endif
+    AddAbsoluteSymbol(lljit, "llvm_orc_registerEHFrameSectionWrapper", reinterpret_cast<void*>(reg_wrapper));
 }
 
 #ifdef JIT_LINK_SUPPORTED
