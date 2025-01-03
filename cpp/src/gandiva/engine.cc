@@ -55,6 +55,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/ExecutionEngine/Orc/TargetProcess/RegisterEHFrames.h>
 #if LLVM_VERSION_MAJOR >= 17
 #  include <llvm/TargetParser/SubtargetFeature.h>
 #else
@@ -188,7 +189,7 @@ void AddProcessSymbol(llvm::orc::LLJIT& lljit) {
     AddAbsoluteSymbol(lljit, "atexit", reinterpret_cast<void*>(atexit));
   }
 #endif
-    AddAbsoluteSymbol(lljit, "registerEHFrameSectionWrapper", reinterpret_cast<void*>(registerEHFrameSectionWrapper));
+    AddAbsoluteSymbol(lljit, "llvm_orc_registerEHFrameSectionWrapper", reinterpret_cast<void*>(llvm_orc_registerEHFrameSectionWrapper));
 }
 
 #ifdef JIT_LINK_SUPPORTED
