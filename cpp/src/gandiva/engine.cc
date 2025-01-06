@@ -235,9 +235,10 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
               std::move(*target_machine), &object_cache.value().get());
         });
   }
+  jit_builder.setLinkProcessSymbolsByDefault(true);
   auto maybe_jit = jit_builder.create();
   ARROW_ASSIGN_OR_RAISE(auto jit,
-                        AsArrowResult(maybe_jit, "Could not create LLJIT instance: "));
+                        AsArrowResult(maybe_jit, "Could not LR create LLJIT instance: "));
 
   AddProcessSymbol(*jit);
   return jit;
