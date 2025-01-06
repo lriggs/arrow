@@ -235,7 +235,10 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
               std::move(*target_machine), &object_cache.value().get());
         });
   }
+#if LLVM_VERSION_MAJOR >= 17
   jit_builder.setLinkProcessSymbolsByDefault(true);
+#endif
+
   auto maybe_jit = jit_builder.create();
   ARROW_ASSIGN_OR_RAISE(auto jit,
                         AsArrowResult(maybe_jit, "Could not LR create LLJIT instance: "));
