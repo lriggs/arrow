@@ -1275,6 +1275,7 @@ services:
       args:
         base: ${REPO}:${ARCH}-python-${PYTHON}-wheel-manylinux-2014-vcpkg-${VCPKG}
         java: 11
+        llvm: 19
       context: .
       dockerfile: ci/docker/java-jni-manylinux-201x.dockerfile
       cache_from:
