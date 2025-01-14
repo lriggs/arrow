@@ -62,6 +62,7 @@ jobs:
             sudo mkswap /swapfile
             sudo swapon /swapfile
       - name: Build C++ libraries
+        timeout-minutes: 1200
         env:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
