@@ -25,6 +25,7 @@ jobs:
     {% set arch = '${{ matrix.platform.arch }}' %}
     name: Build C++ libraries Ubuntu {{ arch }}
     runs-on: {{ '${{ matrix.platform.runs_on }}' }}
+    timeout-minutes: 1200
     env:
       # architecture name used for archery build
       ARCH: {{ '${{ matrix.platform.archery_arch }}' }}
@@ -62,7 +63,6 @@ jobs:
             sudo mkswap /swapfile
             sudo swapon /swapfile
       - name: Build C++ libraries
-        timeout-minutes: 1200
         env:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
