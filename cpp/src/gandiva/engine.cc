@@ -307,7 +307,14 @@ Engine::Engine(const std::shared_ptr<Configuration>& conf,
   module_ = std::make_unique<llvm::Module>(module_id, *context_);
 }
 
-Engine::~Engine() {}
+Engine::~Engine() {
+  for (auto rt : resources_) {
+    auto error = rt->remove();
+    if (error) {
+      ARROW_LOG(INFO) << "error removing resource";
+    }
+  }
+}
 
 Status Engine::Init() {
   std::call_once(register_exported_funcs_flag, gandiva::RegisterExportedFuncs);
@@ -533,7 +540,9 @@ Status Engine::FinalizeModule() {
     }
 
     llvm::orc::ThreadSafeModule tsm(std::move(module_), std::move(context_));
-    auto error = lljit_->addIRModule(std::move(tsm));
+    auto RT = lljit_->getMainJITDylib().createResourceTracker();
+    auto error = lljit_->addIRModule(RT, std::move(tsm));
+    resources_.push_back(RT);
     if (error) {
       return Status::CodeGenError("Failed to add IR module to LLJIT: ",
                                   llvm::toString(std::move(error)));

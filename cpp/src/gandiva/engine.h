@@ -34,6 +34,7 @@
 #include "gandiva/llvm_includes.h"
 #include "gandiva/llvm_types.h"
 #include "gandiva/visibility.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 
 namespace llvm::orc {
 class LLJIT;
@@ -48,6 +49,7 @@ class GANDIVA_EXPORT Engine {
   llvm::LLVMContext* context() { return context_.get(); }
   llvm::IRBuilder<>* ir_builder() { return ir_builder_.get(); }
   LLVMTypes* types() { return &types_; }
+
 
   /// Retrieve LLVM module in the engine.
   /// This should only be called before `FinalizeModule` is called
@@ -120,6 +122,7 @@ class GANDIVA_EXPORT Engine {
   LLVMTypes types_;
 
   std::vector<std::string> functions_to_compile_;
+  std::vector<llvm::orc::ResourceTrackerSP> resources_;
 
   bool optimize_ = true;
   bool module_finalized_ = false;
