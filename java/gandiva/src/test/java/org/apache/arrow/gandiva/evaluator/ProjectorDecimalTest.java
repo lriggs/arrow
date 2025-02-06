@@ -48,7 +48,6 @@ import org.junit.jupiter.api.Test;
 public class ProjectorDecimalTest extends org.apache.arrow.gandiva.evaluator.BaseEvaluatorTest {
 
   @Test
-  @Disabled("GH-43576 - Fix and enable this test")
   public void test_add() throws GandivaException {
     int precision = 38;
     int scale = 8;

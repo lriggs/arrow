@@ -187,7 +187,7 @@ public class Projector {
    * @param configurationId Custom configuration created through config builder.
    * @return A native evaluator object that can be used to invoke these projections on a RecordBatch
    */
-  public static Projector make(
+  public static synchronized Projector make(
       Schema schema,
       List<ExpressionTree> exprs,
       SelectionVectorType selectionVectorType,
@@ -313,7 +313,7 @@ public class Projector {
         outColumns);
   }
 
-  private void evaluate(
+  private synchronized void evaluate(
       int numRows,
       List<ArrowBuf> buffers,
       List<ArrowBuffer> buffersLayout,
