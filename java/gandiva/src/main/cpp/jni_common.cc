@@ -43,6 +43,13 @@
 #include "id_to_module_map.h"
 #include "module_holder.h"
 
+#include "velox/common/memory/Memory.h"
+#include "velox/functions/Udf.h"
+#include "velox/type/Type.h"
+#include "velox/vector/BaseVector.h"
+
+using namespace facebook::velox;
+
 using gandiva::ConditionPtr;
 using gandiva::DataTypePtr;
 using gandiva::ExpressionPtr;
@@ -1070,6 +1077,363 @@ Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjector(
     env->ThrowNew(gandiva_exception_, status.message().c_str());
     return;
   }
+}
+
+template <typename T>
+struct TimesTwoFunction {
+  FOLLY_ALWAYS_INLINE bool call(int64_t& out, const int64_t& a) {
+    out = 42;
+    return true; // True if result is not null.
+  }
+};
+
+
+JNIEXPORT void JNICALL
+Java_org_apache_arrow_gandiva_evaluator_JniWrapper_evaluateProjectorVelox(
+    JNIEnv* env, jobject object, jobject jexpander, jobject jListExpander, jlong module_id, jint num_rows,
+    jlongArray buf_addrs, jlongArray buf_sizes, jint sel_vec_type, jint sel_vec_rows,
+    jlong sel_vec_addr, jlong sel_vec_size, jlongArray out_buf_addrs,
+    jlongArray out_buf_sizes) {
+
+
+
+  registerFunction<TimesTwoFunction, int64_t, int64_t>({"times_two"});
+
+  memory::MemoryManager::initialize({});
+
+
+
+auto queryCtx = core::QueryCtx::create();
+
+  // ExecCtx holds structures associated with a single thread of execution
+  // (one per thread). Each thread of execution requires a scoped memory pool,
+  // which is where allocations from this thread will be made. When required, a
+  // pointer to this pool can be obtained using execCtx.pool().
+  //
+  // Optionally, one can control the per-thread memory cap by passing it as an
+  // argument to add() - no limit by default.
+  auto pool = memory::memoryManager()->addLeafPool();
+  core::ExecCtx execCtx{pool.get(), queryCtx.get()};
+
+  // Next, let's create an expression tree to be executed in this example. On a
+  // high-level, our expression tree will have the following structure:
+  //
+  // -----------------------------
+  // | CallTypedExpr (times_two) |  => root
+  // -----------------------------
+  //            /\
+  //            ||
+  // ---------------------------------
+  // | FieldAccessTypedExpr (my_col) |
+  // ---------------------------------
+  //
+  // Let's first define a type for the input dataset used in this example. In
+  // this case, a single input column called "my_col", typed as bigint:
+  auto inputRowType = ROW({{"my_col", BIGINT()}});
+
+  // FieldAccessTypedExpr let us choose a particular field/column from the input
+  // dataset(s). The first parameter defines the return type of this field, the
+  // second is the field name. In this case we're interested in the "my_col"
+  // field:
+  auto fieldAccessExprNode =
+      std::make_shared<core::FieldAccessTypedExpr>(BIGINT(), "my_col");
+
+  // CallTypedExpr will be the root of our expression tree, and defines a
+  // function call. The first parameter is the expected return type (bigint in
+  // this case), the second is the list of parameter the function takes, and the
+  // third is the function name.
+  //
+  // This will be the root of our expression tree. In a realistic use case, this
+  // would be automatically and recursively generated based on some input IDL
+  // (or by a SQL string parser).
+  auto exprTree = std::make_shared<core::CallTypedExpr>(
+      BIGINT(),
+      std::vector<core::TypedExprPtr>{fieldAccessExprNode},
+      "times_two");
+
+  // Lastly, ExprSet contains the main expression evaluation logic. It takes a
+  // vector of expression trees (if there are multiple expressions to be
+  // evaluated). ExprSet will output one column per input exprTree. It also
+  // takes the execution context associated with the current thread of
+  // execution.
+  exec::ExprSet exprSet({exprTree}, &execCtx);
+
+  // Generate input batch.
+  //
+  // The next step is to generate an input batch of data to exercise the
+  // expression evaluation code. Expressions are always evaluated using
+  // RowVectors as input, which are named collections of vectors.
+  //
+  // Let's first create a single flat vector to represent the input
+  // "my_col" bigint column, and manually fill some data in it:
+  const size_t vectorSize = 10;
+  auto flatVector = BaseVector::create<FlatVector<int64_t>>(
+      BIGINT(), vectorSize, execCtx.pool());
+  auto rawValues = flatVector->mutableRawValues();
+  std::iota(rawValues, rawValues + vectorSize, 0); // 0, 1, 2, 3, ...
+
+  // Then, let's wrap the generated flatVector in a RowVector:
+  auto rowVector = std::make_shared<RowVector>(
+      execCtx.pool(), // pool where allocations will be made.
+      inputRowType, // input row type (defined above).
+      BufferPtr(nullptr), // no nulls for this example.
+      vectorSize, // length of the vectors.
+      std::vector<VectorPtr>{flatVector}); // the input vector data.
+
+  // Now we move to the actual execution.
+  //
+  // We first create a vector of VectorPtrs to hold the expression results.
+  // (ExprSet outputs one vector per input expression - in this case, 1). The
+  // output vector will be allocated internally by ExprSet, so we just need to
+  // have a single null VectorPtr in this std::vector.
+  std::vector<VectorPtr> result{nullptr};
+
+  // Next, we create an input selectivity vector that controls the visibility
+  // of records from the input RowVector. In this case we don't want to filter
+  // out any rows, so just create a selectivity vector with all bits set.
+  SelectivityVector rows{vectorSize};
+
+  // Before execution we need to create one last structure - EvalCtx - which
+  // holds context about the expression evaluation of this particular batch.
+  // ExprSets can be reused by the same expression over multiple batches, but we
+  // need one EvalCtx per RowVector.
+  exec::EvalCtx evalCtx(&execCtx, &exprSet, rowVector.get());
+
+  // Voila! Here we do the actual evaluation. When this function returns, the
+  // output vectors will be available in the results vector. Note that ExprSet's
+  // logic is synchronous and single threaded.
+  exprSet.eval(rows, evalCtx, result);
+
+  // Print the output vector, just for fun:
+  const auto& outputVector = result.front();
+  for (vector_size_t i = 0; i < outputVector->size(); ++i) {
+    ARROW_LOG(INFO) << outputVector->toString(i);
+  }
+
+ArrowArray arrowArray;
+ exportToArrow(
+    outputVector,
+    arrowArray,
+    pool);
+
+
+/*
+
+struct ArrowArray {
+  // Array data description
+  int64_t length;
+  int64_t null_count;
+  int64_t offset;
+  int64_t n_buffers;
+  int64_t n_children;
+  const void** buffers;
+  struct ArrowArray** children;
+  struct ArrowArray* dictionary;
+
+
+
+    static std::shared_ptr<ArrayData> Make(
+      std::shared_ptr<DataType> type, int64_t length,
+      std::vector<std::shared_ptr<Buffer>> buffers,
+      std::vector<std::shared_ptr<ArrayData>> child_data,
+      std::shared_ptr<ArrayData> dictionary, int64_t null_count = kUnknownNullCount,
+      int64_t offset = 0);
+
+  */
+std::vector<std::shared_ptr<Buffer>> buffers;
+for (int i = 0; i < arrowArray.n_buffers; i++) {
+  buffers.push_back(arrow::Buffer::Wrap(arrowArray.buffers[i], arrowArray.length));
+}
+
+auto array_data = arrow::ArrayData::Make(field->type(), outputVector->size(), buffers);
+      output.push_back(array_data);
+      ++output_vector_idx;
+
+  // Lastly, remember that all allocations are associated with the scoped pool
+  // created in the beginning, and moved to ExecCtx. Once ExecCtx dies, it
+  // destructs the pool which will deallocate all memory associated with it, so
+  // be mindful about the object lifetime!
+  //
+  // (in this example this is safe since ExecCtx will be destructed last).
+  return;
+
+
+
+
+
+/*
+
+  Status status;
+  std::shared_ptr<ProjectorHolder> holder = projector_modules_.Lookup(module_id);
+  if (holder == nullptr) {
+    std::stringstream ss;
+    ss << "Unknown module id " << module_id;
+    env->ThrowNew(gandiva_exception_, ss.str().c_str());
+    return;
+  }
+
+  int in_bufs_len = env->GetArrayLength(buf_addrs);
+  if (in_bufs_len != env->GetArrayLength(buf_sizes)) {
+    env->ThrowNew(gandiva_exception_, "mismatch in arraylen of buf_addrs and buf_sizes");
+    return;
+  }
+
+  int out_bufs_len = env->GetArrayLength(out_buf_addrs);
+  if (out_bufs_len != env->GetArrayLength(out_buf_sizes)) {
+    env->ThrowNew(gandiva_exception_,
+                  "mismatch in arraylen of out_buf_addrs and out_buf_sizes");
+    return;
+  }
+
+  jlong* in_buf_addrs = env->GetLongArrayElements(buf_addrs, 0);
+  jlong* in_buf_sizes = env->GetLongArrayElements(buf_sizes, 0);
+
+  jlong* out_bufs = env->GetLongArrayElements(out_buf_addrs, 0);
+  jlong* out_sizes = env->GetLongArrayElements(out_buf_sizes, 0);
+
+  do {
+    std::shared_ptr<arrow::RecordBatch> in_batch;
+    status = make_record_batch_with_buf_addrs(holder->schema(), num_rows, in_buf_addrs,
+                                              in_buf_sizes, in_bufs_len, &in_batch);
+    if (!status.ok()) {
+      break;
+    }
+    std::shared_ptr<gandiva::SelectionVector> selection_vector;
+    auto selection_buffer = std::make_shared<arrow::Buffer>(
+        reinterpret_cast<uint8_t*>(sel_vec_addr), sel_vec_size);
+    int output_row_count = 0;
+    switch (sel_vec_type) {
+      case gandiva::types::SV_NONE: {
+        output_row_count = num_rows;
+        break;
+      }
+      case gandiva::types::SV_INT16: {
+        status = gandiva::SelectionVector::MakeImmutableInt16(
+            sel_vec_rows, selection_buffer, &selection_vector);
+        output_row_count = sel_vec_rows;
+        break;
+      }
+      case gandiva::types::SV_INT32: {
+        status = gandiva::SelectionVector::MakeImmutableInt32(
+            sel_vec_rows, selection_buffer, &selection_vector);
+        output_row_count = sel_vec_rows;
+        break;
+      }
+    }
+    if (!status.ok()) {
+      break;
+    }
+
+    std::shared_ptr<JavaResizableBuffer> outBufJava = nullptr;
+    auto ret_types = holder->rettypes();
+    ArrayDataVector output;
+    int buf_idx = 0;
+    int sz_idx = 0;
+    int output_vector_idx = 0;
+    for (FieldPtr field : ret_types) {
+      std::vector<std::shared_ptr<arrow::Buffer>> buffers;
+
+      CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+      uint8_t* validity_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+      jlong bitmap_sz = out_sizes[sz_idx++];
+      buffers.push_back(std::make_shared<arrow::MutableBuffer>(validity_buf, bitmap_sz));
+
+      if (arrow::is_binary_like(field->type()->id())) {
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* offsets_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        jlong offsets_sz = out_sizes[sz_idx++];
+        buffers.push_back(
+            std::make_shared<arrow::MutableBuffer>(offsets_buf, offsets_sz));
+      }
+
+      CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+      uint8_t* value_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+      jlong data_sz = out_sizes[sz_idx++];
+      if (arrow::is_binary_like(field->type()->id())) {
+        if (jexpander == nullptr) {
+          status = Status::Invalid(
+              "expression has variable len output columns, but the expander object is "
+              "null");
+          break;
+        }
+
+      buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
+      } else if (field->type()->id() == arrow::Type::LIST) {
+          buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jexpander, vector_expander_method_, output_vector_idx, value_buf, data_sz));
+      } else {
+        buffers.push_back(std::make_shared<arrow::MutableBuffer>(value_buf, data_sz));
+      }
+      
+      
+      if (field->type()->id() == arrow::Type::LIST) {
+
+        std::vector<std::shared_ptr<arrow::Buffer>> child_buffers;
+
+        if (jListExpander == nullptr) {
+          status = Status::Invalid(
+              "expression has variable len output columns, but the jListExpander object is "
+              "null");
+          break;
+        }
+        
+        data_sz = out_sizes[sz_idx++];
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* child_offset_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        child_buffers.push_back(std::make_shared<JavaResizableBuffer>(
+            env, jListExpander, listvector_expander_method_, output_vector_idx, child_offset_buf, data_sz));
+
+        data_sz = out_sizes[sz_idx++];
+        CHECK_OUT_BUFFER_IDX_AND_BREAK(buf_idx, out_bufs_len);
+        uint8_t* child_data_buf = reinterpret_cast<uint8_t*>(out_bufs[buf_idx++]);
+        
+        outBufJava = std::make_shared<JavaResizableBuffer>(
+            env, jListExpander, listvector_expander_method_, output_vector_idx, child_data_buf, data_sz, true);
+        outBufJava->offsetBuffer = reinterpret_cast<uint8_t*>(out_bufs[1]);
+        outBufJava->offsetCapacity = out_sizes[1];
+        outBufJava->validityBuffer = reinterpret_cast<uint8_t*>(out_bufs[2]);
+        child_buffers.push_back(outBufJava);
+
+        std::shared_ptr<arrow::DataType> dt2 = std::make_shared<arrow::Int32Type>();
+        if (field->type()->id() == arrow::Type::LIST && field->type()->num_fields() > 0) {
+          dt2 = field->type()->fields()[0]->type();
+        }
+        
+        auto array_data_child = arrow::ArrayData::Make(dt2, output_row_count, child_buffers);
+        std::vector<std::shared_ptr<arrow::ArrayData>> kids;
+        kids.push_back(array_data_child);
+        auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers, kids);
+        array_data->child_data = std::move(kids);
+        output.push_back(array_data);
+        ++output_vector_idx;
+      } else {  
+      auto array_data = arrow::ArrayData::Make(field->type(), output_row_count, buffers);
+      output.push_back(array_data);
+      ++output_vector_idx;
+      }
+
+    }
+    if (!status.ok()) {
+      break;
+    }
+
+    status = holder->projector()->Evaluate(*in_batch, selection_vector.get(), output);
+  } while (0);
+
+
+  env->ReleaseLongArrayElements(buf_addrs, in_buf_addrs, JNI_ABORT);
+  env->ReleaseLongArrayElements(buf_sizes, in_buf_sizes, JNI_ABORT);
+  env->ReleaseLongArrayElements(out_buf_addrs, out_bufs, JNI_ABORT);
+  env->ReleaseLongArrayElements(out_buf_sizes, out_sizes, JNI_ABORT);
+
+  if (!status.ok()) {
+    std::stringstream ss;
+    ss << "Evaluate returned " << status.message() << "\n";
+    env->ThrowNew(gandiva_exception_, status.message().c_str());
+    return;
+  }
+  */
 }
 
 JNIEXPORT void JNICALL Java_org_apache_arrow_gandiva_evaluator_JniWrapper_closeProjector(

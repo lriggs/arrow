@@ -231,6 +231,19 @@ public class Projector {
         outColumns);
   }
 
+  public void evaluateVelox(ArrowRecordBatch recordBatch, List<ValueVector> outColumns)
+      throws GandivaException {
+    evaluateVelox(
+        recordBatch.getLength(),
+        recordBatch.getBuffers(),
+        recordBatch.getBuffersLayout(),
+        SelectionVectorType.SV_NONE.getNumber(),
+        recordBatch.getLength(),
+        0,
+        0,
+        outColumns);
+  }
+
   /**
    * Invoke this function to evaluate a set of expressions against a set of arrow buffers. (this is
    * an optimised version that skips taking references).
@@ -429,6 +442,121 @@ public class Projector {
         outSizes);
   }
 
+  private void evaluateVelox(
+      int numRows,
+      List<ArrowBuf> buffers,
+      List<ArrowBuffer> buffersLayout,
+      int selectionVectorType,
+      int selectionVectorRecordCount,
+      long selectionVectorAddr,
+      long selectionVectorSize,
+      List<ValueVector> outColumns)
+      throws GandivaException {
+    if (this.closed) {
+      throw new EvaluatorClosedException();
+    }
+
+    if (numExprs != outColumns.size()) {
+      logger.info("Expected " + numExprs + " columns, got " + outColumns.size());
+      throw new GandivaException("Incorrect number of columns for the output vector");
+    }
+
+    long[] bufAddrs = new long[buffers.size()];
+    long[] bufSizes = new long[buffers.size()];
+
+    int idx = 0;
+    for (ArrowBuf buf : buffers) {
+      bufAddrs[idx++] = buf.memoryAddress();
+    }
+
+    idx = 0;
+    for (ArrowBuffer bufLayout : buffersLayout) {
+      bufSizes[idx++] = bufLayout.getSize();
+    }
+
+    boolean hasVariableWidthColumns = false;
+    BaseVariableWidthVector[] resizableVectors = new BaseVariableWidthVector[outColumns.size()];
+    ListVector[] resizableListVectors = new ListVector[outColumns.size()];
+
+    long[] outAddrs = new long[3 * outColumns.size()];
+    long[] outSizes = new long[3 * outColumns.size()];
+
+    idx = 0;
+    int outColumnIdx = 0;
+    final int listVectorBufferCount = 5;
+    for (ValueVector valueVector : outColumns) {
+      if (valueVector instanceof ListVector) {
+        outAddrs = new long[listVectorBufferCount * outColumns.size()];
+        outSizes = new long[listVectorBufferCount * outColumns.size()];
+      }
+
+      boolean isVarWidth = valueVector instanceof VariableWidthVector;
+      outAddrs[idx] = valueVector.getValidityBuffer().memoryAddress();
+      outSizes[idx++] = valueVector.getValidityBuffer().capacity();
+      if (isVarWidth) {
+        outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
+        outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
+        hasVariableWidthColumns = true;
+
+        // save vector to allow for resizing.
+        resizableVectors[outColumnIdx] = (BaseVariableWidthVector) valueVector;
+      }
+      if (valueVector instanceof ListVector) {
+        hasVariableWidthColumns = true;
+        resizableListVectors[outColumnIdx] = (ListVector) valueVector;
+        List<ArrowBuf> fieldBufs = ((ListVector) valueVector).getDataVector().getFieldBuffers();
+        outAddrs[idx] = valueVector.getOffsetBuffer().memoryAddress();
+        outSizes[idx++] = valueVector.getOffsetBuffer().capacity();
+
+        // vector valid
+        outAddrs[idx] =
+            ((ListVector) valueVector)
+                .getDataVector()
+                .getFieldBuffers()
+                .get(ListVectorExpander.validityBufferIndex)
+                .memoryAddress();
+        outSizes[idx++] =
+            ((ListVector) valueVector)
+                .getDataVector()
+                .getFieldBuffers()
+                .get(ListVectorExpander.validityBufferIndex)
+                .capacity();
+
+        // vector offset
+        outAddrs[idx] =
+            ((ListVector) valueVector)
+                .getDataVector()
+                .getFieldBuffers()
+                .get(ListVectorExpander.valueBufferIndex)
+                .memoryAddress();
+        outSizes[idx++] =
+            ((ListVector) valueVector)
+                .getDataVector()
+                .getFieldBuffers()
+                .get(ListVectorExpander.valueBufferIndex)
+                .capacity();
+      } else {
+        outAddrs[idx] = valueVector.getDataBuffer().memoryAddress();
+        outSizes[idx++] = valueVector.getDataBuffer().capacity();
+      }
+
+      valueVector.setValueCount(selectionVectorRecordCount);
+      outColumnIdx++;
+    }
+    wrapper.evaluateProjectorVelox(
+        hasVariableWidthColumns ? new VectorExpander(resizableVectors) : null,
+        hasVariableWidthColumns ? new ListVectorExpander(resizableListVectors) : null,
+        this.moduleId,
+        numRows,
+        bufAddrs,
+        bufSizes,
+        selectionVectorType,
+        selectionVectorRecordCount,
+        selectionVectorAddr,
+        selectionVectorSize,
+        outAddrs,
+        outSizes);
+  }
   /** Closes the LLVM module representing this evaluator. */
   public void close() throws GandivaException {
     if (this.closed) {

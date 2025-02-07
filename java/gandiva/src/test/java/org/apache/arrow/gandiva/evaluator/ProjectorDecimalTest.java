@@ -48,7 +48,7 @@ import org.junit.jupiter.api.Test;
 public class ProjectorDecimalTest extends org.apache.arrow.gandiva.evaluator.BaseEvaluatorTest {
 
   @Test
-  @Disabled("GH-43576 - Fix and enable this test")
+
   public void test_add() throws GandivaException {
     int precision = 38;
     int scale = 8;
@@ -114,6 +114,72 @@ public class ProjectorDecimalTest extends org.apache.arrow.gandiva.evaluator.Bas
     releaseValueVectors(output);
     eval.close();
   }
+  public void test_add_velox() throws GandivaException {
+    int precision = 38;
+    int scale = 8;
+    ArrowType.Decimal decimal = new ArrowType.Decimal(precision, scale, 128);
+    Field a = Field.nullable("a", decimal);
+    Field b = Field.nullable("b", decimal);
+    List<Field> args = Lists.newArrayList(a, b);
+
+    ArrowType.Decimal outputType =
+        DecimalTypeUtil.getResultTypeForOperation(
+            DecimalTypeUtil.OperationType.ADD, decimal, decimal);
+    Field retType = Field.nullable("c", outputType);
+    ExpressionTree root = TreeBuilder.makeExpression("add", args, retType);
+
+    List<ExpressionTree> exprs = Lists.newArrayList(root);
+
+    Schema schema = new Schema(args);
+    Projector eval = Projector.make(schema, exprs);
+
+    int numRows = 4;
+    byte[] validity = new byte[] {(byte) 255};
+    String[] aValues = new String[] {"1.12345678", "2.12345678", "3.12345678", "4.12345678"};
+    String[] bValues = new String[] {"2.12345678", "3.12345678", "4.12345678", "5.12345678"};
+
+    DecimalVector valuesa = decimalVector(aValues, precision, scale);
+    DecimalVector valuesb = decimalVector(bValues, precision, scale);
+    ArrowRecordBatch batch =
+        new ArrowRecordBatch(
+            numRows,
+            Lists.newArrayList(new ArrowFieldNode(numRows, 0), new ArrowFieldNode(numRows, 0)),
+            Lists.newArrayList(
+                valuesa.getValidityBuffer(),
+                valuesa.getDataBuffer(),
+                valuesb.getValidityBuffer(),
+                valuesb.getDataBuffer()));
+
+    DecimalVector outVector =
+        new DecimalVector(
+            "decimal_output", allocator, outputType.getPrecision(), outputType.getScale());
+    outVector.allocateNew(numRows);
+
+    List<ValueVector> output = new ArrayList<ValueVector>();
+    output.add(outVector);
+    eval.evaluateVelox(batch, output);
+
+    // should have scaled down.
+    BigDecimal[] expOutput =
+        new BigDecimal[] {
+          BigDecimal.valueOf(3.2469136),
+          BigDecimal.valueOf(5.2469136),
+          BigDecimal.valueOf(7.2469136),
+          BigDecimal.valueOf(9.2469136)
+        };
+
+    for (int i = 0; i < 4; i++) {
+      assertFalse(outVector.isNull(i));
+      assertTrue(
+          expOutput[i].compareTo(outVector.getObject(i)) == 0, "index : " + i + " failed compare");
+    }
+
+    // free buffers
+    releaseRecordBatch(batch);
+    releaseValueVectors(output);
+    eval.close();
+  }
+  
 
   @Test
   @Disabled("GH-43576 - Fix and enable this test")

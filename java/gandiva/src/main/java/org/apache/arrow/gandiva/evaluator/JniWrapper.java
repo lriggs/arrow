@@ -70,6 +70,20 @@ public class JniWrapper {
       long[] outSizes)
       throws GandivaException;
 
+      native void evaluateProjectorVelox(
+        Object expander,
+        Object listExpander,
+        long moduleId,
+        int numRows,
+        long[] bufAddrs,
+        long[] bufSizes,
+        int selectionVectorType,
+        int selectionVectorSize,
+        long selectionVectorBufferAddr,
+        long selectionVectorBufferSize,
+        long[] outAddrs,
+        long[] outSizes)
+        throws GandivaException;
   /**
    * Closes the projector referenced by moduleId.
    *
