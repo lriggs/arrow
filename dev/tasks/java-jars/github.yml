@@ -66,6 +66,7 @@ jobs:
         {{ macros.github_set_sccache_envvars()|indent(8) }}
         run: |
           archery docker run \
+            -e CMAKE_BUILD_TYPE=RelWithDebInfo \
             -e ARROW_JAVA_BUILD=OFF \
             -e ARROW_JAVA_TEST=OFF \
             java-jni-manylinux-2014
@@ -153,6 +154,7 @@ jobs:
       - name: Build C++ libraries
         env:
           ARROW_USE_CCACHE: "ON"
+          CMAKE_BUILD_TYPE: "RelWithDebInfo"
         run: |
           set -e
           # make brew Java available to CMake
