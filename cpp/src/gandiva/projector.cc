@@ -17,6 +17,7 @@
 
 #include "gandiva/projector.h"
 
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -146,7 +147,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
         ValidateArrayDataCapacity(*array_data, *(output_fields_[idx]), num_rows));
     ++idx;
   }
-  std::cout << llvm_generator_->DumpIR() << std::endl;
+  std::cout << DumpIR() << std::endl;
   return llvm_generator_->Execute(batch, selection_vector, output_data_vecs);
 }
 
@@ -174,7 +175,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   }
 
   // Execute the expression(s).
-  std::cout << llvm_generator_->DumpIR() << std::endl;
+  std::cout << DumpIR() << std::endl;
   ARROW_RETURN_NOT_OK(
       llvm_generator_->Execute(batch, selection_vector, output_data_vecs));
 
@@ -283,7 +284,7 @@ Status Projector::ValidateArrayDataCapacity(const arrow::ArrayData& array_data,
   return Status::OK();
 }
 
-const std::string& Projector::DumpIR() { return llvm_generator_->ir(); }
+const std::string& Projector::DumpIR() const { return llvm_generator_->ir(); }
 
 void Projector::SetBuiltFromCache(bool flag) { built_from_cache_ = flag; }
 
