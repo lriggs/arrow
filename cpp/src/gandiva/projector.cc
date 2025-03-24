@@ -147,7 +147,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
         ValidateArrayDataCapacity(*array_data, *(output_fields_[idx]), num_rows));
     ++idx;
   }
-  std::cout << DumpIR() << std::endl;
+  ARROW_LOG(INFO) << "LR IR DUMP" << DumpIR();;
   return llvm_generator_->Execute(batch, selection_vector, output_data_vecs);
 }
 
@@ -175,7 +175,7 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   }
 
   // Execute the expression(s).
-  std::cout << DumpIR() << std::endl;
+  ARROW_LOG(INFO) << "LR IR DUMP" << DumpIR();;
   ARROW_RETURN_NOT_OK(
       llvm_generator_->Execute(batch, selection_vector, output_data_vecs));
 
