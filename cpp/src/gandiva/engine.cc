@@ -461,8 +461,8 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
   pass_builder.registerPipelineStartEPCallback([&](llvm::ModulePassManager& module_pm,
                                                    llvm::OptimizationLevel Level) {
     module_pm.addPass(llvm::ModuleInlinerPass());
-    module_pm.addPass(llvm::ConstantMergePass());
-    
+    //module_pm.addPass(llvm::ConstantMergePass());
+
     llvm::FunctionPassManager function_pm;
     function_pm.addPass(llvm::InstCombinePass());
     function_pm.addPass(llvm::PromotePass());
@@ -472,8 +472,8 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
     function_pm.addPass(llvm::LoopVectorizePass());
     function_pm.addPass(llvm::SLPVectorizerPass());
 
-    function_pm.addPass(llvm::SCCPPass());
-    function_pm.addPass(llvm::ADCEPass());
+    //function_pm.addPass(llvm::SCCPPass());
+    //function_pm.addPass(llvm::ADCEPass());
     module_pm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(function_pm)));
 
     module_pm.addPass(llvm::GlobalOptPass());
