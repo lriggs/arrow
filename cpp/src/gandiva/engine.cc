@@ -461,7 +461,7 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
   pass_builder.registerPipelineStartEPCallback([&](llvm::ModulePassManager& module_pm,
                                                    llvm::OptimizationLevel Level) {
     module_pm.addPass(llvm::ModuleInlinerPass());
-    //module_pm.addPass(llvm::ConstantMergePass());
+    module_pm.addPass(llvm::ConstantMergePass());
 
     llvm::FunctionPassManager function_pm;
     function_pm.addPass(llvm::InstCombinePass());
@@ -472,8 +472,8 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
     function_pm.addPass(llvm::LoopVectorizePass());
     function_pm.addPass(llvm::SLPVectorizerPass());
 
-    //function_pm.addPass(llvm::SCCPPass());
-    //function_pm.addPass(llvm::ADCEPass());
+    function_pm.addPass(llvm::SCCPPass());
+    function_pm.addPass(llvm::ADCEPass());
     module_pm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(function_pm)));
 
     module_pm.addPass(llvm::GlobalOptPass());
@@ -513,12 +513,16 @@ Status Engine::FinalizeModule() {
   if (!cached_) {
     ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
 
+    ARROW_LOG(INFO) << "LR Finalizing Module";
     if (optimize_) {
+      ARROW_LOG(INFO) << "LR Optimizing Module";
       auto target_analysis = target_machine_->getTargetIRAnalysis();
 // misc passes to allow for inlining, vectorization, ..
 #if LLVM_VERSION_MAJOR >= 14
+      ARROW_LOG(INFO) << "LR Optimizing with new pass manager";
       OptimizeModuleWithNewPassManager(*module_, std::move(target_analysis));
 #else
+      ARROW_LOG(INFO) << "LR Optimizing with new old manager";
       OptimizeModuleWithLegacyPassManager(*module_, std::move(target_analysis));
 #endif
     }
