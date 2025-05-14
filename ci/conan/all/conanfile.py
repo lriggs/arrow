@@ -170,7 +170,7 @@ class ArrowConan(ConanFile):
         if self.options.with_thrift:
             self.requires("thrift/0.20.0")
         if self.options.with_protobuf:
-            self.requires("protobuf/3.21.12")
+            self.requires("protobuf/3.25.5")
         if self.options.with_jemalloc:
             self.requires("jemalloc/5.3.0")
         if self.options.with_mimalloc:
