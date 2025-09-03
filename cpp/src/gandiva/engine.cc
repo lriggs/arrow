@@ -301,7 +301,13 @@ Engine::Engine(const std::shared_ptr<Configuration>& conf,
   module_ = std::make_unique<llvm::Module>(module_id, *context_);
 }
 
-Engine::~Engine() {}
+Engine::~Engine() {
+  // Explicit cleanup in dependency order (though unique_ptr would handle this)
+  ir_builder_.reset();  // Depends on context_
+  module_.reset();      // Depends on context_  
+  lljit_.reset();       // May hold references to context_
+  context_.reset();     // Destroyed last
+}
 
 Status Engine::Init() {
   std::call_once(register_exported_funcs_flag, gandiva::RegisterExportedFuncs);
