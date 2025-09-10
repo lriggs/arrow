@@ -25,7 +25,7 @@
 namespace gandiva {
 
 constexpr auto kCacheCapacityEnvVar = "GANDIVA_CACHE_SIZE";
-constexpr auto kDefaultCacheSize = 5000;
+constexpr auto kDefaultCacheSize = 1;
 
 namespace internal {
 int GetCacheCapacityFromEnvVar() {
