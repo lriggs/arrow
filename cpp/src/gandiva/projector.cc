@@ -99,6 +99,8 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   ARROW_RETURN_NOT_OK(llvm_gen->Build(exprs, selection_vector_mode));
 
+  ARROW_LOG(ERROR) << llvm_gen->ir();
+
   // save the output field types. Used for validation at Evaluate() time.
   std::vector<FieldPtr> output_fields;
   output_fields.reserve(exprs.size());

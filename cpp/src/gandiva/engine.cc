@@ -536,9 +536,7 @@ Status Engine::FinalizeModule() {
     // print the module IR and save it for later use if IR dumping is needed
     // since the module will be moved to construct LLJIT instance, and it is not
     // available after LLJIT instance is constructed
-    if (conf_->dump_ir()) {
-      module_ir_ = DumpModuleIR(*module_);
-    }
+    module_ir_ = DumpModuleIR(*module_);
 
     llvm::orc::ThreadSafeModule tsm(std::move(module_), std::move(context_));
     auto error = lljit_->addIRModule(std::move(tsm));
