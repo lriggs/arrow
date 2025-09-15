@@ -211,6 +211,7 @@ Result<std::unique_ptr<llvm::jitlink::InProcessMemoryManager>> CreateMemmoryMana
 Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
   static auto maybe_use_jit_link = ::arrow::internal::GetEnvVar("GANDIVA_USE_JIT_LINK");
   if (maybe_use_jit_link.ok()) {
+    ARROW_LOG(ERROR) << "GANDIVA_USE_JIT_LINK is set, using JITLink";
     ARROW_ASSIGN_OR_RAISE(static auto memory_manager, CreateMemmoryManager());
     jit_builder.setObjectLinkingLayerCreator(
         [&](llvm::orc::ExecutionSession& ES, const llvm::Triple& TT) {
@@ -226,11 +227,14 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
     std::optional<std::reference_wrapper<GandivaObjectCache>>& object_cache) {
   llvm::orc::LLJITBuilder jit_builder;
 
+  jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
 #ifdef JIT_LINK_SUPPORTED
+  ARROW_LOG(ERROR) << "JITLink is supported";
   ARROW_RETURN_NOT_OK(UseJITLinkIfEnabled(jit_builder));
 #endif
 
-  jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
+  ARROW_LOG(ERROR) << "JITLink is NOT supported";
+  
   if (object_cache.has_value()) {
     jit_builder.setCompileFunctionCreator(
         [&object_cache](llvm::orc::JITTargetMachineBuilder JTMB)
