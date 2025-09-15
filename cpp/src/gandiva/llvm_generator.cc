@@ -40,7 +40,7 @@ LLVMGenerator::LLVMGenerator(bool cached,
                              std::shared_ptr<FunctionRegistry> function_registry)
     : cached_(cached),
       function_registry_(std::move(function_registry)),
-      enable_ir_traces_(false) {}
+      enable_ir_traces_(true) {}
 
 Result<std::unique_ptr<LLVMGenerator>> LLVMGenerator::Make(
     const std::shared_ptr<Configuration>& config, bool cached,

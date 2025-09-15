@@ -134,9 +134,21 @@ Result<llvm::orc::JITTargetMachineBuilder> MakeTargetMachineBuilder(
     const Configuration& conf) {
   llvm::orc::JITTargetMachineBuilder jtmb(
       (llvm::Triple(llvm::sys::getDefaultTargetTriple())));
+  
+  ARROW_LOG(ERROR) << "Created JITTargetMachineBuilder with triple: " 
+                   << llvm::sys::getDefaultTargetTriple();
+  
   if (conf.target_host_cpu()) {
+    ARROW_LOG(ERROR) << "Setting CPU to: " << cpu_name.str();
     jtmb.setCPU(cpu_name.str());
+    
+    ARROW_LOG(ERROR) << "Adding " << cpu_attrs.size() << " CPU features";
+    for (const auto& attr : cpu_attrs) {
+      ARROW_LOG(ERROR) << "  CPU feature: " << attr;
+    }
     jtmb.addFeatures(cpu_attrs);
+  } else {
+    ARROW_LOG(ERROR) << "target_host_cpu() is false, using default CPU settings";
   }
 #if LLVM_VERSION_MAJOR >= 18
   using CodeGenOptLevel = llvm::CodeGenOptLevel;
@@ -362,6 +374,10 @@ static arrow::Status VerifyAndLinkModule(
       AsArrowResult(src_module_or_error, "Failed to verify and link module: "));
 
   src_ir_module->setDataLayout(dest_module.getDataLayout());
+  
+  // Log data layout information for debugging
+  ARROW_LOG(ERROR) << "Setting data layout for module linking: " 
+                   << dest_module.getDataLayout().getStringRepresentation();
 
   std::string error_info;
   llvm::raw_string_ostream error_stream(error_info);
