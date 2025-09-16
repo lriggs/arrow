@@ -97,10 +97,6 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   }
 
   // Log LLVM generator target machine data layout
-
-  ARROW_LOG(ERROR) << "LLVM Generator target machine data layout from getlayout: " 
-                   << llvm_gen->GetTargetMachine()->getDataLayout().getStringRepresentation();
-
   ARROW_LOG(ERROR) << "LLVM Generator target machine data layout: " 
                    << llvm_gen->GetTargetMachine()->createDataLayout().getStringRepresentation();
 
