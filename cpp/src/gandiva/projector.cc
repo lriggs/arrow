@@ -65,6 +65,8 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>> cache =
       LLVMGenerator::GetCache();
 
+  ARROW_LOG(ERROR) << "LLVM Cache size: " << cache->GetSize();
+  ARROW_LOG(ERROR) << "LLVM Cache capacity: " << cache->GetCapacity();
   ExpressionCacheKey cache_key(schema, configuration, exprs, selection_vector_mode);
 
   bool is_cached = false;
@@ -93,6 +95,15 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
       ARROW_RETURN_NOT_OK(expr_validator.Validate(expr));
     }
   }
+
+  // Log LLVM generator target machine data layout
+
+  ARROW_LOG(ERROR) << "LLVM Generator target machine data layout from getlayout: " 
+                   << llvm_gen->GetTargetMachine()->getDataLayout().getStringRepresentation();
+
+  ARROW_LOG(ERROR) << "LLVM Generator target machine data layout: " 
+                   << llvm_gen->GetTargetMachine()->createDataLayout().getStringRepresentation();
+
 
   // Set the object cache for LLVM
   ARROW_RETURN_NOT_OK(llvm_gen->SetLLVMObjectCache(obj_cache));

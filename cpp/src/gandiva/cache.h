@@ -59,6 +59,10 @@ class Cache {
     cache_.insert(cache_key, module);
   }
 
+  size_t GetSize() { return cache_.size(); }
+
+  size_t GetCapacity() { return cache_.capacity(); }
+
  private:
   LruCache<KeyType, ValueType> cache_;
   std::mutex mtx_;
