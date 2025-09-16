@@ -209,15 +209,12 @@ Result<std::unique_ptr<llvm::jitlink::InProcessMemoryManager>> CreateMemmoryMana
 }
 
 Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
-  static auto maybe_use_jit_link = ::arrow::internal::GetEnvVar("GANDIVA_USE_JIT_LINK");
-  if (maybe_use_jit_link.ok()) {
-    ARROW_LOG(ERROR) << "GANDIVA_USE_JIT_LINK is set, using JITLink";
-    ARROW_ASSIGN_OR_RAISE(static auto memory_manager, CreateMemmoryManager());
-    jit_builder.setObjectLinkingLayerCreator(
-        [&](llvm::orc::ExecutionSession& ES, const llvm::Triple& TT) {
-          return std::make_unique<llvm::orc::ObjectLinkingLayer>(ES, *memory_manager);
-        });
-  }
+  ARROW_LOG(ERROR) << "GANDIVA_USE_JIT_LINK is set, using JITLink";
+  ARROW_ASSIGN_OR_RAISE(static auto memory_manager, CreateMemmoryManager());
+  jit_builder.setObjectLinkingLayerCreator(
+      [&](llvm::orc::ExecutionSession& ES, const llvm::Triple& TT) {
+        return std::make_unique<llvm::orc::ObjectLinkingLayer>(ES, *memory_manager);
+      });
   return Status::OK();
 }
 #endif
