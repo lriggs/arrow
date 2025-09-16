@@ -84,6 +84,7 @@ class GANDIVA_EXPORT LLVMGenerator {
   LLVMTypes* types() { return engine_->types(); }
   llvm::Module* module() { return engine_->module(); }
   const std::string& ir() { return engine_->ir(); }
+  llvm::TargetMachine* GetTargetMachine() { return engine_->GetTargetMachine(); }
 
  private:
   explicit LLVMGenerator(bool cached,
