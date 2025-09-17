@@ -65,8 +65,8 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>> cache =
       LLVMGenerator::GetCache();
 
-  ARROW_LOG(ERROR) << "LLVM Cache size: " << cache->GetSize();
-  ARROW_LOG(ERROR) << "LLVM Cache capacity: " << cache->GetCapacity();
+  // ARROW_LOG(ERROR) << "LLVM Cache size: " << cache->GetSize();
+  // ARROW_LOG(ERROR) << "LLVM Cache capacity: " << cache->GetCapacity();
   ExpressionCacheKey cache_key(schema, configuration, exprs, selection_vector_mode);
 
   bool is_cached = false;
@@ -97,8 +97,8 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   }
 
   // Log LLVM generator target machine data layout
-  ARROW_LOG(ERROR) << "LLVM Generator target machine data layout: " 
-                   << llvm_gen->GetTargetMachine()->createDataLayout().getStringRepresentation();
+  // ARROW_LOG(ERROR) << "LLVM Generator target machine data layout: " 
+  //                 << llvm_gen->GetTargetMachine()->createDataLayout().getStringRepresentation();
 
 
   // Set the object cache for LLVM
@@ -106,7 +106,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   ARROW_RETURN_NOT_OK(llvm_gen->Build(exprs, selection_vector_mode));
 
-  ARROW_LOG(ERROR) << llvm_gen->ir();
+  // ARROW_LOG(ERROR) << llvm_gen->ir();
 
   // save the output field types. Used for validation at Evaluate() time.
   std::vector<FieldPtr> output_fields;

@@ -135,9 +135,9 @@ Result<llvm::orc::JITTargetMachineBuilder> MakeTargetMachineBuilder(
   llvm::orc::JITTargetMachineBuilder jtmb(
       (llvm::Triple(llvm::sys::getDefaultTargetTriple())));
   
-  ARROW_LOG(ERROR) << "Created JITTargetMachineBuilder with triple: " 
-                   << llvm::sys::getDefaultTargetTriple();
-  
+  // ARROW_LOG(ERROR) << "Created JITTargetMachineBuilder with triple: " 
+  //                 << llvm::sys::getDefaultTargetTriple();
+  /*
   if (conf.target_host_cpu()) {
     ARROW_LOG(ERROR) << "Setting CPU to: " << cpu_name.str();
     jtmb.setCPU(cpu_name.str());
@@ -149,7 +149,7 @@ Result<llvm::orc::JITTargetMachineBuilder> MakeTargetMachineBuilder(
     jtmb.addFeatures(cpu_attrs);
   } else {
     ARROW_LOG(ERROR) << "target_host_cpu() is false, using default CPU settings";
-  }
+  }*/
 #if LLVM_VERSION_MAJOR >= 18
   using CodeGenOptLevel = llvm::CodeGenOptLevel;
 #else
@@ -209,12 +209,16 @@ Result<std::unique_ptr<llvm::jitlink::InProcessMemoryManager>> CreateMemmoryMana
 }
 
 Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
+  static auto maybe_use_jit_link = ::arrow::internal::GetEnvVar("GANDIVA_USE_JIT_LINK");
+  if (maybe_use_jit_link.ok()) {
+
   ARROW_LOG(ERROR) << "GANDIVA_USE_JIT_LINK is set, using JITLink";
   ARROW_ASSIGN_OR_RAISE(static auto memory_manager, CreateMemmoryManager());
   jit_builder.setObjectLinkingLayerCreator(
       [&](llvm::orc::ExecutionSession& ES, const llvm::Triple& TT) {
         return std::make_unique<llvm::orc::ObjectLinkingLayer>(ES, *memory_manager);
       });
+  }
   return Status::OK();
 }
 #endif
@@ -226,11 +230,11 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
 
   jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
 #ifdef JIT_LINK_SUPPORTED
-  ARROW_LOG(ERROR) << "JITLink is supported";
+  // ARROW_LOG(ERROR) << "JITLink is supported";
   ARROW_RETURN_NOT_OK(UseJITLinkIfEnabled(jit_builder));
 #endif
 
-  ARROW_LOG(ERROR) << "JITLink is NOT supported";
+  // ARROW_LOG(ERROR) << "JITLink is NOT supported";
   
   if (object_cache.has_value()) {
     jit_builder.setCompileFunctionCreator(
@@ -378,8 +382,8 @@ static arrow::Status VerifyAndLinkModule(
   src_ir_module->setDataLayout(dest_module.getDataLayout());
   
   // Log data layout information for debugging
-  ARROW_LOG(ERROR) << "Setting data layout for module linking: " 
-                   << dest_module.getDataLayout().getStringRepresentation();
+  // ARROW_LOG(ERROR) << "Setting data layout for module linking: " 
+  //                 << dest_module.getDataLayout().getStringRepresentation();
 
   std::string error_info;
   llvm::raw_string_ostream error_stream(error_info);
@@ -554,8 +558,9 @@ Status Engine::FinalizeModule() {
     // print the module IR and save it for later use if IR dumping is needed
     // since the module will be moved to construct LLJIT instance, and it is not
     // available after LLJIT instance is constructed
-    module_ir_ = DumpModuleIR(*module_);
-
+    if (conf_->dump_ir()) {
+      module_ir_ = DumpModuleIR(*module_);
+    }
     llvm::orc::ThreadSafeModule tsm(std::move(module_), std::move(context_));
     auto error = lljit_->addIRModule(std::move(tsm));
     if (error) {
