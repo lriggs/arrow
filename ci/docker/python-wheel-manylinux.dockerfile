@@ -104,6 +104,7 @@ RUN --mount=type=secret,id=github_repository_owner \
         --clean-after-build \
         --x-install-root=${VCPKG_ROOT}/installed \
         --x-manifest-root=/arrow/ci/vcpkg \
+        --overlay-ports=/arrow/ci/vcpkg/overlay/llvm/ \
         --x-feature=azure \
         --x-feature=flight \
         --x-feature=gcs \
