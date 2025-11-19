@@ -217,7 +217,8 @@ Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
 
 Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
     llvm::orc::JITTargetMachineBuilder jtmb,
-    std::optional<std::reference_wrapper<GandivaObjectCache>>& object_cache) {
+    std::optional<std::reference_wrapper<GandivaObjectCache>>& object_cache,
+    llvm::orc::JITTargetMachine*target_machine) {
   llvm::orc::LLJITBuilder jit_builder;
 
 #ifdef JIT_LINK_SUPPORTED
@@ -227,16 +228,13 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
   jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
   if (object_cache.has_value()) {
     jit_builder.setCompileFunctionCreator(
-        [&object_cache](llvm::orc::JITTargetMachineBuilder JTMB)
+        [&target_machine](llvm::orc::JITTargetMachine* TARGET)
             -> llvm::Expected<std::unique_ptr<llvm::orc::IRCompileLayer::IRCompiler>> {
-          auto target_machine = JTMB.createTargetMachine();
-          if (!target_machine) {
-            return target_machine.takeError();
-          }
+
           // after compilation, the object code will be stored into the given object
           // cache
-          return std::make_unique<llvm::orc::TMOwningSimpleCompiler>(
-              std::move(*target_machine), &object_cache.value().get());
+          return std::make_unique<llvm::orc::SimpleCompiler>(
+              *TARGET, &object_cache.value().get());
         });
   }
   auto maybe_jit = jit_builder.create();
@@ -343,11 +341,12 @@ Result<std::unique_ptr<Engine>> Engine::Make(
   std::call_once(llvm_init_once_flag, InitOnce);
 
   ARROW_ASSIGN_OR_RAISE(auto jtmb, MakeTargetMachineBuilder(*conf));
-  ARROW_ASSIGN_OR_RAISE(auto jit, BuildJIT(jtmb, object_cache));
   auto maybe_tm = jtmb.createTargetMachine();
   ARROW_ASSIGN_OR_RAISE(auto target_machine,
                         AsArrowResult(maybe_tm, "Could not create target machine: "));
 
+  ARROW_ASSIGN_OR_RAISE(auto jit, BuildJIT(jtmb, object_cache, target_machine.get()));
+  
   std::unique_ptr<Engine> engine{
       new Engine(conf, std::move(jit), std::move(target_machine), cached)};
 
