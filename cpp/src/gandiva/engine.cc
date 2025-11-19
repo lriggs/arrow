@@ -218,7 +218,7 @@ Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
 Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
     llvm::orc::JITTargetMachineBuilder jtmb,
     std::optional<std::reference_wrapper<GandivaObjectCache>>& object_cache,
-    llvm::orc::JITTargetMachine*target_machine) {
+    llvm::JITTargetMachine* target_machine) {
   llvm::orc::LLJITBuilder jit_builder;
 
 #ifdef JIT_LINK_SUPPORTED
