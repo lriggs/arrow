@@ -93,6 +93,7 @@
 #if LLVM_VERSION_MAJOR <= 17
 #  include <llvm/Transforms/Vectorize.h>
 #endif
+#include <llvm/Target/TargetMachine.h>
 
 // JITLink is available in LLVM 9+
 // but the `InProcessMemoryManager::Create` API was added since LLVM 14
@@ -218,7 +219,7 @@ Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
 Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
     llvm::orc::JITTargetMachineBuilder jtmb,
     std::optional<std::reference_wrapper<GandivaObjectCache>>& object_cache,
-    llvm::JITTargetMachine* target_machine) {
+    llvm::TargetMachine* target_machine) {
   llvm::orc::LLJITBuilder jit_builder;
 
 #ifdef JIT_LINK_SUPPORTED
@@ -228,13 +229,13 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
   jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
   if (object_cache.has_value()) {
     jit_builder.setCompileFunctionCreator(
-        [&target_machine](llvm::orc::JITTargetMachine* TARGET)
+        [&target_machine, &object_cache](llvm::orc::JITTargetMachineBuilder JTMB)
             -> llvm::Expected<std::unique_ptr<llvm::orc::IRCompileLayer::IRCompiler>> {
 
           // after compilation, the object code will be stored into the given object
           // cache
           return std::make_unique<llvm::orc::SimpleCompiler>(
-              *TARGET, &object_cache.value().get());
+              *target_machine, &object_cache.value().get());
         });
   }
   auto maybe_jit = jit_builder.create();
