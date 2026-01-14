@@ -17,6 +17,7 @@
 
 #include "gandiva/llvm_generator.h"
 
+#include <atomic>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,7 +41,7 @@ LLVMGenerator::LLVMGenerator(bool cached,
                              std::shared_ptr<FunctionRegistry> function_registry)
     : cached_(cached),
       function_registry_(std::move(function_registry)),
-      enable_ir_traces_(false) {}
+      enable_ir_traces_(true) {}
 
 Result<std::unique_ptr<LLVMGenerator>> LLVMGenerator::Make(
     const std::shared_ptr<Configuration>& config, bool cached,
@@ -74,8 +75,14 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   ARROW_RETURN_NOT_OK(decomposer.Decompose(*expr->root(), &value_validity));
   // Generate the IR function for the decomposed expression.
   auto compiled_expr = std::make_unique<CompiledExpr>(value_validity, output);
+
+  // Generate unique function name with static counter to avoid duplicates
+  static std::atomic<uint64_t> unique_id_counter{0};
+  uint64_t unique_id = unique_id_counter.fetch_add(1);
   std::string fn_name = "expr_" + std::to_string(idx) + "_" +
-                        std::to_string(static_cast<int>(selection_vector_mode_));
+                        std::to_string(static_cast<int>(selection_vector_mode_)) + "_" +
+                        std::to_string(unique_id);
+
   if (!cached_) {
     ARROW_RETURN_NOT_OK(engine_->LoadFunctionIRs());
     ARROW_RETURN_NOT_OK(CodeGenExprValue(value_validity->value_expr(),
@@ -130,6 +137,23 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                               const ArrayDataVector& output_vector) const {
   DCHECK_GT(record_batch.num_rows(), 0);
 
+  ARROW_LOG(ERROR) << "[DEBUG] ========================================"
+                   << "========================================";
+  ARROW_LOG(ERROR) << "[DEBUG] LLVMGenerator::Execute START";
+  ARROW_LOG(ERROR) << "[DEBUG]   RecordBatch: " << record_batch.num_rows() << " rows, "
+                   << record_batch.num_columns() << " columns";
+  ARROW_LOG(ERROR) << "[DEBUG]   Schema: " << record_batch.schema()->ToString();
+
+  // Log input column details
+  for (int i = 0; i < record_batch.num_columns(); ++i) {
+    auto col = record_batch.column(i);
+    auto field = record_batch.schema()->field(i);
+    ARROW_LOG(ERROR) << "[DEBUG]   Column " << i << ": " << field->name()
+                     << " (" << field->type()->ToString() << ")"
+                     << " - " << col->length() << " elements"
+                     << ", null_count=" << col->null_count();
+  }
+
   auto eval_batch = annotator_.PrepareEvalBatch(record_batch, output_vector);
   DCHECK_GT(eval_batch->GetNumBuffers(), 0);
 
@@ -142,7 +166,12 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                            selection_vector_mode_, " received vector with mode ", mode);
   }
 
-  for (auto& compiled_expr : compiled_exprs_) {
+  ARROW_LOG(ERROR) << "[DEBUG] Execute: " << compiled_exprs_.size() << " expressions, "
+            << record_batch.num_rows() << " rows";
+
+  for (size_t expr_idx = 0; expr_idx < compiled_exprs_.size(); ++expr_idx) {
+    auto& compiled_expr = compiled_exprs_[expr_idx];
+
     // generate data/offset vectors.
     const uint8_t* selection_buffer = nullptr;
     auto num_output_rows = record_batch.num_rows();
@@ -152,10 +181,54 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
     }
 
     EvalFunc jit_function = compiled_expr->GetJITFunction(mode);
-    jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
-                 eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
-                 selection_buffer, (int64_t)eval_batch->GetExecutionContext(),
-                 num_output_rows);
+    std::string fn_name = compiled_expr->GetFunctionName(mode);
+
+    // Get expression details
+    std::string output_field_name = compiled_expr->output()->Name();
+    std::string output_field_type = compiled_expr->output()->Type()->ToString();
+
+    ARROW_LOG(ERROR) << "[DEBUG] ========================================";
+    ARROW_LOG(ERROR) << "[DEBUG] Expression " << expr_idx << " of " << compiled_exprs_.size();
+    ARROW_LOG(ERROR) << "[DEBUG]   Function name: " << fn_name;
+    ARROW_LOG(ERROR) << "[DEBUG]   Output field: " << output_field_name
+                     << " (" << output_field_type << ")";
+    ARROW_LOG(ERROR) << "[DEBUG]   JIT function ptr: " << (void*)jit_function;
+    ARROW_LOG(ERROR) << "[DEBUG]   Num rows: " << num_output_rows;
+    ARROW_LOG(ERROR) << "[DEBUG]   Buffer array: " << (void*)eval_batch->GetBufferArray();
+    ARROW_LOG(ERROR) << "[DEBUG]   Buffer offset array: " << (void*)eval_batch->GetBufferOffsetArray();
+    ARROW_LOG(ERROR) << "[DEBUG]   Local bitmap array: " << (void*)eval_batch->GetLocalBitMapArray();
+    ARROW_LOG(ERROR) << "[DEBUG]   Holder pointers: " << (void*)annotator_.GetHolderPointersArray();
+    ARROW_LOG(ERROR) << "[DEBUG]   Selection buffer: " << (void*)selection_buffer;
+    ARROW_LOG(ERROR) << "[DEBUG]   Exec context: " << (void*)eval_batch->GetExecutionContext();
+
+    // Validate pointers before calling JIT
+    if (jit_function == nullptr) {
+      return Status::CodeGenError("JIT function is null for expression ", expr_idx,
+                                  " (", fn_name, ")");
+    }
+    if (eval_batch->GetBufferArray() == nullptr) {
+      return Status::CodeGenError("Buffer array is null for expression ", expr_idx,
+                                  " (", fn_name, ")");
+    }
+
+    ARROW_LOG(ERROR) << "[DEBUG] >>> Calling JIT function " << fn_name << " <<<";
+
+    // Call the JIT function - this is where crashes typically happen
+    try {
+      jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
+                   eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
+                   selection_buffer, (int64_t)eval_batch->GetExecutionContext(),
+                   num_output_rows);
+    } catch (const std::exception& e) {
+      ARROW_LOG(ERROR) << "[DEBUG] !!! EXCEPTION in JIT function " << fn_name << " !!!";
+      ARROW_LOG(ERROR) << "[DEBUG] Exception: " << e.what();
+      throw;
+    } catch (...) {
+      ARROW_LOG(ERROR) << "[DEBUG] !!! UNKNOWN EXCEPTION in JIT function " << fn_name << " !!!";
+      throw;
+    }
+
+    ARROW_LOG(ERROR) << "[DEBUG] <<< JIT function " << fn_name << " returned successfully <<<";
 
     // check for execution errors
     ARROW_RETURN_IF(
@@ -1452,13 +1525,15 @@ void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
   if (value != nullptr) {
     dmsg = ReplaceFormatInTrace(dmsg, value, &print_fn_name);
   }
-  trace_strings_.push_back(dmsg);
 
-  // cast this to an llvm pointer.
-  const char* str = trace_strings_.back().c_str();
-  llvm::Constant* str_int_cast = types()->i64_constant((int64_t)str);
-  llvm::Constant* str_ptr_cast =
-      llvm::ConstantExpr::getIntToPtr(str_int_cast, types()->i8_ptr_type());
+  // CRITICAL FIX: Use CreateGlobalStringPtr instead of storing in trace_strings_
+  // The old code stored strings in trace_strings_ vector and embedded raw pointers
+  // to them in JIT code. When LLVMGenerator was destroyed, the strings were freed
+  // but JIT code still had dangling pointers → heap-use-after-free crash!
+  //
+  // CreateGlobalStringPtr creates a global constant string in the LLVM module
+  // that persists with the JIT-compiled code, preventing use-after-free.
+  llvm::Constant* str_ptr_cast = engine_->CreateGlobalStringPtr(dmsg);
 
   std::vector<llvm::Value*> args;
   args.push_back(str_ptr_cast);

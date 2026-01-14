@@ -26,12 +26,20 @@ void add_large_decimal128_decimal128(int64_t x_high, uint64_t x_low, int32_t x_p
                                      int32_t y_precision, int32_t y_scale,
                                      int32_t out_precision, int32_t out_scale,
                                      int64_t* out_high, uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] add_large: x=(%lld,%llu) prec=%d scale=%d, y=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          (long long)y_high, (unsigned long long)y_low, y_precision, y_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x(x_high, x_low, x_precision, x_scale);
   gandiva::BasicDecimalScalar128 y(y_high, y_low, y_precision, y_scale);
 
   arrow::BasicDecimal128 out = gandiva::decimalops::Add(x, y, out_precision, out_scale);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] add_large: result=(%lld,%llu)\n",
+          (long long)*out_high, (unsigned long long)*out_low);
 }
 
 FORCE_INLINE
@@ -40,6 +48,11 @@ void multiply_decimal128_decimal128(int64_t x_high, uint64_t x_low, int32_t x_pr
                                     int32_t y_precision, int32_t y_scale,
                                     int32_t out_precision, int32_t out_scale,
                                     int64_t* out_high, uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] multiply: x=(%lld,%llu) prec=%d scale=%d, y=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          (long long)y_high, (unsigned long long)y_low, y_precision, y_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x(x_high, x_low, x_precision, x_scale);
   gandiva::BasicDecimalScalar128 y(y_high, y_low, y_precision, y_scale);
   bool overflow;
@@ -49,6 +62,9 @@ void multiply_decimal128_decimal128(int64_t x_high, uint64_t x_low, int32_t x_pr
       gandiva::decimalops::Multiply(x, y, out_precision, out_scale, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] multiply: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (unsigned long long)*out_low, overflow);
 }
 
 FORCE_INLINE
@@ -57,6 +73,11 @@ void divide_decimal128_decimal128(int64_t context, int64_t x_high, uint64_t x_lo
                                   uint64_t y_low, int32_t y_precision, int32_t y_scale,
                                   int32_t out_precision, int32_t out_scale,
                                   int64_t* out_high, uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] divide: x=(%lld,%llu) prec=%d scale=%d, y=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          (long long)y_high, (unsigned long long)y_low, y_precision, y_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x(x_high, x_low, x_precision, x_scale);
   gandiva::BasicDecimalScalar128 y(y_high, y_low, y_precision, y_scale);
   bool overflow;
@@ -66,6 +87,9 @@ void divide_decimal128_decimal128(int64_t context, int64_t x_high, uint64_t x_lo
       gandiva::decimalops::Divide(context, x, y, out_precision, out_scale, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] divide: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (unsigned long long)*out_low, overflow);
 }
 
 FORCE_INLINE
@@ -90,10 +114,17 @@ int32_t compare_decimal128_decimal128_internal(int64_t x_high, uint64_t x_low,
                                                int32_t x_precision, int32_t x_scale,
                                                int64_t y_high, uint64_t y_low,
                                                int32_t y_precision, int32_t y_scale) {
+  fprintf(stderr, "[DECIMAL_DEBUG] compare: x=(%lld,%llu) prec=%d scale=%d, y=(%lld,%llu) prec=%d scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          (long long)y_high, (unsigned long long)y_low, y_precision, y_scale);
+
   gandiva::BasicDecimalScalar128 x(x_high, x_low, x_precision, x_scale);
   gandiva::BasicDecimalScalar128 y(y_high, y_low, y_precision, y_scale);
 
-  return gandiva::decimalops::Compare(x, y);
+  int32_t result = gandiva::decimalops::Compare(x, y);
+
+  fprintf(stderr, "[DECIMAL_DEBUG] compare: result=%d\n", result);
+  return result;
 }
 
 FORCE_INLINE
@@ -110,24 +141,38 @@ FORCE_INLINE
 void ceil_decimal128(int64_t x_high, uint64_t x_low, int32_t x_precision, int32_t x_scale,
                      int32_t out_precision, int32_t out_scale, int64_t* out_high,
                      uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] ceil: x=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x({x_high, x_low}, x_precision, x_scale);
 
   bool overflow = false;
   auto out = gandiva::decimalops::Ceil(x, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] ceil: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (unsigned long long)*out_low, overflow);
 }
 
 FORCE_INLINE
 void floor_decimal128(int64_t x_high, uint64_t x_low, int32_t x_precision,
                       int32_t x_scale, int32_t out_precision, int32_t out_scale,
                       int64_t* out_high, uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] floor: x=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x({x_high, x_low}, x_precision, x_scale);
 
   bool overflow = false;
   auto out = gandiva::decimalops::Floor(x, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] floor: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (unsigned long long)*out_low, overflow);
 }
 
 FORCE_INLINE
@@ -185,19 +230,35 @@ void truncate_decimal128_int32(int64_t x_high, uint64_t x_low, int32_t x_precisi
 FORCE_INLINE
 double castFLOAT8_decimal128(int64_t x_high, uint64_t x_low, int32_t x_precision,
                              int32_t x_scale) {
+  fprintf(stderr, "[DECIMAL_DEBUG] castFLOAT8: high=%lld, low=%llu, prec=%d, scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale);
+
   gandiva::BasicDecimalScalar128 x({x_high, x_low}, x_precision, x_scale);
 
   bool overflow = false;
-  return gandiva::decimalops::ToDouble(x, &overflow);
+  double result = gandiva::decimalops::ToDouble(x, &overflow);
+
+  fprintf(stderr, "[DECIMAL_DEBUG] castFLOAT8: result=%f, overflow=%d\n",
+          result, overflow);
+
+  return result;
 }
 
 FORCE_INLINE
 int64_t castBIGINT_decimal128(int64_t x_high, uint64_t x_low, int32_t x_precision,
                               int32_t x_scale) {
+  fprintf(stderr, "[DECIMAL_DEBUG] castBIGINT: x=(%lld,%llu) prec=%d scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale);
+
   gandiva::BasicDecimalScalar128 x({x_high, x_low}, x_precision, x_scale);
 
   bool overflow = false;
-  return gandiva::decimalops::ToInt64(x, &overflow);
+  int64_t result = gandiva::decimalops::ToInt64(x, &overflow);
+
+  fprintf(stderr, "[DECIMAL_DEBUG] castBIGINT: result=%lld, overflow=%d\n",
+          (long long)result, overflow);
+
+  return result;
 }
 
 FORCE_INLINE
@@ -234,11 +295,19 @@ FORCE_INLINE
 bool castDecimal_internal(int64_t x_high, uint64_t x_low, int32_t x_precision,
                           int32_t x_scale, int32_t out_precision, int32_t out_scale,
                           int64_t* out_high, int64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] castDecimal: x=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d\n",
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          out_precision, out_scale);
+
   gandiva::BasicDecimalScalar128 x({x_high, x_low}, x_precision, x_scale);
   bool overflow = false;
   auto out = gandiva::decimalops::Convert(x, out_precision, out_scale, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] castDecimal: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (long long)*out_low, overflow);
+
   return overflow;
 }
 

@@ -268,7 +268,6 @@ class GANDIVA_EXPORT LLVMGenerator {
 
   // used for debug
   bool enable_ir_traces_;
-  std::vector<std::string> trace_strings_;
 };
 
 }  // namespace gandiva

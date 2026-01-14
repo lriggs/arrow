@@ -23,6 +23,8 @@
 
 #include "gandiva/engine.h"
 
+#include <ctime>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -519,6 +521,31 @@ static void OptimizeModuleWithLegacyPassManager(llvm::Module& module,
 // Optimise and compile the module.
 Status Engine::FinalizeModule() {
   if (!cached_) {
+    // Dump LLVM IR before optimization for debugging
+    const char* dump_ir_env = std::getenv("GANDIVA_DUMP_IR");
+    if (dump_ir_env != nullptr && std::string(dump_ir_env) == "1") {
+      std::string ir_str;
+      llvm::raw_string_ostream ir_stream(ir_str);
+      module_->print(ir_stream, nullptr);
+      ir_stream.flush();
+
+      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
+      ARROW_LOG(ERROR) << "[DEBUG] LLVM IR (before optimization):";
+      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
+      ARROW_LOG(ERROR) << ir_str;
+      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
+
+      // Also write to file
+      const char* ir_file_env = std::getenv("GANDIVA_IR_FILE");
+      if (ir_file_env != nullptr) {
+        std::ofstream ir_file(ir_file_env, std::ios::app);
+        ir_file << "\n\n=== Module compiled at " << std::time(nullptr) << " ===\n";
+        ir_file << ir_str;
+        ir_file.close();
+        ARROW_LOG(ERROR) << "[DEBUG] IR written to: " << ir_file_env;
+      }
+    }
+
     ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
 
     if (optimize_) {

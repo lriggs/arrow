@@ -69,12 +69,27 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   bool is_cached = false;
 
-  std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj;
-  prev_cached_obj = cache->GetObjectCode(cache_key);
+  // TEMPORARY: Disable caching to test if cache is causing the SEGV bug
+  // The bug is that cached JIT code contains hardcoded addresses that are
+  // invalid after ASLR randomizes memory layout on next run.
+  // TODO: Remove this once CreateGlobalStringPtr fix is verified to work
+  const char* disable_cache_env = std::getenv("GANDIVA_DISABLE_CACHE");
+  bool disable_cache = (disable_cache_env != nullptr && std::string(disable_cache_env) == "1");
+  disable_cache = true;
 
-  // Verify if previous projector obj code was cached
-  if (prev_cached_obj != nullptr) {
-    is_cached = true;
+  std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj;
+  if (!disable_cache) {
+    prev_cached_obj = cache->GetObjectCode(cache_key);
+
+    // Verify if previous projector obj code was cached
+    if (prev_cached_obj != nullptr) {
+      is_cached = true;
+      ARROW_LOG(ERROR)  << "[DEBUG] Using cached JIT code for expression";
+    } else {
+      ARROW_LOG(ERROR)  << "[DEBUG] No cached JIT code found, will compile fresh";
+    }
+  } else {
+    ARROW_LOG(ERROR)  << "[DEBUG] Caching disabled via GANDIVA_DISABLE_CACHE=1";
   }
 
   GandivaObjectCache obj_cache(cache, cache_key);
