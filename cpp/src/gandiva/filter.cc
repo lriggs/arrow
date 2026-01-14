@@ -57,7 +57,7 @@ Status Filter::Make(SchemaPtr schema, ConditionPtr condition,
   // TEMPORARY: Disable caching to test if cache is causing the SEGV bug
   const char* disable_cache_env = std::getenv("GANDIVA_DISABLE_CACHE");
   bool disable_cache = (disable_cache_env != nullptr && std::string(disable_cache_env) == "1");
-  disable_cache = true;
+  disable_cache = false;
 
   std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj;
   if (!disable_cache) {

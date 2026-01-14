@@ -77,12 +77,8 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   auto compiled_expr = std::make_unique<CompiledExpr>(value_validity, output);
 
   // Generate unique function name with static counter to avoid duplicates
-  static std::atomic<uint64_t> unique_id_counter{0};
-  uint64_t unique_id = unique_id_counter.fetch_add(1);
   std::string fn_name = "expr_" + std::to_string(idx) + "_" +
-                        std::to_string(static_cast<int>(selection_vector_mode_)) + "_" +
-                        std::to_string(unique_id);
-
+                        std::to_string(static_cast<int>(selection_vector_mode_));
   if (!cached_) {
     ARROW_RETURN_NOT_OK(engine_->LoadFunctionIRs());
     ARROW_RETURN_NOT_OK(CodeGenExprValue(value_validity->value_expr(),
@@ -1509,7 +1505,8 @@ std::string LLVMGenerator::ReplaceFormatInTrace(const std::string& in_msg,
     // string
     fmt = "%s";
   } else {
-    DCHECK(0);
+    //DCHECK(0);
+    fmt = "%p";
   }
   msg.replace(pos, 2, fmt);
   return msg;

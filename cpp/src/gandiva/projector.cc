@@ -75,7 +75,7 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   // TODO: Remove this once CreateGlobalStringPtr fix is verified to work
   const char* disable_cache_env = std::getenv("GANDIVA_DISABLE_CACHE");
   bool disable_cache = (disable_cache_env != nullptr && std::string(disable_cache_env) == "1");
-  disable_cache = true;
+  disable_cache = false;
 
   std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj;
   if (!disable_cache) {
