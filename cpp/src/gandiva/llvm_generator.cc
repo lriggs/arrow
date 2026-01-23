@@ -399,16 +399,6 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
       prototype, llvm::GlobalValue::ExternalLinkage, fn_name, module());
   ARROW_RETURN_IF((fn == nullptr), Status::CodeGenError("Error creating function."));
 
-  // CRITICAL FIX: Add function attributes to ensure proper stack alignment
-  // Without these, the JIT function may have misaligned stack, causing crashes
-  // when calling native functions or accessing memory.
-  // The x86-64 calling convention requires 16-byte stack alignment.
-  //fn->addFnAttr(llvm::Attribute::UWTable);
-
-  // NOTE: The crash is related to inlining differences when traces are enabled vs disabled
-  // When traces are enabled, printf calls prevent certain inlining optimizations
-  // We need to investigate which specific function is being inlined incorrectly
-
   // Name the arguments
   llvm::Function::arg_iterator args = (fn)->arg_begin();
   llvm::Value* arg_addrs = &*args;
@@ -663,14 +653,6 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
   // find the llvm function.
   llvm::Function* fn = module()->getFunction(full_name);
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
-
-  // CRITICAL FIX: Prevent inlining of precompiled functions
-  // When traces are disabled, LLVM aggressively inlines precompiled functions
-  // This can cause stack alignment issues or incorrect calling conventions
-  // Mark the function as noinline to match the behavior when traces are enabled
-  //if (!enable_ir_traces_ && fn && !fn->hasFnAttribute(llvm::Attribute::NoInline)) {
-  //  fn->addFnAttr(llvm::Attribute::NoInline);
-  //}
 
   if (enable_ir_traces_ && !full_name.compare("printf") &&
       !full_name.compare("printff")) {
@@ -1638,14 +1620,6 @@ void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
     dmsg = ReplaceFormatInTrace(dmsg, value, &print_fn_name);
   }
 
-  // CRITICAL FIX: Use CreateGlobalStringPtr instead of storing in trace_strings_
-  // The old code stored strings in trace_strings_ vector and embedded raw pointers
-  // to them in JIT code. When LLVMGenerator was destroyed, the strings were freed
-  // but JIT code still had dangling pointers → heap-use-after-free crash!
-  //
-  // CreateGlobalStringPtr creates a global constant string in the LLVM module
-  // that persists with the JIT-compiled code, preventing use-after-free.
-  //llvm::Constant* str_ptr_cast = engine_->CreateGlobalStringPtr(dmsg);
   trace_strings_.push_back(dmsg);
  
 // cast this to an llvm pointer.

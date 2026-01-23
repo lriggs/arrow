@@ -157,5 +157,96 @@ TEST_F(TestDecimalAlignment, TestMisalignedDecimalSubtract) {
   EXPECT_EQ(result->length(), 3);
 }
 
+// Create a misaligned output buffer for decimal128
+std::shared_ptr<arrow::ArrayData> MakeMisalignedDecimalOutput(
+    const std::shared_ptr<arrow::Decimal128Type>& type,
+    int64_t num_records,
+    int alignment_offset) {
+
+  // Allocate data buffer with extra space for misalignment
+  int64_t data_size = num_records * 16;  // 16 bytes per Decimal128
+  int64_t buffer_size = data_size + 16;  // Extra space for offset
+
+  std::shared_ptr<arrow::Buffer> buffer;
+  ARROW_EXPECT_OK(arrow::AllocateBuffer(buffer_size).Value(&buffer));
+
+  uint8_t* raw_data = const_cast<uint8_t*>(buffer->data());
+  uintptr_t addr = reinterpret_cast<uintptr_t>(raw_data);
+
+  // Find offset to get to 8-byte aligned but not 16-byte aligned address
+  int offset_to_8 = (8 - (addr % 8)) % 8;
+  int current_16_alignment = (addr + offset_to_8) % 16;
+
+  int final_offset;
+  if (alignment_offset == 8) {
+    if (current_16_alignment == 0) {
+      final_offset = offset_to_8 + 8;
+    } else {
+      final_offset = offset_to_8;
+    }
+  } else {
+    final_offset = (16 - (addr % 16)) % 16;
+  }
+
+  // Verify alignment
+  uintptr_t data_addr = reinterpret_cast<uintptr_t>(raw_data + final_offset);
+  EXPECT_EQ(data_addr % 8, 0) << "Data should be 8-byte aligned";
+  if (alignment_offset == 8) {
+    EXPECT_NE(data_addr % 16, 0) << "Data should NOT be 16-byte aligned";
+  }
+
+  auto sliced_buffer = arrow::SliceBuffer(buffer, final_offset, data_size);
+
+  // Create validity buffer
+  int64_t bitmap_size = (num_records + 7) / 8;
+  std::shared_ptr<arrow::Buffer> validity_buffer;
+  ARROW_EXPECT_OK(arrow::AllocateBuffer(bitmap_size).Value(&validity_buffer));
+  memset(const_cast<uint8_t*>(validity_buffer->data()), 0xFF, validity_buffer->size());
+
+  return arrow::ArrayData::Make(type, num_records, {validity_buffer, sliced_buffer});
+}
+
+// Test that decimal STORES work correctly with 8-byte aligned (but not 16-byte aligned) output
+TEST_F(TestDecimalAlignment, TestMisalignedDecimalStore) {
+  constexpr int32_t precision = 38;
+  constexpr int32_t scale = 17;
+  auto decimal_type = std::make_shared<arrow::Decimal128Type>(precision, scale);
+  auto field_a = arrow::field("a", decimal_type);
+  auto field_b = arrow::field("b", decimal_type);
+  auto schema = arrow::schema({field_a, field_b});
+
+  Decimal128TypePtr output_type;
+  auto status = DecimalTypeUtil::GetResultType(
+      DecimalTypeUtil::kOpSubtract, {decimal_type, decimal_type}, &output_type);
+  ASSERT_OK(status);
+
+  auto res = arrow::field("res", output_type);
+  auto node_a = TreeExprBuilder::MakeField(field_a);
+  auto node_b = TreeExprBuilder::MakeField(field_b);
+  auto subtract = TreeExprBuilder::MakeFunction("subtract", {node_a, node_b}, output_type);
+  auto expr = TreeExprBuilder::MakeExpression(subtract, res);
+
+  std::shared_ptr<Projector> projector;
+  status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  ASSERT_OK(status);
+
+  // Create ALIGNED input arrays (using standard Arrow allocation)
+  auto array_a = MakeArrowArrayDecimal(decimal_type, {Decimal128(100), Decimal128(200), Decimal128(300)}, {true, true, true});
+  auto array_b = MakeArrowArrayDecimal(decimal_type, {Decimal128(10), Decimal128(20), Decimal128(30)}, {true, true, true});
+
+  auto in_batch = arrow::RecordBatch::Make(schema, 3, {array_a, array_b});
+
+  // Create MISALIGNED output buffer (8-byte aligned but NOT 16-byte aligned)
+  auto output_data = MakeMisalignedDecimalOutput(output_type, 3, 8);
+
+  // This should NOT crash even with misaligned output buffer
+  status = projector->Evaluate(*in_batch, {output_data});
+  ASSERT_OK(status);
+
+  // Verify the output was written correctly
+  auto result = std::make_shared<arrow::Decimal128Array>(output_data);
+  EXPECT_EQ(result->length(), 3);
+}
+
 }  // namespace gandiva
 
