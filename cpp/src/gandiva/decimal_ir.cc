@@ -244,19 +244,9 @@ DecimalIR::ValueWithOverflow DecimalIR::AddWithOverflowCheck(const ValueFull& x,
 // This is pretty complex, so use CPP fns.
 llvm::Value* DecimalIR::AddLarge(const ValueFull& x, const ValueFull& y,
                                  const ValueFull& out) {
-  // CRITICAL FIX: alloca instructions MUST be created in the entry block!
-  auto saved_block = ir_builder()->GetInsertBlock();
-  auto function = saved_block->getParent();
-  auto& entry_block = function->getEntryBlock();
-
-  // Insert at the beginning of the entry block
-  ir_builder()->SetInsertPoint(&entry_block, entry_block.begin());
-  auto out_high_ptr = ir_builder()->CreateAlloca(types()->i64_type(), nullptr, "out_hi");
-  auto out_low_ptr = ir_builder()->CreateAlloca(types()->i64_type(), nullptr, "out_low");
-
-  // Restore the insert point
-  ir_builder()->SetInsertPoint(saved_block);
-
+  auto block = ir_builder()->GetInsertBlock();
+  auto out_high_ptr = new llvm::AllocaInst(types()->i64_type(), 0, "out_hi", block);
+  auto out_low_ptr = new llvm::AllocaInst(types()->i64_type(), 0, "out_low", block);
   auto x_split = ValueSplit::MakeFromInt128(this, x.value());
   auto y_split = ValueSplit::MakeFromInt128(this, y.value());
 
@@ -366,8 +356,7 @@ Status DecimalIR::BuildSubtract() {
 
   auto entry = llvm::BasicBlock::Create(*context(), "entry", function);
   ir_builder()->SetInsertPoint(entry);
-AddDebugMarker(200, "BEFORE_CALL_subtract_decimal128_decimal128");
-  
+
   // reuse add function after negating y_value. i.e
   //   add(x_value, x_precision, x_scale, -y_value, y_precision, y_scale,
   //       out_precision, out_scale)
@@ -431,16 +420,6 @@ Status DecimalIR::BuildCompare(const std::string& function_name,
   return Status::OK();
 }
 
-// Helper to add debug markers for crash debugging
-void DecimalIR::AddDebugMarker(int64_t location_id, const std::string& location_name) {
-  auto marker_fn = module()->getFunction("gdv_debug_marker");
-  if (marker_fn) {
-    auto id_val = types()->i64_constant(location_id);
-    auto name_str = CreateGlobalStringPtr(location_name);
-    ir_builder()->CreateCall(marker_fn, {id_val, name_str});
-  }
-}
-
 llvm::Value* DecimalIR::CallDecimalFunction(const std::string& function_name,
                                             llvm::Type* return_type,
                                             const std::vector<llvm::Value*>& params) {
@@ -467,31 +446,14 @@ llvm::Value* DecimalIR::CallDecimalFunction(const std::string& function_name,
   llvm::Value* result = nullptr;
   if (return_type == i128) {
     // for i128 ret, replace with two int64* args, and join them.
-    // CRITICAL FIX: alloca instructions MUST be created in the entry block!
-    // Save current insert point, switch to entry block, create allocas, then restore
-    auto saved_block = ir_builder()->GetInsertBlock();
-    auto function = saved_block->getParent();
-    auto& entry_block = function->getEntryBlock();
-
-    // Insert at the beginning of the entry block (before any other instructions)
-    ir_builder()->SetInsertPoint(&entry_block, entry_block.begin());
-    auto out_high_ptr = ir_builder()->CreateAlloca(i64, nullptr, "out_hi");
-    auto out_low_ptr = ir_builder()->CreateAlloca(i64, nullptr, "out_low");
-
-    // Restore the insert point to where we were
-    ir_builder()->SetInsertPoint(saved_block);
-
+    auto block = ir_builder()->GetInsertBlock();
+    auto out_high_ptr = new llvm::AllocaInst(i64, 0, "out_hi", block);
+    auto out_low_ptr = new llvm::AllocaInst(i64, 0, "out_low", block);
     dis_assembled_args.push_back(out_high_ptr);
     dis_assembled_args.push_back(out_low_ptr);
 
-    // Add debug marker before the call
-    AddDebugMarker(1000, "BEFORE_CALL_" + function_name);
-
     // Make call to pre-compiled IR function.
     ir_builder()->CreateCall(module()->getFunction(function_name), dis_assembled_args);
-
-    // Add debug marker after the call
-    AddDebugMarker(1001, "AFTER_CALL_" + function_name);
 
     auto out_high = ir_builder()->CreateLoad(i64, out_high_ptr);
     auto out_low = ir_builder()->CreateLoad(i64, out_low_ptr);
