@@ -25,4 +25,11 @@ int print_double(char* msg, double val) { return printf(msg, val); }
 
 int print_float(char* msg, float val) { return printf(msg, val); }
 
+// Debug marker to track execution location in JIT code
+// This helps relate crashes back to specific IR locations
+void gdv_debug_marker(int64_t location_id, const char* location_name) {
+  fprintf(stderr, "[JIT_DEBUG] Location %lld: %s\n", (long long)location_id, location_name);
+  fflush(stderr);
+}
+
 }  // extern "C"

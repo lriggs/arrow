@@ -44,6 +44,21 @@
 
 extern "C" {
 
+// Debug marker function - also defined in print.cc for precompiled bitcode
+// This version is for linking tests and the main library
+void gdv_debug_marker(int64_t location_id, const char* location_name) {
+  fprintf(stderr, "[JIT_DEBUG] Location %lld: %s\n", (long long)location_id, location_name);
+  fflush(stderr);
+}
+
+// Debug function to print pointer and index values for crash debugging
+void gdv_debug_ptr_index(const char* field_name, int64_t base_ptr, int64_t index, int64_t computed_ptr) {
+  fprintf(stderr, "[JIT_DEBUG_PTR] %s: base_ptr=%p, index=%lld, computed_ptr=%p (aligned=%s)\n",
+          field_name, (void*)base_ptr, (long long)index, (void*)computed_ptr,
+          (computed_ptr % 16 == 0) ? "yes" : "NO");
+  fflush(stderr);
+}
+
 static char mask_array[256] = {
     (char)0,  (char)1,  (char)2,  (char)3,   (char)4,   (char)5,   (char)6,   (char)7,
     (char)8,  (char)9,  (char)10, (char)11,  (char)12,  (char)13,  (char)14,  (char)15,
@@ -1495,6 +1510,26 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
 
   engine->AddGlobalMappingForFunc("mask_utf8", types->i8_ptr_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(mask_utf8));
+
+  // gdv_debug_marker - for crash debugging
+  args = {
+      types->i64_type(),     // location_id
+      types->i8_ptr_type()   // location_name
+  };
+
+  engine->AddGlobalMappingForFunc("gdv_debug_marker", types->void_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_debug_marker));
+
+  // gdv_debug_ptr_index - for crash debugging with pointer/index info
+  args = {
+      types->i8_ptr_type(),  // field_name
+      types->i64_type(),     // base_ptr
+      types->i64_type(),     // index
+      types->i64_type()      // computed_ptr
+  };
+  engine->AddGlobalMappingForFunc("gdv_debug_ptr_index", types->void_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_debug_ptr_index));
+
   return arrow::Status::OK();
 }
 }  // namespace gandiva

@@ -40,6 +40,9 @@ class DecimalIR : public FunctionIRBuilder {
                                    llvm::Type* return_type,
                                    const std::vector<llvm::Value*>& args);
 
+  /// Add a debug marker for crash debugging
+  void AddDebugMarker(int64_t location_id, const std::string& location_name);
+
  private:
   /// The intrinsic fn for divide with small divisors is about 10x slower, so not
   /// using these.

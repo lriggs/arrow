@@ -268,6 +268,10 @@ class GANDIVA_EXPORT LLVMGenerator {
 
   // used for debug
   bool enable_ir_traces_;
+  std::vector<std::string> trace_strings_;
+  void AddDebugMarker(int64_t location_id, const std::string& location_name);
+  void AddDebugPtrIndex(const std::string& field_name, llvm::Value* base_ptr,
+                        llvm::Value* index, llvm::Value* computed_ptr);
 };
 
 }  // namespace gandiva

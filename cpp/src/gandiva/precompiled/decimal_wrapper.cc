@@ -98,6 +98,12 @@ void mod_decimal128_decimal128(int64_t context, int64_t x_high, uint64_t x_low,
                                uint64_t y_low, int32_t y_precision, int32_t y_scale,
                                int32_t out_precision, int32_t out_scale,
                                int64_t* out_high, uint64_t* out_low) {
+  fprintf(stderr, "[DECIMAL_DEBUG] mod_decimal128_decimal128 ENTRY: context=%p, x=(%lld,%llu) prec=%d scale=%d, y=(%lld,%llu) prec=%d scale=%d, out_prec=%d out_scale=%d, out_hi_ptr=%p, out_low_ptr=%p\n",
+          (void*)context,
+          (long long)x_high, (unsigned long long)x_low, x_precision, x_scale,
+          (long long)y_high, (unsigned long long)y_low, y_precision, y_scale,
+          out_precision, out_scale, (void*)out_high, (void*)out_low);
+
   gandiva::BasicDecimalScalar128 x(x_high, x_low, x_precision, x_scale);
   gandiva::BasicDecimalScalar128 y(y_high, y_low, y_precision, y_scale);
   bool overflow;
@@ -107,6 +113,9 @@ void mod_decimal128_decimal128(int64_t context, int64_t x_high, uint64_t x_low,
       gandiva::decimalops::Mod(context, x, y, out_precision, out_scale, &overflow);
   *out_high = out.high_bits();
   *out_low = out.low_bits();
+
+  fprintf(stderr, "[DECIMAL_DEBUG] mod_decimal128_decimal128 EXIT: result=(%lld,%llu) overflow=%d\n",
+          (long long)*out_high, (unsigned long long)*out_low, overflow);
 }
 
 FORCE_INLINE

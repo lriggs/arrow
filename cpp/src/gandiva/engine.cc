@@ -529,12 +529,6 @@ Status Engine::FinalizeModule() {
       module_->print(ir_stream, nullptr);
       ir_stream.flush();
 
-      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
-      ARROW_LOG(ERROR) << "[DEBUG] LLVM IR (before optimization):";
-      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
-      ARROW_LOG(ERROR) << ir_str;
-      ARROW_LOG(ERROR) << "[DEBUG] ========================================";
-
       // Also write to file
       const char* ir_file_env = std::getenv("GANDIVA_IR_FILE");
       if (ir_file_env != nullptr) {

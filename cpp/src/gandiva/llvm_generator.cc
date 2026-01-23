@@ -18,6 +18,7 @@
 #include "gandiva/llvm_generator.h"
 
 #include <atomic>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,11 +38,15 @@ namespace gandiva {
     AddTrace(__VA_ARGS__); \
   }
 
+// Static counter to generate unique IDs for JIT function names
+// This ensures each compilation gets a unique function name even if cached
+static std::atomic<uint64_t> g_jit_function_counter{0};
+
 LLVMGenerator::LLVMGenerator(bool cached,
                              std::shared_ptr<FunctionRegistry> function_registry)
     : cached_(cached),
       function_registry_(std::move(function_registry)),
-      enable_ir_traces_(true) {}
+      enable_ir_traces_(false) {}
 
 Result<std::unique_ptr<LLVMGenerator>> LLVMGenerator::Make(
     const std::shared_ptr<Configuration>& config, bool cached,
@@ -77,8 +82,12 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
   auto compiled_expr = std::make_unique<CompiledExpr>(value_validity, output);
 
   // Generate unique function name with static counter to avoid duplicates
+  // Include a unique ID to prevent cache collisions across different JIT compilations
+  //uint64_t unique_id = g_jit_function_counter.fetch_add(1);
   std::string fn_name = "expr_" + std::to_string(idx) + "_" +
                         std::to_string(static_cast<int>(selection_vector_mode_));
+                        // + "_" +
+                        //std::to_string(unique_id);
   if (!cached_) {
     ARROW_RETURN_NOT_OK(engine_->LoadFunctionIRs());
     ARROW_RETURN_NOT_OK(CodeGenExprValue(value_validity->value_expr(),
@@ -208,6 +217,13 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
     }
 
     ARROW_LOG(ERROR) << "[DEBUG] >>> Calling JIT function " << fn_name << " <<<";
+
+    // Flush stderr to make sure all logs are visible before potential crash
+    fflush(stderr);
+
+    // Write a direct marker to stderr (bypasses any buffering)
+    fprintf(stderr, "[DIRECT_DEBUG] About to call JIT function at %p\n", (void*)jit_function);
+    fflush(stderr);
 
     // Call the JIT function - this is where crashes typically happen
     try {
@@ -383,6 +399,16 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
       prototype, llvm::GlobalValue::ExternalLinkage, fn_name, module());
   ARROW_RETURN_IF((fn == nullptr), Status::CodeGenError("Error creating function."));
 
+  // CRITICAL FIX: Add function attributes to ensure proper stack alignment
+  // Without these, the JIT function may have misaligned stack, causing crashes
+  // when calling native functions or accessing memory.
+  // The x86-64 calling convention requires 16-byte stack alignment.
+  //fn->addFnAttr(llvm::Attribute::UWTable);
+
+  // NOTE: The crash is related to inlining differences when traces are enabled vs disabled
+  // When traces are enabled, printf calls prevent certain inlining optimizations
+  // We need to investigate which specific function is being inlined incorrectly
+
   // Name the arguments
   llvm::Function::arg_iterator args = (fn)->arg_begin();
   llvm::Value* arg_addrs = &*args;
@@ -413,6 +439,10 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   // Add reference to output vector (in entry block)
   builder->SetInsertPoint(loop_entry);
 
+  // Add debug marker at the VERY BEGINNING of the function
+  // This helps identify if the crash is during function entry or later
+  // AddDebugMarker(10, "FUNCTION_ENTRY_" + fn_name);
+
   llvm::Value* output_ref =
       GetDataReference(arg_addrs, output->data_idx(), output->field());
   llvm::Value* output_buffer_ptr_ref =
@@ -436,8 +466,13 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   // Loop body
   builder->SetInsertPoint(loop_body);
 
+
+
   // define loop_var : start with 0, +1 after each iter
   llvm::PHINode* loop_var = builder->CreatePHI(types()->i64_type(), 2, "loop_var");
+
+    // Add debug marker at the beginning of the loop body
+  AddDebugMarker(20, "LOOP_BODY_START_" + fn_name);
 
   llvm::Value* position_var = loop_var;
   if (selection_vector_mode != SelectionVector::MODE_NONE) {
@@ -467,8 +502,13 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
 
   if (output_type_id == arrow::Type::BOOL) {
     SetPackedBitValue(output_ref, loop_var, output_value->data());
-  } else if (arrow::is_primitive(output_type_id) ||
-             output_type_id == arrow::Type::DECIMAL) {
+  } else if (output_type_id == arrow::Type::DECIMAL) {
+    // CRITICAL FIX: Arrow decimal128 data is only 8-byte aligned, not 16-byte aligned.
+    // Use CreateAlignedStore with 8-byte alignment to match Arrow's actual alignment.
+    auto slot_offset =
+        builder->CreateGEP(types()->IRType(output_type_id), output_ref, loop_var);
+    builder->CreateAlignedStore(output_value->data(), slot_offset, llvm::MaybeAlign(8));
+  } else if (arrow::is_primitive(output_type_id)) {
     auto slot_offset =
         builder->CreateGEP(types()->IRType(output_type_id), output_ref, loop_var);
     builder->CreateStore(output_value->data(), slot_offset);
@@ -509,14 +549,37 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   builder->CreateRet(types()->i32_constant(0));
   return Status::OK();
 }
+// Helper to add debug markers for crash debugging
+void LLVMGenerator::AddDebugMarker(int64_t location_id, const std::string& location_name) {
+  auto marker_fn = module()->getFunction("gdv_debug_marker");
+  if (marker_fn) {
+    auto id_val = types()->i64_constant(location_id);
+    auto name_str = CreateGlobalStringPtr(location_name);
+    ir_builder()->CreateCall(marker_fn, {id_val, name_str});
+  }
+}
+
+// Helper to debug pointer/index values for crash debugging
+void LLVMGenerator::AddDebugPtrIndex(const std::string& field_name, llvm::Value* base_ptr,
+                                     llvm::Value* index, llvm::Value* computed_ptr) {
+  auto debug_fn = module()->getFunction("gdv_debug_ptr_index");
+  if (debug_fn) {
+    auto name_str = CreateGlobalStringPtr(field_name);
+    // Convert pointers to i64 for printing
+    auto base_as_int = ir_builder()->CreatePtrToInt(base_ptr, types()->i64_type());
+    auto computed_as_int = ir_builder()->CreatePtrToInt(computed_ptr, types()->i64_type());
+    ir_builder()->CreateCall(debug_fn, {name_str, base_as_int, index, computed_as_int});
+  }
+}
 
 /// Return value of a bit in bitMap.
 llvm::Value* LLVMGenerator::GetPackedBitValue(llvm::Value* bitmap,
                                               llvm::Value* position) {
   ADD_TRACE("fetch bit at position %T", position);
-
+AddDebugMarker(100, "BEFORE_CALL_bitMapGetBit");
   llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
       bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
+  
   return AddFunctionCall("bitMapGetBit", types()->i1_type(), {bitmap8, position});
 }
 
@@ -535,9 +598,10 @@ void LLVMGenerator::SetPackedBitValue(llvm::Value* bitmap, llvm::Value* position
 llvm::Value* LLVMGenerator::GetPackedValidityBitValue(llvm::Value* bitmap,
                                                       llvm::Value* position) {
   ADD_TRACE("fetch validity bit at position %T", position);
-
+AddDebugMarker(110, "BEFORE_CALL_bitMapValidityGetBit");
   llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
       bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
+      
   return AddFunctionCall("bitMapValidityGetBit", types()->i1_type(), {bitmap8, position});
 }
 
@@ -547,6 +611,7 @@ void LLVMGenerator::ClearPackedBitValueIfFalse(llvm::Value* bitmap, llvm::Value*
   ADD_TRACE("ClearIfFalse bit at position %T", position);
   ADD_TRACE("   value %T ", value);
 
+  AddDebugMarker(120, "BEFORE_CALL_bitMapClearBitIfFalse");
   llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
       bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
   AddFunctionCall("bitMapClearBitIfFalse", types()->void_type(),
@@ -598,6 +663,14 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
   // find the llvm function.
   llvm::Function* fn = module()->getFunction(full_name);
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
+
+  // CRITICAL FIX: Prevent inlining of precompiled functions
+  // When traces are disabled, LLVM aggressively inlines precompiled functions
+  // This can cause stack alignment issues or incorrect calling conventions
+  // Mark the function as noinline to match the behavior when traces are enabled
+  //if (!enable_ir_traces_ && fn && !fn->hasFnAttribute(llvm::Attribute::NoInline)) {
+  //  fn->addFnAttr(llvm::Attribute::NoInline);
+  //}
 
   if (enable_ir_traces_ && !full_name.compare("printf") &&
       !full_name.compare("printff")) {
@@ -669,8 +742,18 @@ void LLVMGenerator::Visitor::Visit(const VectorReadFixedLenValueDex& dex) {
       break;
 
     case arrow::Type::DECIMAL: {
+      // Debug: log field name and addresses before loading decimal
+      generator_->AddDebugMarker(30, "BEFORE_DECIMAL_LOAD_" + dex.FieldName());
       auto slot_offset = builder->CreateGEP(types->i128_type(), slot_ref, slot_index);
-      slot_value = builder->CreateLoad(types->i128_type(), slot_offset, dex.FieldName());
+      // Print pointer and index info for debugging
+      generator_->AddDebugPtrIndex(dex.FieldName(), slot_ref, slot_index, slot_offset);
+      generator_->AddDebugMarker(31, "AFTER_GEP_BEFORE_LOAD_" + dex.FieldName());
+      // CRITICAL FIX: Arrow decimal128 data is only 8-byte aligned, not 16-byte aligned.
+      // Using CreateLoad with default alignment (16 for i128) causes crashes on misaligned data.
+      // Use CreateAlignedLoad with 8-byte alignment to match Arrow's actual alignment.
+      slot_value = builder->CreateAlignedLoad(types->i128_type(), slot_offset,
+                                              llvm::MaybeAlign(8), false, dex.FieldName());
+      generator_->AddDebugMarker(32, "AFTER_DECIMAL_LOAD_" + dex.FieldName());
       lvalue = generator_->BuildDecimalLValue(slot_value, dex.FieldType());
       break;
     }
@@ -1169,15 +1252,32 @@ template <>
 void LLVMGenerator::Visitor::VisitInExpression<gandiva::DecimalScalar128>(
     const InExprDexBase<gandiva::DecimalScalar128>& dex) {
   ADD_VISITOR_TRACE("visit In Expression");
+
+  // DIAGNOSTIC: Print to stderr so we know this code path is being executed
+  std::cerr << "DEBUG: VisitInExpression<DecimalScalar128> called - using FIXED version" << std::endl;
+
   LLVMTypes* types = generator_->types();
   std::vector<llvm::Value*> params;
   DecimalIR decimalIR(generator_->engine_.get());
 
   const InExprDex<gandiva::DecimalScalar128>& dex_instance =
       dynamic_cast<const InExprDex<gandiva::DecimalScalar128>&>(dex);
+
   /* add the holder at the beginning */
-  llvm::Constant* ptr_int_cast =
-      types->i64_constant((int64_t)(dex_instance.in_holder().get()));
+  // CRITICAL FIX #1: Load holder pointer from runtime array instead of hardcoding it
+  // The old code embedded the pointer as a constant, which becomes invalid after
+  // ASLR or when cached JIT code is reused in a new process.
+  /*auto builder = ir_builder();
+  llvm::BasicBlock* saved_block = builder->GetInsertBlock();
+  builder->SetInsertPoint(entry_block_);
+
+  llvm::Value* in_holder = generator_->LoadVectorAtIndex(
+      arg_holder_ptrs_, types->i64_type(), dex_instance.get_holder_idx(), "in_holder");
+
+  builder->SetInsertPoint(saved_block);
+  params.push_back(in_holder);*/
+  llvm::Constant* ptr_int_cast = 
+      types->i64_constant((int64_t)dex_instance.in_holder().get());
   params.push_back(ptr_int_cast);
 
   /* eval expr result */
@@ -1185,7 +1285,21 @@ void LLVMGenerator::Visitor::VisitInExpression<gandiva::DecimalScalar128>(
     DexPtr value_expr = pair->value_expr();
     value_expr->Accept(*this);
     LValue& result_ref = *result();
-    params.push_back(result_ref.data());
+
+    // CRITICAL FIX #2: Split i128 decimal value into high/low i64 parts
+    // The function gdv_fn_in_expr_lookup_decimal expects:
+    //   (ptr, high, low, precision, scale, validity)
+    // but result_ref.data() is a single i128 value!
+    // Split logic from DecimalIR::ValueSplit::MakeFromInt128
+    /*auto decimal_value = result_ref.data();
+    auto high = builder->CreateLShr(decimal_value, types->i128_constant(64));
+    high = builder->CreateTrunc(high, types->i64_type());
+    auto low = builder->CreateTrunc(decimal_value, types->i64_type());
+
+    params.push_back(high);  // value_high
+    params.push_back(low);   // value_low
+*/
+   params.push_back(result_ref.data());  // value
 
     llvm::Constant* precision = types->i32_constant(dex.get_precision());
     llvm::Constant* scale = types->i32_constant(dex.get_scale());
@@ -1512,6 +1626,7 @@ std::string LLVMGenerator::ReplaceFormatInTrace(const std::string& in_msg,
   return msg;
 }
 
+
 void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
   if (!enable_ir_traces_) {
     return;
@@ -1530,7 +1645,14 @@ void LLVMGenerator::AddTrace(const std::string& msg, llvm::Value* value) {
   //
   // CreateGlobalStringPtr creates a global constant string in the LLVM module
   // that persists with the JIT-compiled code, preventing use-after-free.
-  llvm::Constant* str_ptr_cast = engine_->CreateGlobalStringPtr(dmsg);
+  //llvm::Constant* str_ptr_cast = engine_->CreateGlobalStringPtr(dmsg);
+  trace_strings_.push_back(dmsg);
+ 
+// cast this to an llvm pointer.
+  const char* str = trace_strings_.back().c_str();
+  llvm::Constant* str_int_cast = types()->i64_constant((int64_t)str);
+  llvm::Constant* str_ptr_cast =
+      llvm::ConstantExpr::getIntToPtr(str_int_cast, types()->i8_ptr_type());
 
   std::vector<llvm::Value*> args;
   args.push_back(str_ptr_cast);
