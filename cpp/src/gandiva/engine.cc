@@ -197,8 +197,8 @@ Result<std::unique_ptr<llvm::jitlink::InProcessMemoryManager>> CreateMemmoryMana
 }
 
 Status UseJITLinkIfEnabled(llvm::orc::LLJITBuilder& jit_builder) {
-  static auto maybe_use_jit_link = ::arrow::internal::GetEnvVar("GANDIVA_USE_JIT_LINK");
-  if (maybe_use_jit_link.ok()) {
+  bool maybe_use_jit_link = true;
+  if (maybe_use_jit_link) {
     ARROW_ASSIGN_OR_RAISE(static auto memory_manager, CreateMemmoryManager());
 #  if LLVM_VERSION_MAJOR >= 21
     jit_builder.setObjectLinkingLayerCreator([&](llvm::orc::ExecutionSession& ES) {
