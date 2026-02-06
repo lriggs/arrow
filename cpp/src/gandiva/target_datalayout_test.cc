@@ -26,7 +26,8 @@ namespace gandiva {
 // Test that verifies the target data layout string representation
 // is populated.
 TEST(TestTargetDataLayout, VerifyDataLayoutForArchitecture) {
-  ASSERT_OK_AND_ASSIGN(auto generator, LLVMGenerator::Make(TestConfiguration(), false));
+  std::unique_ptr<LLVMGenerator> generator;
+  ASSERT_OK(LLVMGenerator::Make(TestConfiguration(), false, &generator));
 
   llvm::Module* module = generator->module();
   ASSERT_NE(module, nullptr);
