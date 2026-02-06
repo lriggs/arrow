@@ -201,7 +201,7 @@ Status Engine::Make(const std::shared_ptr<Configuration>& conf, bool cached,
   // original Module.
   auto module_ptr = module.get();
 
-#if LLVM_VERSION_MAJOR >= 21
+#if LLVM_VERSION_MAJOR >= 18
   auto opt_level =
       conf->optimize() ? llvm::CodeGenOptLevel::Aggressive : llvm::CodeGenOptLevel::None;
 #else
