@@ -80,6 +80,10 @@ class GANDIVA_EXPORT Engine {
   /// Get the compiled function corresponding to the irfunction.
   Result<void*> CompiledFunction(const std::string& function);
 
+  /// Get multiple compiled functions at once (more efficient than individual lookups).
+  Result<std::unordered_map<std::string, void*>> CompiledFunctions(
+      const std::vector<std::string>& functions);
+
   // Create and add a mapping for the cpp function to make it accessible from LLVM.
   void AddGlobalMappingForFunc(const std::string& name, llvm::Type* ret_type,
                                const std::vector<llvm::Type*>& args, void* func);

@@ -100,11 +100,24 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
   // Compile and inject into the process' memory the generated function.
   ARROW_RETURN_NOT_OK(engine_->FinalizeModule());
 
-  // setup the jit functions for each expression.
+  // Collect all function names for batch lookup
+  std::vector<std::string> function_names;
+  function_names.reserve(compiled_exprs_.size());
+  for (auto& compiled_expr : compiled_exprs_) {
+    function_names.push_back(compiled_expr->GetFunctionName(mode));
+  }
+
+  // Perform batch lookup - this allows LLVM to compile all functions in parallel
+  ARROW_ASSIGN_OR_RAISE(auto function_ptrs, engine_->CompiledFunctions(function_names));
+
+  // Setup the jit functions for each expression
   for (auto& compiled_expr : compiled_exprs_) {
     auto fn_name = compiled_expr->GetFunctionName(mode);
-    ARROW_ASSIGN_OR_RAISE(auto fn_ptr, engine_->CompiledFunction(fn_name));
-    auto jit_fn = reinterpret_cast<EvalFunc>(fn_ptr);
+    auto it = function_ptrs.find(fn_name);
+    if (it == function_ptrs.end()) {
+      return Status::CodeGenError("Failed to find compiled function: " + fn_name);
+    }
+    auto jit_fn = reinterpret_cast<EvalFunc>(it->second);
     compiled_expr->SetJITFunction(selection_vector_mode_, jit_fn);
   }
 

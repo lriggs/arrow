@@ -28,6 +28,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 
@@ -229,6 +230,13 @@ Result<std::unique_ptr<llvm::orc::LLJIT>> BuildJIT(
 
   jit_builder.setJITTargetMachineBuilder(std::move(jtmb));
   jit_builder.setDataLayout(std::make_optional(data_layout));
+
+  // Enable concurrent compilation for better performance
+  // Use hardware concurrency to parallelize compilation of multiple functions
+  unsigned num_threads = std::thread::hardware_concurrency();
+  if (num_threads > 1) {
+    jit_builder.setNumCompileThreads(2);
+  }
 
   if (object_cache.has_value()) {
     jit_builder.setCompileFunctionCreator(
@@ -583,6 +591,52 @@ Result<void*> Engine::CompiledFunction(const std::string& function) {
     return Status::CodeGenError("Failed to get address for function: " + function);
   }
   return fn_ptr;
+}
+
+Result<std::unordered_map<std::string, void*>> Engine::CompiledFunctions(
+    const std::vector<std::string>& functions) {
+  DCHECK(module_finalized_)
+      << "module must be finalized before getting compiled functions";
+
+  std::unordered_map<std::string, void*> result;
+
+  // Build a SymbolLookupSet for batch lookup
+  llvm::orc::SymbolLookupSet symbols;
+  for (const auto& function : functions) {
+    symbols.add(lljit_->getExecutionSession().intern(function));
+  }
+
+  // Perform batch lookup - this allows LLVM to compile multiple functions in parallel
+  auto symbol_map = lljit_->getExecutionSession().lookup(
+      {{&lljit_->getMainJITDylib(), llvm::orc::JITDylibLookupFlags::MatchAllSymbols}},
+      symbols);
+
+  if (!symbol_map) {
+    return Status::CodeGenError("Failed to look up functions: " +
+                                llvm::toString(symbol_map.takeError()));
+  }
+
+  // Extract addresses from the symbol map
+  for (const auto& function : functions) {
+    auto sym_name = lljit_->getExecutionSession().intern(function);
+    auto it = symbol_map->find(sym_name);
+    if (it == symbol_map->end()) {
+      return Status::CodeGenError("Failed to find function in lookup result: " + function);
+    }
+
+#if LLVM_VERSION_MAJOR >= 15
+    auto fn_addr = it->second.getAddress().getValue();
+#else
+    auto fn_addr = it->second.getAddress();
+#endif
+    auto fn_ptr = reinterpret_cast<void*>(fn_addr);
+    if (fn_ptr == nullptr) {
+      return Status::CodeGenError("Failed to get address for function: " + function);
+    }
+    result[function] = fn_ptr;
+  }
+
+  return result;
 }
 
 void Engine::AddGlobalMappingForFunc(const std::string& name, llvm::Type* ret_type,
