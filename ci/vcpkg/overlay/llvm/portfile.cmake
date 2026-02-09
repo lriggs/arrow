@@ -1,5 +1,7 @@
 # Suppress warning: There should be no installed empty directories
 set(VCPKG_POLICY_ALLOW_EMPTY_FOLDERS enabled)
+# Suppress warning about mismatched debug/release binaries when triplet expects debug but we only build release
+set(VCPKG_POLICY_MISMATCHED_NUMBER_OF_BINARIES enabled)
 
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 # Only build release configuration to speed up build time
