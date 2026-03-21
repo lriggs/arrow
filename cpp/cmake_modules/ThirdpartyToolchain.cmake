@@ -2630,7 +2630,7 @@ macro(build_xsimd)
   file(MAKE_DIRECTORY "${XSIMD_INCLUDE_DIR}")
 
   add_library(arrow::xsimd INTERFACE IMPORTED)
-  target_include_directories(arrow::xsimd INTERFACE "${XSIMD_INCLUDE_DIR}")
+  target_include_directories(arrow::xsimd SYSTEM INTERFACE "${XSIMD_INCLUDE_DIR}")
   add_dependencies(arrow::xsimd xsimd_ep)
 
   set(XSIMD_VENDORED TRUE)
@@ -2656,7 +2656,10 @@ if(ARROW_USE_XSIMD)
     set(ARROW_XSIMD arrow::xsimd)
   else()
     message(STATUS "xsimd found. Headers: ${xsimd_INCLUDE_DIRS}")
-    set(ARROW_XSIMD xsimd)
+    # Wrap system xsimd with SYSTEM includes to suppress third-party header warnings
+    add_library(arrow::xsimd INTERFACE IMPORTED)
+    target_include_directories(arrow::xsimd SYSTEM INTERFACE "${xsimd_INCLUDE_DIRS}")
+    set(ARROW_XSIMD arrow::xsimd)
   endif()
 endif()
 
