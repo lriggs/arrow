@@ -25,6 +25,10 @@ static inline gdv_uint64 rotate_left(gdv_uint64 val, int distance) {
   return (val << distance) | (val >> (64 - distance));
 }
 
+static inline gdv_uint32 rotate_left32(gdv_uint32 val, int distance) {
+  return (val << distance) | (val >> (32 - distance));
+}
+
 //
 // MurmurHash3 was written by Austin Appleby, and is placed in the public
 // domain.
@@ -73,38 +77,38 @@ static inline gdv_uint64 murmur3_64(gdv_uint64 val, gdv_int32 seed) {
 }
 
 static inline gdv_uint32 murmur3_32(gdv_uint64 val, gdv_int32 seed) {
-  gdv_uint64 c1 = 0xcc9e2d51ull;
-  gdv_uint64 c2 = 0x1b873593ull;
-  int length = 8;
-  static gdv_uint64 UINT_MASK = 0xffffffffull;
-  gdv_uint64 lh1 = seed & UINT_MASK;
-  for (int i = 0; i < 2; i++) {
-    gdv_uint64 lk1 = ((val >> i * 32) & UINT_MASK);
-    lk1 *= c1;
-    lk1 &= UINT_MASK;
+  const gdv_uint32 c1 = 0xcc9e2d51u;
+  const gdv_uint32 c2 = 0x1b873593u;
+  gdv_uint32 lh1 = static_cast<gdv_uint32>(seed);
 
-    lk1 = ((lk1 << 15) & UINT_MASK) | (lk1 >> 17);
+  // low 32 bits
+  gdv_uint32 lk1 = static_cast<gdv_uint32>(val);
+  lk1 *= c1;
+  lk1 = rotate_left32(lk1, 15);
+  lk1 *= c2;
+  lh1 ^= lk1;
+  lh1 = rotate_left32(lh1, 13);
+  lh1 = lh1 * 5 + 0xe6546b64u;
 
-    lk1 *= c2;
-    lk1 &= UINT_MASK;
+  // high 32 bits
+  lk1 = static_cast<gdv_uint32>(val >> 32);
+  lk1 *= c1;
+  lk1 = rotate_left32(lk1, 15);
+  lk1 *= c2;
+  lh1 ^= lk1;
+  lh1 = rotate_left32(lh1, 13);
+  lh1 = lh1 * 5 + 0xe6546b64u;
 
-    lh1 ^= lk1;
-    lh1 = ((lh1 << 13) & UINT_MASK) | (lh1 >> 19);
+  lh1 ^= 8;  // length
 
-    lh1 = lh1 * 5 + 0xe6546b64L;
-    lh1 = UINT_MASK & lh1;
-  }
-  lh1 ^= length;
-
+  // fmix32
   lh1 ^= lh1 >> 16;
-  lh1 *= 0x85ebca6bull;
-  lh1 = UINT_MASK & lh1;
+  lh1 *= 0x85ebca6bu;
   lh1 ^= lh1 >> 13;
-  lh1 *= 0xc2b2ae35ull;
-  lh1 = UINT_MASK & lh1;
+  lh1 *= 0xc2b2ae35u;
   lh1 ^= lh1 >> 16;
 
-  return static_cast<gdv_uint32>(lh1);
+  return lh1;
 }
 
 static inline gdv_uint64 double_to_long_bits(double value) {
@@ -291,66 +295,51 @@ static inline gdv_uint64 murmur3_64_buf(const gdv_uint8* key, gdv_int32 len,
 }
 
 static gdv_uint32 murmur3_32_buf(const gdv_uint8* key, gdv_int32 len, gdv_int32 seed) {
-  static const gdv_uint64 c1 = 0xcc9e2d51ull;
-  static const gdv_uint64 c2 = 0x1b873593ull;
-  static const gdv_uint64 UINT_MASK = 0xffffffffull;
-  gdv_uint64 lh1 = seed;
+  const gdv_uint32 c1 = 0xcc9e2d51u;
+  const gdv_uint32 c2 = 0x1b873593u;
+  gdv_uint32 lh1 = static_cast<gdv_uint32>(seed);
   const gdv_uint32* blocks = reinterpret_cast<const gdv_uint32*>(key);
   int nblocks = len / 4;
   const gdv_uint8* tail = reinterpret_cast<const gdv_uint8*>(key + nblocks * 4);
+
   for (int i = 0; i < nblocks; i++) {
-    gdv_uint64 lk1 = static_cast<gdv_uint64>(blocks[i]);
-
-    // k1 *= c1;
+    gdv_uint32 lk1 = blocks[i];
     lk1 *= c1;
-    lk1 &= UINT_MASK;
-
-    lk1 = ((lk1 << 15) & UINT_MASK) | (lk1 >> 17);
-
+    lk1 = rotate_left32(lk1, 15);
     lk1 *= c2;
-    lk1 = lk1 & UINT_MASK;
     lh1 ^= lk1;
-    lh1 = ((lh1 << 13) & UINT_MASK) | (lh1 >> 19);
-
-    lh1 = lh1 * 5 + 0xe6546b64ull;
-    lh1 = UINT_MASK & lh1;
+    lh1 = rotate_left32(lh1, 13);
+    lh1 = lh1 * 5 + 0xe6546b64u;
   }
 
   // tail
-  gdv_uint64 lk1 = 0;
+  gdv_uint32 lk1 = 0;
 
   switch (len & 3) {
     case 3:
-      lk1 = (tail[2] & 0xff) << 16;
+      lk1 = static_cast<gdv_uint32>(tail[2]) << 16;
       [[fallthrough]];
     case 2:
-      lk1 |= (tail[1] & 0xff) << 8;
+      lk1 |= static_cast<gdv_uint32>(tail[1]) << 8;
       [[fallthrough]];
     case 1:
-      lk1 |= (tail[0] & 0xff);
+      lk1 |= static_cast<gdv_uint32>(tail[0]);
       lk1 *= c1;
-      lk1 = UINT_MASK & lk1;
-      lk1 = ((lk1 << 15) & UINT_MASK) | (lk1 >> 17);
-
+      lk1 = rotate_left32(lk1, 15);
       lk1 *= c2;
-      lk1 = lk1 & UINT_MASK;
-
       lh1 ^= lk1;
   }
 
   // finalization
-  lh1 ^= len;
+  lh1 ^= static_cast<gdv_uint32>(len);
 
   lh1 ^= lh1 >> 16;
-  lh1 *= 0x85ebca6b;
-  lh1 = UINT_MASK & lh1;
+  lh1 *= 0x85ebca6bu;
   lh1 ^= lh1 >> 13;
-
-  lh1 *= 0xc2b2ae35;
-  lh1 = UINT_MASK & lh1;
+  lh1 *= 0xc2b2ae35u;
   lh1 ^= lh1 >> 16;
 
-  return static_cast<gdv_uint32>(lh1 & UINT_MASK);
+  return lh1;
 }
 
 FORCE_INLINE gdv_int64 hash64_buf(const gdv_uint8* buf, int len, gdv_int64 seed) {
