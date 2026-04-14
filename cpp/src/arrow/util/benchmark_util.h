@@ -36,13 +36,29 @@ template <typename Func>
 struct BenchmarkArgsType;
 
 // Pattern matching that extracts the vector element type of Benchmark::Args()
+// benchmark::internal::Benchmark was deprecated in newer Google Benchmark in favor
+// of benchmark::Benchmark, but both names refer to the same class. Suppress the
+// deprecation warning to stay compatible with both old and new benchmark versions.
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
 template <typename Values>
-struct BenchmarkArgsType<benchmark::Benchmark* (
-    benchmark::Benchmark::*)(const std::vector<Values>&)> {
+struct BenchmarkArgsType<benchmark::internal::Benchmark* (
+    benchmark::internal::Benchmark::*)(const std::vector<Values>&)> {
   using type = Values;
 };
 
-using ArgsType = typename BenchmarkArgsType<decltype(&benchmark::Benchmark::Args)>::type;
+using ArgsType =
+    typename BenchmarkArgsType<decltype(&benchmark::internal::Benchmark::Args)>::type;
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
 
 using internal::CpuInfo;
 
@@ -83,7 +99,14 @@ struct GenericItemsArgs {
   benchmark::State& state_;
 };
 
-void BenchmarkSetArgsWithSizes(benchmark::Benchmark* bench,
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
+void BenchmarkSetArgsWithSizes(benchmark::internal::Benchmark* bench,
                                const std::vector<int64_t>& sizes = kMemorySizes) {
   bench->Unit(benchmark::kMicrosecond);
 
@@ -94,15 +117,20 @@ void BenchmarkSetArgsWithSizes(benchmark::Benchmark* bench,
   }
 }
 
-void BenchmarkSetArgs(benchmark::Benchmark* bench) {
+void BenchmarkSetArgs(benchmark::internal::Benchmark* bench) {
   BenchmarkSetArgsWithSizes(bench, kMemorySizes);
 }
 
-void RegressionSetArgs(benchmark::Benchmark* bench) {
+void RegressionSetArgs(benchmark::internal::Benchmark* bench) {
   // Regression do not need to account for cache hierarchy, thus optimize for
   // the best case.
   BenchmarkSetArgsWithSizes(bench, {kL1Size});
 }
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
 
 // RAII struct to handle some of the boilerplate in regression benchmarks
 struct RegressionArgs {

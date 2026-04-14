@@ -45,7 +45,6 @@ fi
 : ${PIPX_PYTHON:=${PIPX_BASE_PYTHON:-$(which python3)}}
 
 export PIP_BREAK_SYSTEM_PACKAGES=1
-${PIPX_BASE_PYTHON} -m pip install setuptools
 ${PIPX_BASE_PYTHON} -m pip install -U pipx
 
 pipx_flags=(--verbose --python ${PIPX_PYTHON})
@@ -53,8 +52,13 @@ if [[ $(id -un) == "root" ]]; then
   # Install globally as /root/.local/bin is typically not in $PATH
   pipx_flags+=(--global)
 fi
+# Prefer pre-built binary wheels to avoid building grpcio (and other C extensions)
+# from source, which requires build tools like setuptools/pkg_resources that may
+# not be available in isolated build environments.
+pip_extra_args="--prefer-binary"
 if [[ -n "${PIPX_PIP_ARGS}" ]]; then
-  pipx_flags+=(--pip-args "'${PIPX_PIP_ARGS}'")
+  pip_extra_args="${pip_extra_args} ${PIPX_PIP_ARGS}"
 fi
+pipx_flags+=(--pip-args "${pip_extra_args}")
 ${PIPX_BASE_PYTHON} -m pipx install ${pipx_flags[@]} \
   "https://github.com/googleapis/storage-testbench/archive/${version}.tar.gz"

@@ -10,6 +10,7 @@
 ci/etc/rprofile
 ci/etc/*.patch
 ci/vcpkg/*.patch
+ci/vcpkg/overlay/**
 CHANGELOG.md
 cpp/CHANGELOG_PARQUET.md
 cpp/src/arrow/c/dlpack_abi.h
