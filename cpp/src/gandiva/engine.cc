@@ -107,9 +107,9 @@
 
 #include "gandiva/configuration.h"
 #include "gandiva/decimal_ir.h"
-#include "gandiva/timestamp_ir.h"
 #include "gandiva/exported_funcs.h"
 #include "gandiva/exported_funcs_registry.h"
+#include "gandiva/timestamp_ir.h"
 
 namespace gandiva {
 

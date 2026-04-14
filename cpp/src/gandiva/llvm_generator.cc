@@ -25,11 +25,11 @@
 #include "gandiva/bitmap_accumulator.h"
 #include "gandiva/decimal_ir.h"
 #include "gandiva/dex.h"
-#include "gandiva/timestamp_ir.h"
 #include "gandiva/expr_decomposer.h"
 #include "gandiva/expression.h"
 #include "gandiva/llvm_types.h"
 #include "gandiva/lvalue.h"
+#include "gandiva/timestamp_ir.h"
 
 namespace gandiva {
 
