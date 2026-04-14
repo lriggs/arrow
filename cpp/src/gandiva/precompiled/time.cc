@@ -445,11 +445,11 @@ EXTRACT_HOUR_TIME(time32)
 #define DATE_TRUNC_FIXED_UNIT(NAME, TYPE, NMILLIS_IN_UNIT)                         \
   FORCE_INLINE                                                                     \
   gdv_##TYPE NAME##_##TYPE(gdv_##TYPE millis) {                                    \
-    /* Use floor division to correctly handle negative timestamps (pre-epoch). */   \
-    /* C++ integer division truncates toward zero; we need toward negative inf. */  \
+    /* Use floor division to correctly handle negative timestamps (pre-epoch). */  \
+    /* C++ integer division truncates toward zero; we need toward negative inf. */ \
     gdv_##TYPE q = millis / NMILLIS_IN_UNIT;                                       \
     gdv_##TYPE r = millis % NMILLIS_IN_UNIT;                                       \
-    if (r != 0 && (millis ^ NMILLIS_IN_UNIT) < 0) {                               \
+    if (r != 0 && (millis ^ NMILLIS_IN_UNIT) < 0) {                                \
       --q;                                                                         \
     }                                                                              \
     return q * NMILLIS_IN_UNIT;                                                    \

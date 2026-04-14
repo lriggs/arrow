@@ -833,15 +833,14 @@ TEST_F(DateTimeTestProjector, TestFromUtcTimestamp) {
 
 // 2021-06-15T14:30:45.123Z in millis since epoch
 static const int64_t kTestMillis = 1623767445123LL;
-static const int64_t kSubMs = 456;       // sub-millisecond micros
-static const int64_t kSubUs = 789;       // sub-microsecond nanos
+static const int64_t kSubMs = 456;  // sub-millisecond micros
+static const int64_t kSubUs = 789;  // sub-microsecond nanos
 static const int64_t kTestMicros = kTestMillis * 1000 + kSubMs;
 static const int64_t kTestNanos = kTestMillis * 1000000 + kSubMs * 1000 + kSubUs;
 
 // Helper: evaluate a unary timestamp function returning int64
-static int64_t EvalExtract(const std::string& func_name,
-                           arrow::TimeUnit::type unit, int64_t ts_value,
-                           arrow::MemoryPool* pool) {
+static int64_t EvalExtract(const std::string& func_name, arrow::TimeUnit::type unit,
+                           int64_t ts_value, arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f0 = field("f0", ts_type);
   auto schema = arrow::schema({f0});
@@ -852,8 +851,8 @@ static int64_t EvalExtract(const std::string& func_name,
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts_value}, {true});
+  auto in_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array});
 
   arrow::ArrayVector outputs;
@@ -865,9 +864,8 @@ static int64_t EvalExtract(const std::string& func_name,
 }
 
 // Helper: evaluate a unary timestamp function returning timestamp
-static int64_t EvalTrunc(const std::string& func_name,
-                         arrow::TimeUnit::type unit, int64_t ts_value,
-                         arrow::MemoryPool* pool) {
+static int64_t EvalTrunc(const std::string& func_name, arrow::TimeUnit::type unit,
+                         int64_t ts_value, arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f0 = field("f0", ts_type);
   auto schema = arrow::schema({f0});
@@ -878,8 +876,8 @@ static int64_t EvalTrunc(const std::string& func_name,
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts_value}, {true});
+  auto in_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array});
 
   arrow::ArrayVector outputs;
@@ -936,8 +934,7 @@ TEST_F(DateTimeTestProjector, TestDateTruncAcrossPrecisions) {
 }
 
 // Helper: evaluate timestampadd(int32, timestamp) -> timestamp
-static int64_t EvalTimestampadd(const std::string& func_name,
-                                arrow::TimeUnit::type unit,
+static int64_t EvalTimestampadd(const std::string& func_name, arrow::TimeUnit::type unit,
                                 int32_t count, int64_t ts_value,
                                 arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
@@ -948,18 +945,18 @@ static int64_t EvalTimestampadd(const std::string& func_name,
 
   auto count_node = TreeExprBuilder::MakeField(f_count);
   auto ts_node = TreeExprBuilder::MakeField(f_ts);
-  auto func_node = TreeExprBuilder::MakeFunction(func_name,
-                                                  {count_node, ts_node}, ts_type);
+  auto func_node =
+      TreeExprBuilder::MakeFunction(func_name, {count_node, ts_node}, ts_type);
   auto expr = TreeExprBuilder::MakeExpression(func_node, result_field);
 
   std::shared_ptr<Projector> projector;
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto count_array = MakeArrowTypeArray<arrow::Int32Type, int32_t>(
-      int32(), {count}, {true});
-  auto ts_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts_value}, {true});
+  auto count_array =
+      MakeArrowTypeArray<arrow::Int32Type, int32_t>(int32(), {count}, {true});
+  auto ts_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {count_array, ts_array});
 
   arrow::ArrayVector outputs;
@@ -975,27 +972,26 @@ TEST_F(DateTimeTestProjector, TestTimestampaddSecondPreservesSubMs) {
   // Sub-ms data must survive.
 
   // Micros: 10 seconds = 10_000_000 us. Sub-ms 456 preserved.
-  int64_t r = EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::MICRO,
-                               10, kTestMicros, pool_);
+  int64_t r = EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::MICRO, 10,
+                               kTestMicros, pool_);
   EXPECT_EQ(kTestMicros + 10LL * 1000000, r);
   EXPECT_EQ(kSubMs, r % 1000);
 
   // Nanos: 10 seconds = 10_000_000_000 ns. Sub-us 789 preserved.
-  r = EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::NANO,
-                       10, kTestNanos, pool_);
+  r = EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::NANO, 10, kTestNanos,
+                       pool_);
   EXPECT_EQ(kTestNanos + 10LL * 1000000000, r);
   EXPECT_EQ(kSubUs, r % 1000);
 }
 
 TEST_F(DateTimeTestProjector, TestTimestampaddDayPreservesSubMs) {
   // Add 1 day. Sub-ms must survive.
-  int64_t r = EvalTimestampadd("timestampaddDay", arrow::TimeUnit::MICRO,
-                               1, kTestMicros, pool_);
+  int64_t r =
+      EvalTimestampadd("timestampaddDay", arrow::TimeUnit::MICRO, 1, kTestMicros, pool_);
   EXPECT_EQ(kTestMicros + 86400LL * 1000000, r);
   EXPECT_EQ(kSubMs, r % 1000);
 
-  r = EvalTimestampadd("timestampaddDay", arrow::TimeUnit::NANO,
-                       1, kTestNanos, pool_);
+  r = EvalTimestampadd("timestampaddDay", arrow::TimeUnit::NANO, 1, kTestNanos, pool_);
   EXPECT_EQ(kTestNanos + 86400LL * 1000000000, r);
   EXPECT_EQ(kSubUs, r % 1000);
 }
@@ -1003,23 +999,20 @@ TEST_F(DateTimeTestProjector, TestTimestampaddDayPreservesSubMs) {
 TEST_F(DateTimeTestProjector, TestTimestampaddMonthPreservesSubMs) {
   // Add 2 months (calendar math). Sub-ms data must survive.
   // Use millis result as ground truth — micros/nanos must match with sub-ms appended.
-  int64_t base_millis = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MILLI,
-                                         2, kTestMillis, pool_);
+  int64_t base_millis = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MILLI, 2,
+                                         kTestMillis, pool_);
 
-  int64_t r = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MICRO,
-                               2, kTestMicros, pool_);
+  int64_t r = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MICRO, 2,
+                               kTestMicros, pool_);
   EXPECT_EQ(base_millis * 1000 + kSubMs, r);
 
-  r = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::NANO,
-                       2, kTestNanos, pool_);
+  r = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::NANO, 2, kTestNanos, pool_);
   EXPECT_EQ(base_millis * 1000000 + kSubMs * 1000 + kSubUs, r);
 }
 
 // Helper: evaluate a two-timestamp function returning int32
-static int32_t EvalDiff(const std::string& func_name,
-                        arrow::TimeUnit::type unit,
-                        int64_t ts1, int64_t ts2,
-                        arrow::MemoryPool* pool) {
+static int32_t EvalDiff(const std::string& func_name, arrow::TimeUnit::type unit,
+                        int64_t ts1, int64_t ts2, arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f1 = field("f1", ts_type);
   auto f2 = field("f2", ts_type);
@@ -1035,10 +1028,8 @@ static int32_t EvalDiff(const std::string& func_name,
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto a1 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts1}, {true});
-  auto a2 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts2}, {true});
+  auto a1 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts1}, {true});
+  auto a2 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts2}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {a1, a2});
 
   arrow::ArrayVector outputs;
@@ -1052,21 +1043,20 @@ static int32_t EvalDiff(const std::string& func_name,
 TEST_F(DateTimeTestProjector, TestTimestampdiffAcrossPrecisions) {
   // timestampdiffDay between kTestMillis and kTestMillis + 3 days
   int64_t three_days_later_ms = kTestMillis + 3 * 86400000LL;
-  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::MILLI,
-                         kTestMillis, three_days_later_ms, pool_));
+  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::MILLI, kTestMillis,
+                        three_days_later_ms, pool_));
 
   int64_t three_days_later_us = kTestMicros + 3 * 86400000000LL;
-  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::MICRO,
-                         kTestMicros, three_days_later_us, pool_));
+  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::MICRO, kTestMicros,
+                        three_days_later_us, pool_));
 
   int64_t three_days_later_ns = kTestNanos + 3 * 86400000000000LL;
-  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::NANO,
-                         kTestNanos, three_days_later_ns, pool_));
+  EXPECT_EQ(3, EvalDiff("timestampdiffDay", arrow::TimeUnit::NANO, kTestNanos,
+                        three_days_later_ns, pool_));
 }
 
 // Helper: evaluate months_between(ts1, ts2) -> float64
-static double EvalMonthsBetween(arrow::TimeUnit::type unit,
-                                int64_t ts1, int64_t ts2,
+static double EvalMonthsBetween(arrow::TimeUnit::type unit, int64_t ts1, int64_t ts2,
                                 arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f1 = field("f1", ts_type);
@@ -1083,10 +1073,8 @@ static double EvalMonthsBetween(arrow::TimeUnit::type unit,
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto a1 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts1}, {true});
-  auto a2 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts2}, {true});
+  auto a1 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts1}, {true});
+  auto a2 = MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts2}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {a1, a2});
 
   arrow::ArrayVector outputs;
@@ -1100,23 +1088,21 @@ static double EvalMonthsBetween(arrow::TimeUnit::type unit,
 TEST_F(DateTimeTestProjector, TestMonthsBetweenAcrossPrecisions) {
   // months_between returns the same value regardless of input precision.
   // Use millis as baseline.
-  double base = EvalMonthsBetween(arrow::TimeUnit::MILLI,
-                                  kTestMillis + 5270400000LL, kTestMillis, pool_);
+  double base = EvalMonthsBetween(arrow::TimeUnit::MILLI, kTestMillis + 5270400000LL,
+                                  kTestMillis, pool_);
   EXPECT_NEAR(base,
-              EvalMonthsBetween(arrow::TimeUnit::MICRO,
-                                kTestMicros + 5270400000000LL, kTestMicros, pool_),
+              EvalMonthsBetween(arrow::TimeUnit::MICRO, kTestMicros + 5270400000000LL,
+                                kTestMicros, pool_),
               0.001);
   EXPECT_NEAR(base,
-              EvalMonthsBetween(arrow::TimeUnit::NANO,
-                                kTestNanos + 5270400000000000LL, kTestNanos, pool_),
+              EvalMonthsBetween(arrow::TimeUnit::NANO, kTestNanos + 5270400000000000LL,
+                                kTestNanos, pool_),
               0.001);
 }
 
 // Helper: evaluate date_add/subtract(timestamp, int32) -> timestamp
-static int64_t EvalDateArith(const std::string& func_name,
-                             arrow::TimeUnit::type unit,
-                             int64_t ts_value, int32_t count,
-                             arrow::MemoryPool* pool) {
+static int64_t EvalDateArith(const std::string& func_name, arrow::TimeUnit::type unit,
+                             int64_t ts_value, int32_t count, arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f_ts = field("ts", ts_type);
   auto f_count = field("count", int32());
@@ -1125,18 +1111,17 @@ static int64_t EvalDateArith(const std::string& func_name,
 
   auto ts_node = TreeExprBuilder::MakeField(f_ts);
   auto count_node = TreeExprBuilder::MakeField(f_count);
-  auto func_node = TreeExprBuilder::MakeFunction(func_name,
-      {ts_node, count_node}, ts_type);
+  auto func_node =
+      TreeExprBuilder::MakeFunction(func_name, {ts_node, count_node}, ts_type);
   auto expr = TreeExprBuilder::MakeExpression(func_node, result_field);
 
   std::shared_ptr<Projector> projector;
   auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
   EXPECT_TRUE(status.ok());
 
-  auto a_ts = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-      ts_type, {ts_value}, {true});
-  auto a_count = MakeArrowTypeArray<arrow::Int32Type, int32_t>(
-      int32(), {count}, {true});
+  auto a_ts =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
+  auto a_count = MakeArrowTypeArray<arrow::Int32Type, int32_t>(int32(), {count}, {true});
   auto in_batch = arrow::RecordBatch::Make(schema, 1, {a_ts, a_count});
 
   arrow::ArrayVector outputs;
@@ -1166,10 +1151,10 @@ TEST_F(DateTimeTestProjector, TestDateAddSubtractAcrossPrecisions) {
 TEST_F(DateTimeTestProjector, TestTimestampaddMonthReversedArgMicros) {
   // timestampaddMonth(timestamp, int32) with micros — reversed arg order.
   // Use millis as ground truth.
-  auto millis_result = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MILLI,
-                                        2, kTestMillis, pool_);
-  auto micros_result = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MICRO,
-                                        2, kTestMicros, pool_);
+  auto millis_result = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MILLI, 2,
+                                        kTestMillis, pool_);
+  auto micros_result = EvalTimestampadd("timestampaddMonth", arrow::TimeUnit::MICRO, 2,
+                                        kTestMicros, pool_);
   // Sub-ms data must survive.
   EXPECT_EQ(millis_result * 1000 + kSubMs, micros_result);
 }
@@ -1190,8 +1175,8 @@ TEST_F(DateTimeTestProjector, TestCastDateAcrossPrecisions) {
     auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
     EXPECT_TRUE(status.ok());
 
-    auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-        ts_type, {ts_value}, {true});
+    auto in_array =
+        MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
     auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array});
 
     arrow::ArrayVector outputs;
@@ -1201,12 +1186,9 @@ TEST_F(DateTimeTestProjector, TestCastDateAcrossPrecisions) {
     return result_array->Value(0);
   };
 
-  EXPECT_EQ(expected_date_millis,
-            eval_castdate(arrow::TimeUnit::MILLI, kTestMillis));
-  EXPECT_EQ(expected_date_millis,
-            eval_castdate(arrow::TimeUnit::MICRO, kTestMicros));
-  EXPECT_EQ(expected_date_millis,
-            eval_castdate(arrow::TimeUnit::NANO, kTestNanos));
+  EXPECT_EQ(expected_date_millis, eval_castdate(arrow::TimeUnit::MILLI, kTestMillis));
+  EXPECT_EQ(expected_date_millis, eval_castdate(arrow::TimeUnit::MICRO, kTestMicros));
+  EXPECT_EQ(expected_date_millis, eval_castdate(arrow::TimeUnit::NANO, kTestNanos));
 }
 
 // castTIME: timestamp(us/ns) -> time32(millis) — sub-ms truncated to millis
@@ -1225,8 +1207,8 @@ TEST_F(DateTimeTestProjector, TestCastTimeAcrossPrecisions) {
     auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
     EXPECT_TRUE(status.ok());
 
-    auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-        ts_type, {ts_value}, {true});
+    auto in_array =
+        MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
     auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array});
 
     arrow::ArrayVector outputs;
@@ -1236,12 +1218,9 @@ TEST_F(DateTimeTestProjector, TestCastTimeAcrossPrecisions) {
     return result_array->Value(0);
   };
 
-  EXPECT_EQ(expected_time_millis,
-            eval_casttime(arrow::TimeUnit::MILLI, kTestMillis));
-  EXPECT_EQ(expected_time_millis,
-            eval_casttime(arrow::TimeUnit::MICRO, kTestMicros));
-  EXPECT_EQ(expected_time_millis,
-            eval_casttime(arrow::TimeUnit::NANO, kTestNanos));
+  EXPECT_EQ(expected_time_millis, eval_casttime(arrow::TimeUnit::MILLI, kTestMillis));
+  EXPECT_EQ(expected_time_millis, eval_casttime(arrow::TimeUnit::MICRO, kTestMicros));
+  EXPECT_EQ(expected_time_millis, eval_casttime(arrow::TimeUnit::NANO, kTestNanos));
 }
 
 // Negative (pre-epoch) timestamps: verify extract and date_trunc produce correct
@@ -1250,8 +1229,8 @@ TEST_F(DateTimeTestProjector, TestNegativeTimestampPrecisions) {
   time_t epoch = Epoch();
   // 1960-03-15 06:30:00.000  (pre-epoch)
   int64_t neg_millis = MillisSince(epoch, 1960, 3, 15, 6, 30, 0, 0);
-  int64_t neg_sub_ms = 456;       // sub-ms micros
-  int64_t neg_sub_us = 789;       // sub-us nanos
+  int64_t neg_sub_ms = 456;  // sub-ms micros
+  int64_t neg_sub_us = 789;  // sub-us nanos
   int64_t neg_micros = neg_millis * 1000 - neg_sub_ms;
   int64_t neg_nanos = neg_millis * 1000000 - neg_sub_ms * 1000 - neg_sub_us;
 
@@ -1259,8 +1238,7 @@ TEST_F(DateTimeTestProjector, TestNegativeTimestampPrecisions) {
   auto year_ms = EvalExtract("extractYear", arrow::TimeUnit::MILLI, neg_millis, pool_);
   EXPECT_EQ(year_ms,
             EvalExtract("extractYear", arrow::TimeUnit::MICRO, neg_micros, pool_));
-  EXPECT_EQ(year_ms,
-            EvalExtract("extractYear", arrow::TimeUnit::NANO, neg_nanos, pool_));
+  EXPECT_EQ(year_ms, EvalExtract("extractYear", arrow::TimeUnit::NANO, neg_nanos, pool_));
 
   // extractMonth: all precisions must agree
   auto month_ms = EvalExtract("extractMonth", arrow::TimeUnit::MILLI, neg_millis, pool_);
@@ -1289,32 +1267,41 @@ TEST_F(DateTimeTestProjector, TestNegativeTimestampBoundaryCrossing) {
   int64_t boundary_nanos = -456000 - 789;  // -456789 ns
 
   // extractHour: should be 23 (not 0)
-  EXPECT_EQ(23, EvalExtract("extractHour", arrow::TimeUnit::MICRO, boundary_micros, pool_));
+  EXPECT_EQ(23,
+            EvalExtract("extractHour", arrow::TimeUnit::MICRO, boundary_micros, pool_));
   EXPECT_EQ(23, EvalExtract("extractHour", arrow::TimeUnit::NANO, boundary_nanos, pool_));
 
   // extractYear: should be 1969 (not 1970)
-  EXPECT_EQ(1969, EvalExtract("extractYear", arrow::TimeUnit::MICRO, boundary_micros, pool_));
-  EXPECT_EQ(1969, EvalExtract("extractYear", arrow::TimeUnit::NANO, boundary_nanos, pool_));
+  EXPECT_EQ(1969,
+            EvalExtract("extractYear", arrow::TimeUnit::MICRO, boundary_micros, pool_));
+  EXPECT_EQ(1969,
+            EvalExtract("extractYear", arrow::TimeUnit::NANO, boundary_nanos, pool_));
 
   // Verify millis-level baseline: precompiled functions with millis = -1
   // (1969-12-31 23:59:59.999)
   int64_t boundary_millis = -1;
-  auto day_millis = EvalExtract("extractDay", arrow::TimeUnit::MILLI, boundary_millis, pool_);
-  auto hour_millis = EvalExtract("extractHour", arrow::TimeUnit::MILLI, boundary_millis, pool_);
-  auto year_millis = EvalExtract("extractYear", arrow::TimeUnit::MILLI, boundary_millis, pool_);
-  auto trunc_s_millis = EvalTrunc("date_trunc_Second", arrow::TimeUnit::MILLI, boundary_millis, pool_);
-  auto trunc_d_millis = EvalTrunc("date_trunc_Day", arrow::TimeUnit::MILLI, boundary_millis, pool_);
+  auto day_millis =
+      EvalExtract("extractDay", arrow::TimeUnit::MILLI, boundary_millis, pool_);
+  auto hour_millis =
+      EvalExtract("extractHour", arrow::TimeUnit::MILLI, boundary_millis, pool_);
+  auto year_millis =
+      EvalExtract("extractYear", arrow::TimeUnit::MILLI, boundary_millis, pool_);
+  auto trunc_s_millis =
+      EvalTrunc("date_trunc_Second", arrow::TimeUnit::MILLI, boundary_millis, pool_);
+  auto trunc_d_millis =
+      EvalTrunc("date_trunc_Day", arrow::TimeUnit::MILLI, boundary_millis, pool_);
   ARROW_LOG(WARNING) << "millis baseline: day=" << day_millis << " hour=" << hour_millis
                      << " year=" << year_millis << " trunc_s=" << trunc_s_millis
                      << " trunc_d=" << trunc_d_millis;
 
   // extractDay: should be 31 (not 1)
-  EXPECT_EQ(31, EvalExtract("extractDay", arrow::TimeUnit::MICRO, boundary_micros, pool_));
+  EXPECT_EQ(31,
+            EvalExtract("extractDay", arrow::TimeUnit::MICRO, boundary_micros, pool_));
   EXPECT_EQ(31, EvalExtract("extractDay", arrow::TimeUnit::NANO, boundary_nanos, pool_));
 
   // date_trunc_Second: 1969-12-31 23:59:59.000000 = -1000 ms = -1000000 us
-  EXPECT_EQ(-1000000,
-            EvalTrunc("date_trunc_Second", arrow::TimeUnit::MICRO, boundary_micros, pool_));
+  EXPECT_EQ(-1000000, EvalTrunc("date_trunc_Second", arrow::TimeUnit::MICRO,
+                                boundary_micros, pool_));
   EXPECT_EQ(-1000000000,
             EvalTrunc("date_trunc_Second", arrow::TimeUnit::NANO, boundary_nanos, pool_));
 
@@ -1341,8 +1328,8 @@ TEST_F(DateTimeTestProjector, TestCastVARCHARAcrossPrecisions) {
     auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
     EXPECT_TRUE(status.ok()) << status.ToString();
 
-    auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-        ts_type, {ts_value}, {true});
+    auto in_array =
+        MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
     auto len_array =
         MakeArrowTypeArray<arrow::Int64Type, int64_t>(int64(), {100}, {true});
     auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array, len_array});
@@ -1381,8 +1368,8 @@ TEST_F(DateTimeTestProjector, TestCastVARCHARTruncation) {
     auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
     EXPECT_TRUE(status.ok()) << status.ToString();
 
-    auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-        ts_type, {ts_value}, {true});
+    auto in_array =
+        MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
     auto len_array =
         MakeArrowTypeArray<arrow::Int64Type, int64_t>(int64(), {max_len}, {true});
     auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array, len_array});
@@ -1423,8 +1410,8 @@ TEST_F(DateTimeTestProjector, TestCastVARCHARNegativeTimestamp) {
     auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
     EXPECT_TRUE(status.ok()) << status.ToString();
 
-    auto in_array = MakeArrowTypeArray<arrow::TimestampType, int64_t>(
-        ts_type, {ts_value}, {true});
+    auto in_array =
+        MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
     auto len_array =
         MakeArrowTypeArray<arrow::Int64Type, int64_t>(int64(), {100}, {true});
     auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array, len_array});
@@ -1437,14 +1424,11 @@ TEST_F(DateTimeTestProjector, TestCastVARCHARNegativeTimestamp) {
   };
 
   // -1 microsecond = 1969-12-31 23:59:59.999999
-  EXPECT_EQ("1969-12-31 23:59:59.999999",
-            eval_castVARCHAR(arrow::TimeUnit::MICRO, -1));
+  EXPECT_EQ("1969-12-31 23:59:59.999999", eval_castVARCHAR(arrow::TimeUnit::MICRO, -1));
   // -1 nanosecond = 1969-12-31 23:59:59.999999999
-  EXPECT_EQ("1969-12-31 23:59:59.999999999",
-            eval_castVARCHAR(arrow::TimeUnit::NANO, -1));
+  EXPECT_EQ("1969-12-31 23:59:59.999999999", eval_castVARCHAR(arrow::TimeUnit::NANO, -1));
   // -456 microseconds = 1969-12-31 23:59:59.999544
-  EXPECT_EQ("1969-12-31 23:59:59.999544",
-            eval_castVARCHAR(arrow::TimeUnit::MICRO, -456));
+  EXPECT_EQ("1969-12-31 23:59:59.999544", eval_castVARCHAR(arrow::TimeUnit::MICRO, -456));
   // -456789 nanoseconds = 1969-12-31 23:59:59.999543211
   EXPECT_EQ("1969-12-31 23:59:59.999543211",
             eval_castVARCHAR(arrow::TimeUnit::NANO, -456789));

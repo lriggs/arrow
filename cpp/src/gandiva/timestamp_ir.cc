@@ -25,28 +25,39 @@ namespace gandiva {
 
 /*static*/ int64_t TimestampIR::UnitsPerSecond(arrow::TimeUnit::type unit) {
   switch (unit) {
-    case arrow::TimeUnit::MILLI: return 1000;
-    case arrow::TimeUnit::MICRO: return 1000000;
-    case arrow::TimeUnit::NANO:  return 1000000000;
-    default: return 1;
+    case arrow::TimeUnit::MILLI:
+      return 1000;
+    case arrow::TimeUnit::MICRO:
+      return 1000000;
+    case arrow::TimeUnit::NANO:
+      return 1000000000;
+    default:
+      return 1;
   }
 }
 
 /*static*/ int64_t TimestampIR::UnitsPerMilli(arrow::TimeUnit::type unit) {
   switch (unit) {
-    case arrow::TimeUnit::MILLI: return 1;
-    case arrow::TimeUnit::MICRO: return 1000;
-    case arrow::TimeUnit::NANO:  return 1000000;
-    default: return 1;
+    case arrow::TimeUnit::MILLI:
+      return 1;
+    case arrow::TimeUnit::MICRO:
+      return 1000;
+    case arrow::TimeUnit::NANO:
+      return 1000000;
+    default:
+      return 1;
   }
 }
 
 // Unit suffix appended to precompiled function names.
 static const char* UnitSuffix(arrow::TimeUnit::type unit) {
   switch (unit) {
-    case arrow::TimeUnit::MICRO: return "_us";
-    case arrow::TimeUnit::NANO:  return "_ns";
-    default: return "";
+    case arrow::TimeUnit::MICRO:
+      return "_us";
+    case arrow::TimeUnit::NANO:
+      return "_ns";
+    default:
+      return "";
   }
 }
 
@@ -56,11 +67,8 @@ struct FixedAdd {
   int64_t seconds;
 };
 static const FixedAdd kFixedAdds[] = {
-    {"timestampaddSecond", 1},
-    {"timestampaddMinute", 60},
-    {"timestampaddHour", 3600},
-    {"timestampaddDay", 86400},
-    {"timestampaddWeek", 604800},
+    {"timestampaddSecond", 1},  {"timestampaddMinute", 60},   {"timestampaddHour", 3600},
+    {"timestampaddDay", 86400}, {"timestampaddWeek", 604800},
 };
 
 // Calendar-based timestampadd: split/recombine around precompiled millis fn
@@ -73,28 +81,26 @@ static const char* kCalendarAdds[] = {
 // Extract functions: convert ts to millis, call precompiled, return int64
 // pc_name pattern: {name}_timestamp
 static const char* kExtracts[] = {
-    "extractMillennium", "extractCentury", "extractDecade",
-    "extractYear", "extractQuarter", "extractMonth",
-    "extractWeek", "extractDay", "extractHour",
-    "extractMinute", "extractSecond",
-    "extractDoy", "extractDow", "extractEpoch",
+    "extractMillennium", "extractCentury", "extractDecade", "extractYear",
+    "extractQuarter",    "extractMonth",   "extractWeek",   "extractDay",
+    "extractHour",       "extractMinute",  "extractSecond", "extractDoy",
+    "extractDow",        "extractEpoch",
 };
 
 // date_trunc functions: convert ts to millis, truncate, scale back (zero remainder)
 // pc_name pattern: date_trunc_{Level}_timestamp
 static const char* kTruncs[] = {
-    "date_trunc_Millennium", "date_trunc_Century", "date_trunc_Decade",
-    "date_trunc_Year", "date_trunc_Quarter", "date_trunc_Month",
-    "date_trunc_Week", "date_trunc_Day", "date_trunc_Hour",
-    "date_trunc_Minute", "date_trunc_Second",
+    "date_trunc_Millennium", "date_trunc_Century", "date_trunc_Decade", "date_trunc_Year",
+    "date_trunc_Quarter",    "date_trunc_Month",   "date_trunc_Week",   "date_trunc_Day",
+    "date_trunc_Hour",       "date_trunc_Minute",  "date_trunc_Second",
 };
 
 // timestampdiff: convert both inputs to millis, return int32
 // pc_name pattern: {name}_timestamp_timestamp
 static const char* kDiffs[] = {
-    "timestampdiffSecond", "timestampdiffMinute", "timestampdiffHour",
-    "timestampdiffDay", "timestampdiffWeek",
-    "timestampdiffMonth", "timestampdiffQuarter", "timestampdiffYear",
+    "timestampdiffSecond",  "timestampdiffMinute", "timestampdiffHour",
+    "timestampdiffDay",     "timestampdiffWeek",   "timestampdiffMonth",
+    "timestampdiffQuarter", "timestampdiffYear",
 };
 
 // Two-timestamp functions returning scalar
@@ -123,13 +129,13 @@ static const CastFromTs kCastsFromTs[] = {
 // These are fixed-unit (1 day) arithmetic with varying arg orders and signs.
 struct DateArith {
   const char* name;
-  bool count_first;   // true=(int,ts), false=(ts,int)
-  int64_t sign;       // +1 for add, -1 for sub
+  bool count_first;  // true=(int,ts), false=(ts,int)
+  int64_t sign;      // +1 for add, -1 for sub
 };
 static const DateArith kDateArithEntries[] = {
-    {"date_add", true, 1}, {"add", true, 1},
-    {"date_add", false, 1}, {"add", false, 1},
-    {"date_sub", false, -1}, {"subtract", false, -1}, {"date_diff", false, -1},
+    {"date_add", true, 1},    {"add", true, 1},        {"date_add", false, 1},
+    {"add", false, 1},        {"date_sub", false, -1}, {"subtract", false, -1},
+    {"date_diff", false, -1},
 };
 
 // Units to generate functions for.
@@ -202,8 +208,7 @@ Status TimestampIR::BuildTimestampaddFixed(const std::string& function_name,
                                            arrow::TimeUnit::type time_unit) {
   auto i32 = types()->i32_type();
   auto i64 = types()->i64_type();
-  auto function = BuildFunction(function_name, i64,
-                                {{"count", i32}, {"ts", i64}});
+  auto function = BuildFunction(function_name, i64, {{"count", i32}, {"ts", i64}});
 
   auto entry = llvm::BasicBlock::Create(*context(), "entry", function);
   ir_builder()->SetInsertPoint(entry);
@@ -262,8 +267,7 @@ Status TimestampIR::BuildTimestampaddCalendar(const std::string& function_name,
 
   auto i32 = types()->i32_type();
   auto i64 = types()->i64_type();
-  auto function = BuildFunction(function_name, i64,
-                                {{"count", i32}, {"ts", i64}});
+  auto function = BuildFunction(function_name, i64, {{"count", i32}, {"ts", i64}});
   auto entry = llvm::BasicBlock::Create(*context(), "entry", function);
   ir_builder()->SetInsertPoint(entry);
 
