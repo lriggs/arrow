@@ -438,7 +438,7 @@ Status TimestampIR::BuildTimezoneWrapper(const std::string& function_name,
 
   auto i64 = types()->i64_type();
   auto i32 = types()->i32_type();
-  auto i8ptr = llvm::Type::getInt8Ty(*context())->getPointerTo();
+  auto i8ptr = llvm::PointerType::get(*context(), 0);
   auto function = BuildFunction(function_name, i64,
       {{"ctx", i64}, {"ts", i64}, {"tz", i8ptr}, {"tz_len", i32}});
   auto entry = llvm::BasicBlock::Create(*context(), "entry", function);
@@ -476,8 +476,8 @@ Status TimestampIR::BuildCastVARCHARWrapper(const std::string& function_name,
   auto i64 = types()->i64_type();
   auto i32 = types()->i32_type();
   auto i8 = llvm::Type::getInt8Ty(*context());
-  auto i8ptr = i8->getPointerTo();
-  auto i32ptr = i32->getPointerTo();
+  auto i8ptr = llvm::PointerType::get(*context(), 0);
+  auto i32ptr = llvm::PointerType::get(*context(), 0);
   auto function = BuildFunction(function_name, i8ptr,
       {{"ctx", i64}, {"ts", i64}, {"len", i64}, {"out_len", i32ptr}});
 
