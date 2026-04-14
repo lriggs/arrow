@@ -45,6 +45,7 @@ fi
 : ${PIPX_PYTHON:=${PIPX_BASE_PYTHON:-$(which python3)}}
 
 export PIP_BREAK_SYSTEM_PACKAGES=1
+${PIPX_BASE_PYTHON} -m pip install setuptools
 ${PIPX_BASE_PYTHON} -m pip install -U pipx
 
 pipx_flags=(--verbose --python ${PIPX_PYTHON})

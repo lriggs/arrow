@@ -38,8 +38,8 @@ class TestBooleanExpr : public ::testing::Test {
 
 TEST_F(TestBooleanExpr, OrWithManyEqualityChecks) {
   // Test case for: field IN (-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5)
-  // This tests the scenario where IN expression is rewritten as OR with many equality checks
-  // OR(=($7, -8), =($7, -7), ..., =($7, 5))
+  // This tests the scenario where IN expression is rewritten as OR with many equality
+  // checks OR(=($7, -8), =($7, -7), ..., =($7, 5))
 
   auto field0 = field("f0", int32());
   auto schema = arrow::schema({field0});
@@ -55,8 +55,10 @@ TEST_F(TestBooleanExpr, OrWithManyEqualityChecks) {
   auto lit_5 = TreeExprBuilder::MakeLiteral((int32_t)5);
   auto lit_10 = TreeExprBuilder::MakeLiteral((int32_t)10);
 
-  auto eq_minus8 = TreeExprBuilder::MakeFunction("equal", {node_f0, lit_minus8}, boolean());
-  auto eq_minus5 = TreeExprBuilder::MakeFunction("equal", {node_f0, lit_minus5}, boolean());
+  auto eq_minus8 =
+      TreeExprBuilder::MakeFunction("equal", {node_f0, lit_minus8}, boolean());
+  auto eq_minus5 =
+      TreeExprBuilder::MakeFunction("equal", {node_f0, lit_minus5}, boolean());
   auto eq_0 = TreeExprBuilder::MakeFunction("equal", {node_f0, lit_0}, boolean());
   auto eq_5 = TreeExprBuilder::MakeFunction("equal", {node_f0, lit_5}, boolean());
   auto eq_10 = TreeExprBuilder::MakeFunction("equal", {node_f0, lit_10}, boolean());
@@ -74,7 +76,7 @@ TEST_F(TestBooleanExpr, OrWithManyEqualityChecks) {
   // Expected: true for indices 1(-8), 2(-5), 3(0), 4(5), false for others
   int num_records = 7;
   auto array0 = MakeArrowArrayInt32({-10, -8, -5, 0, 5, 10, 15},
-                                     {true, true, true, true, true, true, true});
+                                    {true, true, true, true, true, true, true});
   auto exp = MakeArrowArrayBool({false, true, true, true, true, true, false},
                                 {true, true, true, true, true, true, true});
   auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array0});
