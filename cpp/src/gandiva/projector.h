@@ -27,6 +27,7 @@
 #include "gandiva/arrow.h"
 #include "gandiva/configuration.h"
 #include "gandiva/expression.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/selection_vector.h"
 #include "gandiva/visibility.h"
 
@@ -75,6 +76,21 @@ class GANDIVA_EXPORT Projector {
   static Status Make(SchemaPtr schema, const ExpressionVector& exprs,
                      SelectionVector::Mode selection_vector_mode,
                      std::shared_ptr<Configuration> configuration,
+                     std::shared_ptr<Projector>* projector);
+
+  /// Build a projector that reuses the LLJIT from a JITSession.
+  /// Only the per-query expression function is compiled; all base IR
+  /// (precompiled bitcode, DecimalIR, TimestampIR) is resolved from the
+  /// session's JITDylib.
+  ///
+  /// \param[in] schema schema for the record batches, and the expressions.
+  /// \param[in] exprs vector of expressions.
+  /// \param[in] configuration run time configuration.
+  /// \param[in] session the shared JIT session.
+  /// \param[out] projector the returned projector object
+  static Status Make(SchemaPtr schema, const ExpressionVector& exprs,
+                     std::shared_ptr<Configuration> configuration,
+                     std::shared_ptr<JITSession> session,
                      std::shared_ptr<Projector>* projector);
 
   /// Evaluate the specified record batch, and return the allocated and populated output

@@ -40,6 +40,10 @@ class LLJIT;
 }  // namespace llvm::orc
 
 namespace gandiva {
+class JITSession;
+}  // namespace gandiva
+
+namespace gandiva {
 
 /// \brief LLVM Execution engine wrapper.
 class GANDIVA_EXPORT Engine {
@@ -63,6 +67,27 @@ class GANDIVA_EXPORT Engine {
       const std::shared_ptr<Configuration>& config, bool cached,
       std::optional<std::reference_wrapper<GandivaObjectCache>> object_cache =
           std::nullopt);
+
+  /// Factory method to create an engine that shares the LLJIT from a JITSession.
+  /// The base IR (precompiled bitcode, DecimalIR, TimestampIR) is already compiled
+  /// into the session's JITDylib; only the per-query expression function is compiled
+  /// into this engine's module.  The object cache is intentionally bypassed because
+  /// the query module is small and its cache entries would be incompatible with the
+  /// standalone-mode entries.
+  ///
+  /// \param[in] config the engine configuration
+  /// \param[in] session the shared JIT session that owns the base LLJIT
+  /// \return arrow::Result containing the created engine
+  static Result<std::unique_ptr<Engine>> Make(const std::shared_ptr<Configuration>& config,
+                                              std::shared_ptr<JITSession> session);
+
+  /// Transfer ownership of the LLJIT instance out of this engine.
+  /// Must only be called after FinalizeModule() and before the engine is used further.
+  /// Used by JITSession::Make to take the compiled base LLJIT.
+  std::unique_ptr<llvm::orc::LLJIT> ExtractJIT();
+
+  /// Return the shared TargetMachine (used by JITSession::Make).
+  std::shared_ptr<llvm::TargetMachine> target_machine() const { return target_machine_; }
 
   /// Add the function to the list of IR functions that need to be compiled.
   /// Compiling only the functions that are used by the module saves time.
@@ -94,9 +119,14 @@ class GANDIVA_EXPORT Engine {
   llvm::Constant* CreateGlobalStringPtr(const std::string& string);
 
  private:
+  // Constructor for standalone mode: engine owns its own LLJIT.
   Engine(const std::shared_ptr<Configuration>& conf,
          std::unique_ptr<llvm::orc::LLJIT> lljit,
          std::shared_ptr<llvm::TargetMachine> target_machine, bool cached);
+
+  // Constructor for shared-session mode: engine borrows the LLJIT from a JITSession.
+  Engine(const std::shared_ptr<Configuration>& conf,
+         std::shared_ptr<JITSession> session);
 
   // Post construction init. This _must_ be called after the constructor.
   Status Init();
@@ -117,7 +147,10 @@ class GANDIVA_EXPORT Engine {
   Status RemoveUnusedFunctions();
 
   std::unique_ptr<llvm::LLVMContext> context_;
-  std::unique_ptr<llvm::orc::LLJIT> lljit_;
+  // Owning LLJIT (null in shared-session mode; the session owns it).
+  std::unique_ptr<llvm::orc::LLJIT> owned_lljit_;
+  // Non-owning pointer to the active LLJIT; always valid while the engine is alive.
+  llvm::orc::LLJIT* lljit_;
   std::unique_ptr<llvm::IRBuilder<>> ir_builder_;
   std::unique_ptr<llvm::Module> module_;
   LLVMTypes types_;
@@ -134,6 +167,8 @@ class GANDIVA_EXPORT Engine {
   // duplication of this expensive object.
   std::shared_ptr<llvm::TargetMachine> target_machine_;
   const std::shared_ptr<Configuration> conf_;
+  // Non-null only in shared-session mode; keeps the session (and its LLJIT) alive.
+  std::shared_ptr<JITSession> session_;
 };
 
 }  // namespace gandiva

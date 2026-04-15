@@ -55,6 +55,17 @@ Result<std::unique_ptr<LLVMGenerator>> LLVMGenerator::Make(
   return llvm_generator;
 }
 
+Result<std::unique_ptr<LLVMGenerator>> LLVMGenerator::Make(
+    const std::shared_ptr<Configuration>& config,
+    std::shared_ptr<JITSession> session) {
+  std::unique_ptr<LLVMGenerator> llvm_generator(
+      new LLVMGenerator(/*cached=*/false, config->function_registry()));
+
+  ARROW_ASSIGN_OR_RAISE(llvm_generator->engine_,
+                        Engine::Make(config, std::move(session)));
+  return llvm_generator;
+}
+
 std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>>
 LLVMGenerator::GetCache() {
   static std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>>
@@ -536,6 +547,19 @@ llvm::Value* LLVMGenerator::AddFunctionCall(const std::string& full_name,
                                             const std::vector<llvm::Value*>& args) {
   // find the llvm function.
   llvm::Function* fn = module()->getFunction(full_name);
+  if (fn == nullptr) {
+    // In shared-session mode the base IR lives in the session's JITDylib rather than
+    // in this module.  Add an external declaration so the IR can reference the symbol;
+    // LLJIT resolves it from the dylib at link time.
+    std::vector<llvm::Type*> arg_types;
+    arg_types.reserve(args.size());
+    for (auto* arg : args) {
+      arg_types.push_back(arg->getType());
+    }
+    auto* fn_type = llvm::FunctionType::get(ret_type, arg_types, /*isVarArg=*/false);
+    fn = llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, full_name,
+                                module());
+  }
   DCHECK_NE(fn, nullptr) << "missing function " << full_name;
 
   if (enable_ir_traces_ && !full_name.compare("printf") &&

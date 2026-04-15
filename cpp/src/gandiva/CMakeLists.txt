@@ -94,6 +94,7 @@ set(SRC_FILES
     gdv_hash_function_stubs.cc
     hash_utils.cc
     interval_holder.cc
+    jit_session.cc
     llvm_generator.cc
     llvm_types.cc
     literal_holder.cc

@@ -27,6 +27,7 @@
 #include "gandiva/arrow.h"
 #include "gandiva/condition.h"
 #include "gandiva/configuration.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/selection_vector.h"
 #include "gandiva/visibility.h"
 
@@ -66,6 +67,18 @@ class GANDIVA_EXPORT Filter {
   /// \param[out] filter the returned filter object
   static Status Make(SchemaPtr schema, ConditionPtr condition,
                      std::shared_ptr<Configuration> config,
+                     std::shared_ptr<Filter>* filter);
+
+  /// \brief Build a filter that reuses the LLJIT from a JITSession.
+  ///
+  /// \param[in] schema schema for the record batches, and the condition.
+  /// \param[in] condition filter condition.
+  /// \param[in] config run time configuration.
+  /// \param[in] session the shared JIT session.
+  /// \param[out] filter the returned filter object
+  static Status Make(SchemaPtr schema, ConditionPtr condition,
+                     std::shared_ptr<Configuration> config,
+                     std::shared_ptr<JITSession> session,
                      std::shared_ptr<Filter>* filter);
 
   /// Evaluate the specified record batch, and populate output selection vector.

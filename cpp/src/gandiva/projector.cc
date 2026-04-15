@@ -25,6 +25,7 @@
 
 #include "gandiva/cache.h"
 #include "gandiva/expr_validator.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/llvm_generator.h"
 
 namespace gandiva {
@@ -110,6 +111,41 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   *projector = std::shared_ptr<Projector>(
       new Projector(std::move(llvm_gen), schema, output_fields, configuration));
   projector->get()->SetBuiltFromCache(is_cached);
+
+  return Status::OK();
+}
+
+Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
+                       std::shared_ptr<Configuration> configuration,
+                       std::shared_ptr<JITSession> session,
+                       std::shared_ptr<Projector>* projector) {
+  ARROW_RETURN_IF(schema == nullptr, Status::Invalid("Schema cannot be null"));
+  ARROW_RETURN_IF(exprs.empty(), Status::Invalid("Expressions cannot be empty"));
+  ARROW_RETURN_IF(configuration == nullptr,
+                  Status::Invalid("Configuration cannot be null"));
+  ARROW_RETURN_IF(session == nullptr, Status::Invalid("JITSession cannot be null"));
+
+  ARROW_ASSIGN_OR_RAISE(auto llvm_gen,
+                        LLVMGenerator::Make(configuration, std::move(session)));
+
+  ExprValidator expr_validator(llvm_gen->types(), schema,
+                               configuration->function_registry());
+  for (auto& expr : exprs) {
+    ARROW_RETURN_NOT_OK(expr_validator.Validate(expr));
+  }
+
+  ARROW_RETURN_NOT_OK(
+      llvm_gen->Build(exprs, SelectionVector::Mode::MODE_NONE));
+
+  std::vector<FieldPtr> output_fields;
+  output_fields.reserve(exprs.size());
+  for (auto& expr : exprs) {
+    output_fields.push_back(expr->result());
+  }
+
+  *projector = std::shared_ptr<Projector>(
+      new Projector(std::move(llvm_gen), schema, output_fields, configuration));
+  projector->get()->SetBuiltFromCache(false);
 
   return Status::OK();
 }

@@ -24,6 +24,7 @@
 #include "gandiva/cache.h"
 #include "gandiva/condition.h"
 #include "gandiva/expr_validator.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/llvm_generator.h"
 #include "gandiva/selection_vector_impl.h"
 
@@ -84,6 +85,29 @@ Status Filter::Make(SchemaPtr schema, ConditionPtr condition,
   // Instantiate the filter with the completely built llvm generator
   *filter = std::make_shared<Filter>(std::move(llvm_gen), schema, configuration);
   filter->get()->SetBuiltFromCache(is_cached);
+
+  return Status::OK();
+}
+
+Status Filter::Make(SchemaPtr schema, ConditionPtr condition,
+                    std::shared_ptr<Configuration> config,
+                    std::shared_ptr<JITSession> session,
+                    std::shared_ptr<Filter>* filter) {
+  ARROW_RETURN_IF(schema == nullptr, Status::Invalid("Schema cannot be null"));
+  ARROW_RETURN_IF(condition == nullptr, Status::Invalid("Condition cannot be null"));
+  ARROW_RETURN_IF(config == nullptr, Status::Invalid("Configuration cannot be null"));
+  ARROW_RETURN_IF(session == nullptr, Status::Invalid("JITSession cannot be null"));
+
+  ARROW_ASSIGN_OR_RAISE(auto llvm_gen,
+                        LLVMGenerator::Make(config, std::move(session)));
+
+  ExprValidator expr_validator(llvm_gen->types(), schema, config->function_registry());
+  ARROW_RETURN_NOT_OK(expr_validator.Validate(condition));
+
+  ARROW_RETURN_NOT_OK(llvm_gen->Build({condition}, SelectionVector::Mode::MODE_NONE));
+
+  *filter = std::make_shared<Filter>(std::move(llvm_gen), schema, config);
+  filter->get()->SetBuiltFromCache(false);
 
   return Status::OK();
 }

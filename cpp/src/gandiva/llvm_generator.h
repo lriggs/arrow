@@ -35,6 +35,7 @@
 #include "gandiva/expression_cache_key.h"
 #include "gandiva/function_registry.h"
 #include "gandiva/gandiva_aliases.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/llvm_types.h"
 #include "gandiva/lvalue.h"
 #include "gandiva/selection_vector.h"
@@ -53,6 +54,13 @@ class GANDIVA_EXPORT LLVMGenerator {
       const std::shared_ptr<Configuration>& config, bool cached,
       std::optional<std::reference_wrapper<GandivaObjectCache>> object_cache =
           std::nullopt);
+
+  /// \brief Factory method that shares the LLJIT from a JITSession.
+  /// The object cache is bypassed; each query module is compiled fresh (but quickly,
+  /// since only the tiny expression function needs to be JIT-compiled).
+  static Result<std::unique_ptr<LLVMGenerator>> Make(
+      const std::shared_ptr<Configuration>& config,
+      std::shared_ptr<JITSession> session);
 
   /// \brief Get the cache to be used for LLVM ObjectCache.
   static std::shared_ptr<Cache<ExpressionCacheKey, std::shared_ptr<llvm::MemoryBuffer>>>

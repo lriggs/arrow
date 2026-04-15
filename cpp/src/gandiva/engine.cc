@@ -109,6 +109,7 @@
 #include "gandiva/decimal_ir.h"
 #include "gandiva/exported_funcs.h"
 #include "gandiva/exported_funcs_registry.h"
+#include "gandiva/jit_session.h"
 #include "gandiva/timestamp_ir.h"
 
 namespace gandiva {
@@ -294,11 +295,13 @@ void Engine::InitOnce() {
   llvm_init = true;
 }
 
+// Standalone constructor: this engine owns its LLJIT.
 Engine::Engine(const std::shared_ptr<Configuration>& conf,
                std::unique_ptr<llvm::orc::LLJIT> lljit,
                std::shared_ptr<llvm::TargetMachine> target_machine, bool cached)
     : context_(std::make_unique<llvm::LLVMContext>()),
-      lljit_(std::move(lljit)),
+      owned_lljit_(std::move(lljit)),
+      lljit_(owned_lljit_.get()),
       ir_builder_(std::make_unique<llvm::IRBuilder<>>(*context_)),
       types_(*context_),
       optimize_(conf->optimize()),
@@ -312,7 +315,33 @@ Engine::Engine(const std::shared_ptr<Configuration>& conf,
   module_->setDataLayout(target_machine_->createDataLayout());
 }
 
+// Shared-session constructor: borrows the LLJIT from the session.
+// Base IR symbols are already compiled into the session's JITDylib; this engine
+// only needs to compile the per-query expression function.
+Engine::Engine(const std::shared_ptr<Configuration>& conf,
+               std::shared_ptr<JITSession> session)
+    : context_(std::make_unique<llvm::LLVMContext>()),
+      owned_lljit_(nullptr),
+      lljit_(&session->lljit()),
+      ir_builder_(std::make_unique<llvm::IRBuilder<>>(*context_)),
+      types_(*context_),
+      optimize_(conf->optimize()),
+      cached_(false),
+      function_registry_(conf->function_registry()),
+      target_machine_(session->target_machine()),
+      conf_(conf),
+      session_(std::move(session)) {
+  auto module_id = "gdv_module_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+  module_ = std::make_unique<llvm::Module>(module_id, *context_);
+  module_->setDataLayout(target_machine_->createDataLayout());
+}
+
 Engine::~Engine() {}
+
+std::unique_ptr<llvm::orc::LLJIT> Engine::ExtractJIT() {
+  lljit_ = nullptr;
+  return std::move(owned_lljit_);
+}
 
 Status Engine::Init() {
   std::call_once(register_exported_funcs_flag, gandiva::RegisterExportedFuncs);
@@ -324,10 +353,16 @@ Status Engine::Init() {
 
 Status Engine::LoadFunctionIRs() {
   if (!functions_loaded_) {
-    ARROW_RETURN_NOT_OK(LoadPreCompiledIR());
-    ARROW_RETURN_NOT_OK(DecimalIR::AddFunctions(this));
-    ARROW_RETURN_NOT_OK(TimestampIR::AddFunctions(this));
-    ARROW_RETURN_NOT_OK(LoadExternalPreCompiledIR());
+    if (session_ == nullptr) {
+      // Standalone mode: link all base IR into this module.
+      ARROW_RETURN_NOT_OK(LoadPreCompiledIR());
+      ARROW_RETURN_NOT_OK(DecimalIR::AddFunctions(this));
+      ARROW_RETURN_NOT_OK(TimestampIR::AddFunctions(this));
+      ARROW_RETURN_NOT_OK(LoadExternalPreCompiledIR());
+    }
+    // In shared-session mode the base IR is already compiled into the session's
+    // JITDylib. Declarations for those symbols are added lazily by AddFunctionCall
+    // and CallDecimalFunction when the per-query expression IR is generated.
     functions_loaded_ = true;
   }
   return Status::OK();
@@ -363,6 +398,15 @@ Result<std::unique_ptr<Engine>> Engine::Make(
   std::unique_ptr<Engine> engine{
       new Engine(conf, std::move(jit), std::move(shared_target_machine), cached)};
 
+  ARROW_RETURN_NOT_OK(engine->Init());
+  return engine;
+}
+
+Result<std::unique_ptr<Engine>> Engine::Make(const std::shared_ptr<Configuration>& conf,
+                                             std::shared_ptr<JITSession> session) {
+  std::call_once(llvm_init_once_flag, InitOnce);
+
+  std::unique_ptr<Engine> engine{new Engine(conf, std::move(session))};
   ARROW_RETURN_NOT_OK(engine->Init());
   return engine;
 }
@@ -531,7 +575,12 @@ static void OptimizeModuleWithLegacyPassManager(llvm::Module& module,
 // Optimise and compile the module.
 Status Engine::FinalizeModule() {
   if (!cached_) {
-    ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
+    // Skip DCE when no expression functions were compiled into this module.
+    // This happens when building the base module for a JITSession: all base IR
+    // functions must be kept so their symbols land in the JITDylib.
+    if (!functions_to_compile_.empty()) {
+      ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
+    }
 
     if (optimize_) {
       auto target_analysis = target_machine_->getTargetIRAnalysis();
@@ -591,6 +640,11 @@ void Engine::AddGlobalMappingForFunc(const std::string& name, llvm::Type* ret_ty
                                      const std::vector<llvm::Type*>& args, void* func) {
   auto const prototype = llvm::FunctionType::get(ret_type, args, /*is_var_arg*/ false);
   llvm::Function::Create(prototype, llvm::GlobalValue::ExternalLinkage, name, module());
+  if (session_ != nullptr) {
+    // Shared-session mode: symbols are already registered in the session's JITDylib
+    // by the base Engine.  Only the module declaration (above) is needed here.
+    return;
+  }
   AddAbsoluteSymbol(*lljit_, name, func);
 }
 

@@ -420,26 +420,48 @@ Status DecimalIR::BuildCompare(const std::string& function_name,
   return Status::OK();
 }
 
+// Helper: return the module function by name, creating an external declaration if it
+// is absent.  In shared-session mode the definition lives in the session's JITDylib;
+// the declaration here lets LLJIT resolve the call at link time.
+static llvm::Function* GetOrDeclareFunction(llvm::Module* module, const std::string& name,
+                                             llvm::Type* return_type,
+                                             const std::vector<llvm::Type*>& arg_types) {
+  if (auto* fn = module->getFunction(name)) {
+    return fn;
+  }
+  auto* fn_type = llvm::FunctionType::get(return_type, arg_types, /*isVarArg=*/false);
+  return llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, name, module);
+}
+
 llvm::Value* DecimalIR::CallDecimalFunction(const std::string& function_name,
                                             llvm::Type* return_type,
                                             const std::vector<llvm::Value*>& params) {
   if (kDecimalIRBuilderFunctions.count(function_name) != 0) {
-    // this is fn built with the irbuilder.
-    return ir_builder()->CreateCall(module()->getFunction(function_name), params);
+    // IR-builder function.  In shared-session mode the definition is in the base
+    // JITDylib; add a declaration so this module can reference it.
+    std::vector<llvm::Type*> param_types;
+    param_types.reserve(params.size());
+    for (auto* p : params) param_types.push_back(p->getType());
+    auto* fn = GetOrDeclareFunction(module(), function_name, return_type, param_types);
+    return ir_builder()->CreateCall(fn, params);
   }
 
-  // ppre-compiler fn : disassemble i128 to two i64s and re-assemble.
+  // Pre-compiled fn: disassemble i128 to two i64s and re-assemble.
   auto i128 = types()->i128_type();
   auto i64 = types()->i64_type();
   std::vector<llvm::Value*> dis_assembled_args;
+  std::vector<llvm::Type*> dis_assembled_types;
   for (auto& arg : params) {
     if (arg->getType() == i128) {
       // split i128 arg into two int64s.
       auto split = ValueSplit::MakeFromInt128(this, arg);
       dis_assembled_args.push_back(split.high());
       dis_assembled_args.push_back(split.low());
+      dis_assembled_types.push_back(i64);
+      dis_assembled_types.push_back(i64);
     } else {
       dis_assembled_args.push_back(arg);
+      dis_assembled_types.push_back(arg->getType());
     }
   }
 
@@ -451,9 +473,13 @@ llvm::Value* DecimalIR::CallDecimalFunction(const std::string& function_name,
     auto out_low_ptr = new llvm::AllocaInst(i64, 0, "out_low", block);
     dis_assembled_args.push_back(out_high_ptr);
     dis_assembled_args.push_back(out_low_ptr);
+    dis_assembled_types.push_back(llvm::PointerType::getUnqual(module()->getContext()));
+    dis_assembled_types.push_back(llvm::PointerType::getUnqual(module()->getContext()));
 
-    // Make call to pre-compiled IR function.
-    ir_builder()->CreateCall(module()->getFunction(function_name), dis_assembled_args);
+    auto* fn =
+        GetOrDeclareFunction(module(), function_name, types()->void_type(),
+                             dis_assembled_types);
+    ir_builder()->CreateCall(fn, dis_assembled_args);
 
     auto out_high = ir_builder()->CreateLoad(i64, out_high_ptr);
     auto out_low = ir_builder()->CreateLoad(i64, out_low_ptr);
@@ -461,9 +487,9 @@ llvm::Value* DecimalIR::CallDecimalFunction(const std::string& function_name,
   } else {
     DCHECK_NE(return_type, types()->void_type());
 
-    // Make call to pre-compiled IR function.
-    result = ir_builder()->CreateCall(module()->getFunction(function_name),
-                                      dis_assembled_args);
+    auto* fn = GetOrDeclareFunction(module(), function_name, return_type,
+                                    dis_assembled_types);
+    result = ir_builder()->CreateCall(fn, dis_assembled_args);
   }
   return result;
 }
