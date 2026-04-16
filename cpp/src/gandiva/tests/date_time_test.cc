@@ -1132,6 +1132,127 @@ static int64_t EvalDateArith(const std::string& func_name, arrow::TimeUnit::type
   return result_array->Value(0);
 }
 
+// Helper: evaluate func(int64 count, timestamp) -> timestamp
+static int64_t EvalCountFirstI64(const std::string& func_name,
+                                  arrow::TimeUnit::type unit, int64_t count,
+                                  int64_t ts_value, arrow::MemoryPool* pool) {
+  auto ts_type = timestamp(unit);
+  auto f_count = field("count", int64());
+  auto f_ts = field("ts", ts_type);
+  auto schema = arrow::schema({f_count, f_ts});
+  auto result_field = field("result", ts_type);
+
+  auto count_node = TreeExprBuilder::MakeField(f_count);
+  auto ts_node = TreeExprBuilder::MakeField(f_ts);
+  auto func_node =
+      TreeExprBuilder::MakeFunction(func_name, {count_node, ts_node}, ts_type);
+  auto expr = TreeExprBuilder::MakeExpression(func_node, result_field);
+
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok());
+
+  auto count_array =
+      MakeArrowTypeArray<arrow::Int64Type, int64_t>(int64(), {count}, {true});
+  auto ts_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
+  auto in_batch = arrow::RecordBatch::Make(schema, 1, {count_array, ts_array});
+
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool, &outputs);
+  EXPECT_TRUE(status.ok());
+
+  auto result_array = std::dynamic_pointer_cast<arrow::TimestampArray>(outputs.at(0));
+  return result_array->Value(0);
+}
+
+// Helper: evaluate func(timestamp, int64 count) -> timestamp
+static int64_t EvalTsFirstI64(const std::string& func_name, arrow::TimeUnit::type unit,
+                               int64_t ts_value, int64_t count,
+                               arrow::MemoryPool* pool) {
+  auto ts_type = timestamp(unit);
+  auto f_ts = field("ts", ts_type);
+  auto f_count = field("count", int64());
+  auto schema = arrow::schema({f_ts, f_count});
+  auto result_field = field("result", ts_type);
+
+  auto ts_node = TreeExprBuilder::MakeField(f_ts);
+  auto count_node = TreeExprBuilder::MakeField(f_count);
+  auto func_node =
+      TreeExprBuilder::MakeFunction(func_name, {ts_node, count_node}, ts_type);
+  auto expr = TreeExprBuilder::MakeExpression(func_node, result_field);
+
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok());
+
+  auto ts_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
+  auto count_array =
+      MakeArrowTypeArray<arrow::Int64Type, int64_t>(int64(), {count}, {true});
+  auto in_batch = arrow::RecordBatch::Make(schema, 1, {ts_array, count_array});
+
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool, &outputs);
+  EXPECT_TRUE(status.ok());
+
+  auto result_array = std::dynamic_pointer_cast<arrow::TimestampArray>(outputs.at(0));
+  return result_array->Value(0);
+}
+
+// Helper: evaluate last_day(timestamp) -> date64 (returned as int64 millis)
+static int64_t EvalLastDayFrom(arrow::TimeUnit::type unit, int64_t ts_value,
+                                arrow::MemoryPool* pool) {
+  auto ts_type = timestamp(unit);
+  auto f0 = field("f0", ts_type);
+  auto schema = arrow::schema({f0});
+  auto result_field = field("result", date64());
+  auto expr = TreeExprBuilder::MakeExpression("last_day", {f0}, result_field);
+
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok());
+
+  auto in_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
+  auto in_batch = arrow::RecordBatch::Make(schema, 1, {in_array});
+
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool, &outputs);
+  EXPECT_TRUE(status.ok());
+
+  auto result_array = std::dynamic_pointer_cast<arrow::Date64Array>(outputs.at(0));
+  return result_array->Value(0);
+}
+
+// Helper: evaluate to_utc_timestamp / from_utc_timestamp(timestamp, tz) -> timestamp
+static int64_t EvalTimezone(const std::string& func_name, arrow::TimeUnit::type unit,
+                             int64_t ts_value, const std::string& tz,
+                             arrow::MemoryPool* pool) {
+  auto ts_type = timestamp(unit);
+  auto f_ts = field("ts", ts_type);
+  auto f_tz = field("tz", arrow::utf8());
+  auto schema = arrow::schema({f_ts, f_tz});
+  auto result_field = field("result", ts_type);
+  auto expr = TreeExprBuilder::MakeExpression(func_name, {f_ts, f_tz}, result_field);
+
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok());
+
+  auto ts_array =
+      MakeArrowTypeArray<arrow::TimestampType, int64_t>(ts_type, {ts_value}, {true});
+  auto tz_array = MakeArrowArrayUtf8({tz}, {true});
+  auto in_batch = arrow::RecordBatch::Make(schema, 1, {ts_array, tz_array});
+
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool, &outputs);
+  EXPECT_TRUE(status.ok());
+
+  auto result_array = std::dynamic_pointer_cast<arrow::TimestampArray>(outputs.at(0));
+  return result_array->Value(0);
+}
+
 TEST_F(DateTimeTestProjector, TestDateAddSubtractAcrossPrecisions) {
   // date_add(ts, 3) adds 3 days. Sub-ms data must survive.
   int64_t three_days_us = 3 * 86400LL * 1000000;
@@ -1432,6 +1553,369 @@ TEST_F(DateTimeTestProjector, TestCastVARCHARNegativeTimestamp) {
   // -456789 nanoseconds = 1969-12-31 23:59:59.999543211
   EXPECT_EQ("1969-12-31 23:59:59.999543211",
             eval_castVARCHAR(arrow::TimeUnit::NANO, -456789));
+}
+
+// ---------- Comprehensive TimestampIR coverage tests ----------
+// These tests mirror the category tables in timestamp_ir.cc::BuildAllFunctionNames()
+// to ensure every generated function is exercised for both us and ns units.
+// kTestMicros/kTestNanos are 2021-06-15 14:30:45.123456789 UTC — all sub-second
+// slots (hour=14, minute=30, second=45, ms=123, us=456, ns=789) are non-zero.
+
+// kExtracts: the 10 functions not yet tested for us/ns
+TEST_F(DateTimeTestProjector, TestExtractRemainingFunctions) {
+  const char* names[] = {
+      "extractMillennium", "extractCentury", "extractDecade", "extractQuarter",
+      "extractWeek",       "extractMinute",  "extractSecond", "extractDoy",
+      "extractDow",        "extractEpoch",
+  };
+  for (const char* name : names) {
+    int64_t ms_val = EvalExtract(name, arrow::TimeUnit::MILLI, kTestMillis, pool_);
+    EXPECT_EQ(ms_val, EvalExtract(name, arrow::TimeUnit::MICRO, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(ms_val, EvalExtract(name, arrow::TimeUnit::NANO, kTestNanos, pool_))
+        << name;
+  }
+
+  // Spot-checks with explicit non-zero expected values
+  EXPECT_EQ(30, EvalExtract("extractMinute", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(30, EvalExtract("extractMinute", arrow::TimeUnit::NANO, kTestNanos, pool_));
+  EXPECT_EQ(45, EvalExtract("extractSecond", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(45, EvalExtract("extractSecond", arrow::TimeUnit::NANO, kTestNanos, pool_));
+  // June 15, 2021: day-of-year = 31+28+31+30+31+15 = 166
+  EXPECT_EQ(166, EvalExtract("extractDoy", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(166, EvalExtract("extractDoy", arrow::TimeUnit::NANO, kTestNanos, pool_));
+  // kTestMillis / 1000 = 1623767445 seconds since epoch
+  EXPECT_EQ(1623767445, EvalExtract("extractEpoch", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(1623767445, EvalExtract("extractEpoch", arrow::TimeUnit::NANO, kTestNanos, pool_));
+  // June = Q2
+  EXPECT_EQ(2, EvalExtract("extractQuarter", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(2, EvalExtract("extractQuarter", arrow::TimeUnit::NANO, kTestNanos, pool_));
+}
+
+// kTruncs: the 9 functions not yet tested for us/ns
+TEST_F(DateTimeTestProjector, TestDateTruncRemainingFunctions) {
+  const char* names[] = {
+      "date_trunc_Millennium", "date_trunc_Century", "date_trunc_Decade",
+      "date_trunc_Year",       "date_trunc_Quarter", "date_trunc_Month",
+      "date_trunc_Week",       "date_trunc_Minute",  "date_trunc_Second",
+  };
+  for (const char* name : names) {
+    int64_t ms_val = EvalTrunc(name, arrow::TimeUnit::MILLI, kTestMillis, pool_);
+    EXPECT_EQ(ms_val * 1000,
+              EvalTrunc(name, arrow::TimeUnit::MICRO, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(ms_val * 1000000LL,
+              EvalTrunc(name, arrow::TimeUnit::NANO, kTestNanos, pool_))
+        << name;
+  }
+
+  // date_trunc_Second must zero the sub-second portion, not preserve it
+  int64_t trunc_s_us =
+      EvalTrunc("date_trunc_Second", arrow::TimeUnit::MICRO, kTestMicros, pool_);
+  EXPECT_NE(kTestMicros, trunc_s_us);
+  EXPECT_EQ(0, trunc_s_us % 1000000);  // aligned to whole second in micros
+  EXPECT_EQ((kTestMillis / 1000 * 1000) * 1000LL, trunc_s_us);
+
+  // date_trunc_Minute must zero sub-minute portion
+  int64_t trunc_m_us =
+      EvalTrunc("date_trunc_Minute", arrow::TimeUnit::MICRO, kTestMicros, pool_);
+  EXPECT_EQ(0, trunc_m_us % (60LL * 1000000));
+}
+
+// kFixedAdds: all 5 functions × us/ns × all 4 arg patterns (int32/int64, count-first/ts-first)
+TEST_F(DateTimeTestProjector, TestFixedAddAllArgVariants) {
+  struct FixedCase {
+    const char* name;
+    int64_t seconds;
+  };
+  const FixedCase cases[] = {
+      {"timestampaddSecond", 1},
+      {"timestampaddMinute", 60},
+      {"timestampaddHour", 3600},
+      {"timestampaddDay", 86400},
+      {"timestampaddWeek", 604800},
+  };
+  const int32_t count32 = 3;
+  const int64_t count64 = 3;
+
+  for (const auto& c : cases) {
+    int64_t delta_us = count32 * c.seconds * 1000000LL;
+    int64_t delta_ns = count32 * c.seconds * 1000000000LL;
+
+    // microseconds — all 4 arg patterns
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
+        << c.name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalCountFirstI64(c.name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
+        << c.name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalDateArith(c.name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
+        << c.name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalTsFirstI64(c.name, arrow::TimeUnit::MICRO, kTestMicros, count64, pool_))
+        << c.name;
+
+    // nanoseconds — all 4 arg patterns
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_))
+        << c.name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalCountFirstI64(c.name, arrow::TimeUnit::NANO, count64, kTestNanos, pool_))
+        << c.name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalDateArith(c.name, arrow::TimeUnit::NANO, kTestNanos, count32, pool_))
+        << c.name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalTsFirstI64(c.name, arrow::TimeUnit::NANO, kTestNanos, count64, pool_))
+        << c.name;
+
+    // Sub-ms/sub-us data is preserved through fixed arithmetic
+    int64_t r_us =
+        EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_);
+    EXPECT_EQ(kSubMs, r_us % 1000) << c.name;
+    int64_t r_ns =
+        EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_);
+    EXPECT_EQ(kSubUs, r_ns % 1000) << c.name;
+  }
+
+  // Negative count: subtract 3 minutes (sub-ms preserved)
+  int64_t r_neg =
+      EvalTimestampadd("timestampaddMinute", arrow::TimeUnit::MICRO, -3, kTestMicros, pool_);
+  EXPECT_EQ(kTestMicros - 3LL * 60 * 1000000, r_neg);
+  EXPECT_EQ(kSubMs, r_neg % 1000);
+}
+
+// kCalendarAdds: Month/Quarter/Year × us/ns × all 4 arg patterns
+TEST_F(DateTimeTestProjector, TestCalendarAddAllArgVariants) {
+  const char* names[] = {"timestampaddMonth", "timestampaddQuarter", "timestampaddYear"};
+  const int32_t count32 = 2;
+  const int64_t count64 = 2;
+
+  for (const char* name : names) {
+    // Millis baseline
+    int64_t base_ms =
+        EvalTimestampadd(name, arrow::TimeUnit::MILLI, count32, kTestMillis, pool_);
+
+    // microseconds — all 4 arg patterns
+    int64_t expected_us = base_ms * 1000 + kSubMs;
+    EXPECT_EQ(expected_us,
+              EvalTimestampadd(name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(expected_us,
+              EvalCountFirstI64(name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(expected_us,
+              EvalDateArith(name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
+        << name;
+    EXPECT_EQ(expected_us,
+              EvalTsFirstI64(name, arrow::TimeUnit::MICRO, kTestMicros, count64, pool_))
+        << name;
+
+    // nanoseconds — all 4 arg patterns
+    int64_t expected_ns = base_ms * 1000000LL + kSubMs * 1000 + kSubUs;
+    EXPECT_EQ(expected_ns,
+              EvalTimestampadd(name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_))
+        << name;
+    EXPECT_EQ(expected_ns,
+              EvalCountFirstI64(name, arrow::TimeUnit::NANO, count64, kTestNanos, pool_))
+        << name;
+    EXPECT_EQ(expected_ns,
+              EvalDateArith(name, arrow::TimeUnit::NANO, kTestNanos, count32, pool_))
+        << name;
+    EXPECT_EQ(expected_ns,
+              EvalTsFirstI64(name, arrow::TimeUnit::NANO, kTestNanos, count64, pool_))
+        << name;
+  }
+}
+
+// kDiffs: all 8 timestampdiff functions × ms/us/ns (Day already covered separately)
+TEST_F(DateTimeTestProjector, TestTimestampdiffAllFunctions) {
+  // For each function, delta_ms is chosen so the expected result is non-zero and exact.
+  // 2021-06-15 + 92 days  = 2021-09-15  (exactly 3 months)
+  // 2021-06-15 + 183 days = 2021-12-15  (exactly 2 quarters)
+  // 2021-06-15 + 730 days = 2023-06-15  (exactly 2 years, both years non-leap)
+  struct DiffCase {
+    const char* name;
+    int64_t delta_ms;
+    int32_t expected;
+  };
+  const DiffCase cases[] = {
+      {"timestampdiffSecond", 60000LL, 60},
+      {"timestampdiffMinute", 3LL * 3600000, 180},
+      {"timestampdiffHour", 48LL * 3600000, 48},
+      {"timestampdiffWeek", 14LL * 86400000, 2},
+      {"timestampdiffMonth", 92LL * 86400000, 3},
+      {"timestampdiffQuarter", 183LL * 86400000, 2},
+      {"timestampdiffYear", 730LL * 86400000, 2},
+  };
+  for (const auto& c : cases) {
+    EXPECT_EQ(c.expected,
+              EvalDiff(c.name, arrow::TimeUnit::MILLI, kTestMillis,
+                       kTestMillis + c.delta_ms, pool_))
+        << c.name;
+    EXPECT_EQ(c.expected,
+              EvalDiff(c.name, arrow::TimeUnit::MICRO, kTestMicros,
+                       kTestMicros + c.delta_ms * 1000, pool_))
+        << c.name;
+    EXPECT_EQ(c.expected,
+              EvalDiff(c.name, arrow::TimeUnit::NANO, kTestNanos,
+                       kTestNanos + c.delta_ms * 1000000LL, pool_))
+        << c.name;
+  }
+}
+
+// kTwoTsScalars: datediff(timestamp, timestamp) -> int32 for us/ns
+// Note: datediff(ts1, ts2) = days from ts2 to ts1 = -(ts2 - ts1 in days)
+TEST_F(DateTimeTestProjector, TestDatediffTwoTimestamps) {
+  int64_t five_days_ms = 5LL * 86400000;
+  EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::MILLI, kTestMillis,
+                          kTestMillis + five_days_ms, pool_));
+  EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::MICRO, kTestMicros,
+                          kTestMicros + five_days_ms * 1000, pool_));
+  EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::NANO, kTestNanos,
+                          kTestNanos + five_days_ms * 1000000LL, pool_));
+}
+
+// kCastsFromTs: last_day(timestamp) -> date64 for ms/us/ns
+TEST_F(DateTimeTestProjector, TestLastDayAllPrecisions) {
+  time_t epoch = Epoch();
+  // kTestMillis = 2021-06-15 -> last day of June = 2021-06-30
+  int64_t expected_date_ms = MillisSince(epoch, 2021, 6, 30, 0, 0, 0, 0);
+  EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::MILLI, kTestMillis, pool_));
+  EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::NANO, kTestNanos, pool_));
+}
+
+// kDateArithEntries: all variants × us/ns × int32 and int64 count
+TEST_F(DateTimeTestProjector, TestDateArithAllVariants) {
+  const int32_t n32 = 3;
+  const int64_t n64 = 3;
+  int64_t delta_us = 3LL * 86400 * 1000000;
+  int64_t delta_ns = 3LL * 86400 * 1000000000LL;
+
+  // date_add and add: adds days, count-first and ts-first, int32 and int64
+  for (const char* name : {"date_add", "add"}) {
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalTimestampadd(name, arrow::TimeUnit::MICRO, n32, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalTimestampadd(name, arrow::TimeUnit::NANO, n32, kTestNanos, pool_))
+        << name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalCountFirstI64(name, arrow::TimeUnit::MICRO, n64, kTestMicros, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalCountFirstI64(name, arrow::TimeUnit::NANO, n64, kTestNanos, pool_))
+        << name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalDateArith(name, arrow::TimeUnit::MICRO, kTestMicros, n32, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalDateArith(name, arrow::TimeUnit::NANO, kTestNanos, n32, pool_))
+        << name;
+    EXPECT_EQ(kTestMicros + delta_us,
+              EvalTsFirstI64(name, arrow::TimeUnit::MICRO, kTestMicros, n64, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos + delta_ns,
+              EvalTsFirstI64(name, arrow::TimeUnit::NANO, kTestNanos, n64, pool_))
+        << name;
+  }
+
+  // date_sub and subtract: subtracts days, ts-first only
+  for (const char* name : {"date_sub", "subtract"}) {
+    EXPECT_EQ(kTestMicros - delta_us,
+              EvalDateArith(name, arrow::TimeUnit::MICRO, kTestMicros, n32, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos - delta_ns,
+              EvalDateArith(name, arrow::TimeUnit::NANO, kTestNanos, n32, pool_))
+        << name;
+    EXPECT_EQ(kTestMicros - delta_us,
+              EvalTsFirstI64(name, arrow::TimeUnit::MICRO, kTestMicros, n64, pool_))
+        << name;
+    EXPECT_EQ(kTestNanos - delta_ns,
+              EvalTsFirstI64(name, arrow::TimeUnit::NANO, kTestNanos, n64, pool_))
+        << name;
+  }
+
+  // date_diff: subtracts days, ts-first only
+  EXPECT_EQ(kTestMicros - delta_us,
+            EvalDateArith("date_diff", arrow::TimeUnit::MICRO, kTestMicros, n32, pool_));
+  EXPECT_EQ(kTestNanos - delta_ns,
+            EvalDateArith("date_diff", arrow::TimeUnit::NANO, kTestNanos, n32, pool_));
+  EXPECT_EQ(kTestMicros - delta_us,
+            EvalTsFirstI64("date_diff", arrow::TimeUnit::MICRO, kTestMicros, n64, pool_));
+  EXPECT_EQ(kTestNanos - delta_ns,
+            EvalTsFirstI64("date_diff", arrow::TimeUnit::NANO, kTestNanos, n64, pool_));
+
+  // Sub-ms data is preserved through date arithmetic
+  int64_t r_us = EvalDateArith("date_add", arrow::TimeUnit::MICRO, kTestMicros, n32, pool_);
+  EXPECT_EQ(kSubMs, r_us % 1000);
+  int64_t r_ns = EvalDateArith("date_add", arrow::TimeUnit::NANO, kTestNanos, n32, pool_);
+  EXPECT_EQ(kSubUs, r_ns % 1000);
+}
+
+// Timezone wrappers: to_utc_timestamp / from_utc_timestamp for us/ns
+TEST_F(DateTimeTestProjector, TestTimezoneAllPrecisions) {
+  // Asia/Kolkata is UTC+5:30 (fixed offset, no DST), so from_utc adds the offset
+  // and to_utc subtracts it. The offset is a whole-second value, so sub-ms data
+  // is preserved through the split-recombine IR pattern.
+  int64_t offset_us = (5LL * 3600 + 30 * 60) * 1000000;   // 5:30 in micros
+  int64_t offset_ns = (5LL * 3600 + 30 * 60) * 1000000000LL;
+
+  // from_utc: UTC -> local (add offset)
+  int64_t r_us = EvalTimezone("from_utc_timestamp", arrow::TimeUnit::MICRO, kTestMicros,
+                               "Asia/Kolkata", pool_);
+  EXPECT_EQ(kTestMicros + offset_us, r_us);
+  EXPECT_EQ(kSubMs, r_us % 1000);  // sub-ms preserved
+
+  int64_t r_ns = EvalTimezone("from_utc_timestamp", arrow::TimeUnit::NANO, kTestNanos,
+                               "Asia/Kolkata", pool_);
+  EXPECT_EQ(kTestNanos + offset_ns, r_ns);
+  EXPECT_EQ(kSubUs, r_ns % 1000);  // sub-us preserved
+
+  // to_utc: local -> UTC (subtract offset). Round-trip recovers original.
+  EXPECT_EQ(kTestMicros, EvalTimezone("to_utc_timestamp", arrow::TimeUnit::MICRO, r_us,
+                                       "Asia/Kolkata", pool_));
+  EXPECT_EQ(kTestNanos, EvalTimezone("to_utc_timestamp", arrow::TimeUnit::NANO, r_ns,
+                                      "Asia/Kolkata", pool_));
+}
+
+// Edge case: fixed add crosses a second boundary — extractSecond reflects new second
+// and sub-ms fraction is unchanged.
+TEST_F(DateTimeTestProjector, TestFixedAddCrossesSecondBoundary) {
+  // kTestMicros = 14:30:45.123456. After +1 second: 14:30:46.123456
+  int64_t r_us =
+      EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::MICRO, 1, kTestMicros, pool_);
+  EXPECT_EQ(kTestMicros + 1000000LL, r_us);
+  EXPECT_EQ(46, EvalExtract("extractSecond", arrow::TimeUnit::MICRO, r_us, pool_));
+  EXPECT_EQ(kSubMs, r_us % 1000);
+
+  // kTestNanos = 14:30:45.123456789. After +1 second: 14:30:46.123456789
+  int64_t r_ns =
+      EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::NANO, 1, kTestNanos, pool_);
+  EXPECT_EQ(kTestNanos + 1000000000LL, r_ns);
+  EXPECT_EQ(46, EvalExtract("extractSecond", arrow::TimeUnit::NANO, r_ns, pool_));
+  EXPECT_EQ(kSubUs, r_ns % 1000);
+}
+
+// Edge case: timestampdiffSecond is insensitive to sub-millisecond remainder.
+// The diff is computed in millis then divided by 1000, so the microsecond/nanosecond
+// fraction beyond a millisecond does not affect the result.
+TEST_F(DateTimeTestProjector, TestTimestampdiffSubSecondSensitivity) {
+  // 999 ms apart in micros -> same second -> diff = 0
+  EXPECT_EQ(0, EvalDiff("timestampdiffSecond", arrow::TimeUnit::MICRO, kTestMicros,
+                         kTestMicros + 999000LL, pool_));
+  // just over 1 second apart in micros (millis difference = 1000) -> diff = 1
+  EXPECT_EQ(1, EvalDiff("timestampdiffSecond", arrow::TimeUnit::MICRO, kTestMicros,
+                         kTestMicros + 1000001LL, pool_));
+
+  // 999 ms apart in nanos -> diff = 0
+  EXPECT_EQ(0, EvalDiff("timestampdiffSecond", arrow::TimeUnit::NANO, kTestNanos,
+                         kTestNanos + 999000000LL, pool_));
+  // just over 1 second apart in nanos -> diff = 1
+  EXPECT_EQ(1, EvalDiff("timestampdiffSecond", arrow::TimeUnit::NANO, kTestNanos,
+                         kTestNanos + 1000000001LL, pool_));
 }
 
 // NOTE: TIME type handling
