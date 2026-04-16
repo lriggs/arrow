@@ -1352,8 +1352,17 @@ TEST_F(DateTimeTestProjector, TestNegativeTimestampPrecisions) {
   int64_t neg_millis = MillisSince(epoch, 1960, 3, 15, 6, 30, 0, 0);
   int64_t neg_sub_ms = 456;  // sub-ms micros
   int64_t neg_sub_us = 789;  // sub-us nanos
-  int64_t neg_micros = neg_millis * 1000 - neg_sub_ms;
-  int64_t neg_nanos = neg_millis * 1000000 - neg_sub_ms * 1000 - neg_sub_us;
+  int64_t neg_micros = neg_millis * 1000 + neg_sub_ms;
+  int64_t neg_nanos = neg_millis * 1000000 + neg_sub_ms * 1000 + neg_sub_us;
+
+  // extractSecond: neg_millis is at 06:30:00.000 (second=0).
+  // neg_millis-1 would be 06:29:59.999 (second=59), so this assertion distinguishes
+  // floor(neg_micros/1000)==neg_millis (correct) from floor==neg_millis-1 (wrong sign).
+  auto second_ms = EvalExtract("extractSecond", arrow::TimeUnit::MILLI, neg_millis, pool_);
+  EXPECT_EQ(second_ms,
+            EvalExtract("extractSecond", arrow::TimeUnit::MICRO, neg_micros, pool_));
+  EXPECT_EQ(second_ms,
+            EvalExtract("extractSecond", arrow::TimeUnit::NANO, neg_nanos, pool_));
 
   // extractYear: all precisions must agree
   auto year_ms = EvalExtract("extractYear", arrow::TimeUnit::MILLI, neg_millis, pool_);
@@ -1635,55 +1644,51 @@ TEST_F(DateTimeTestProjector, TestFixedAddAllArgVariants) {
       {"timestampaddDay", 86400},
       {"timestampaddWeek", 604800},
   };
-  const int32_t count32 = 3;
-  const int64_t count64 = 3;
+  for (int count : {3, -3}) {
+    int32_t count32 = static_cast<int32_t>(count);
+    int64_t count64 = static_cast<int64_t>(count);
 
-  for (const auto& c : cases) {
-    int64_t delta_us = count32 * c.seconds * 1000000LL;
-    int64_t delta_ns = count32 * c.seconds * 1000000000LL;
+    for (const auto& c : cases) {
+      int64_t delta_us = count64 * c.seconds * 1000000LL;
+      int64_t delta_ns = count64 * c.seconds * 1000000000LL;
 
-    // microseconds — all 4 arg patterns
-    EXPECT_EQ(kTestMicros + delta_us,
-              EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
-        << c.name;
-    EXPECT_EQ(kTestMicros + delta_us,
-              EvalCountFirstI64(c.name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
-        << c.name;
-    EXPECT_EQ(kTestMicros + delta_us,
-              EvalDateArith(c.name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
-        << c.name;
-    EXPECT_EQ(kTestMicros + delta_us,
-              EvalTsFirstI64(c.name, arrow::TimeUnit::MICRO, kTestMicros, count64, pool_))
-        << c.name;
+      // microseconds — all 4 arg patterns
+      EXPECT_EQ(kTestMicros + delta_us,
+                EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestMicros + delta_us,
+                EvalCountFirstI64(c.name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestMicros + delta_us,
+                EvalDateArith(c.name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestMicros + delta_us,
+                EvalTsFirstI64(c.name, arrow::TimeUnit::MICRO, kTestMicros, count64, pool_))
+          << c.name << " count=" << count;
 
-    // nanoseconds — all 4 arg patterns
-    EXPECT_EQ(kTestNanos + delta_ns,
-              EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_))
-        << c.name;
-    EXPECT_EQ(kTestNanos + delta_ns,
-              EvalCountFirstI64(c.name, arrow::TimeUnit::NANO, count64, kTestNanos, pool_))
-        << c.name;
-    EXPECT_EQ(kTestNanos + delta_ns,
-              EvalDateArith(c.name, arrow::TimeUnit::NANO, kTestNanos, count32, pool_))
-        << c.name;
-    EXPECT_EQ(kTestNanos + delta_ns,
-              EvalTsFirstI64(c.name, arrow::TimeUnit::NANO, kTestNanos, count64, pool_))
-        << c.name;
+      // nanoseconds — all 4 arg patterns
+      EXPECT_EQ(kTestNanos + delta_ns,
+                EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestNanos + delta_ns,
+                EvalCountFirstI64(c.name, arrow::TimeUnit::NANO, count64, kTestNanos, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestNanos + delta_ns,
+                EvalDateArith(c.name, arrow::TimeUnit::NANO, kTestNanos, count32, pool_))
+          << c.name << " count=" << count;
+      EXPECT_EQ(kTestNanos + delta_ns,
+                EvalTsFirstI64(c.name, arrow::TimeUnit::NANO, kTestNanos, count64, pool_))
+          << c.name << " count=" << count;
 
-    // Sub-ms/sub-us data is preserved through fixed arithmetic
-    int64_t r_us =
-        EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_);
-    EXPECT_EQ(kSubMs, r_us % 1000) << c.name;
-    int64_t r_ns =
-        EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_);
-    EXPECT_EQ(kSubUs, r_ns % 1000) << c.name;
+      // Sub-ms/sub-us data is preserved through fixed arithmetic
+      int64_t r_us =
+          EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_);
+      EXPECT_EQ(kSubMs, r_us % 1000) << c.name << " count=" << count;
+      int64_t r_ns =
+          EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_);
+      EXPECT_EQ(kSubUs, r_ns % 1000) << c.name << " count=" << count;
+    }
   }
-
-  // Negative count: subtract 3 minutes (sub-ms preserved)
-  int64_t r_neg =
-      EvalTimestampadd("timestampaddMinute", arrow::TimeUnit::MICRO, -3, kTestMicros, pool_);
-  EXPECT_EQ(kTestMicros - 3LL * 60 * 1000000, r_neg);
-  EXPECT_EQ(kSubMs, r_neg % 1000);
 }
 
 // kCalendarAdds: Month/Quarter/Year × us/ns × all 4 arg patterns
