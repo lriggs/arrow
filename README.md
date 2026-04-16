@@ -79,6 +79,7 @@ The reference Arrow libraries contain many distinct software components:
   implementations (e.g. sending data from Java to C++)
 - Conversions to and from other in-memory data structures
 - Readers and writers for various widely-used file formats (such as Parquet, CSV)
+- Gandiva: JIT compiled C++ functions.
 
 ## Implementation status
 
