@@ -1257,6 +1257,35 @@ LValuePtr LLVMGenerator::Visitor::BuildValueAndValidity(const ValueValidityPair&
   return std::make_shared<LValue>(value, length, validity);
 }
 
+Result<std::string> LLVMGenerator::ResolveTimestampPcName(const std::string& pc_name,
+                                                           const DataTypeVector& params) {
+  arrow::TimeUnit::type ts_unit = arrow::TimeUnit::MILLI;
+  bool found_ts = false;
+  for (const auto& param : params) {
+    if (param->id() == arrow::Type::TIMESTAMP) {
+      auto unit =
+          arrow::internal::checked_cast<const arrow::TimestampType&>(*param).unit();
+      if (!found_ts) {
+        ts_unit = unit;
+        found_ts = true;
+      } else if (unit != ts_unit) {
+        return Status::Invalid(
+            "Gandiva cannot compile expression: mixed timestamp units in function '",
+            pc_name, "'. All timestamp arguments must have the same TimeUnit.");
+      }
+    }
+  }
+  if (found_ts && ts_unit != arrow::TimeUnit::MILLI) {
+    std::string suffix = (ts_unit == arrow::TimeUnit::MICRO) ? "_us" : "_ns";
+    std::string remapped = pc_name + suffix;
+    ARROW_LOG(DEBUG) << "TimestampIR remap: " << pc_name << " -> " << remapped;
+    if (TimestampIR::IsTimestampIRFunction(remapped)) {
+      return remapped;
+    }
+  }
+  return pc_name;
+}
+
 LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
                                                     DataTypePtr arrow_return_type,
                                                     std::vector<llvm::Value*>* params,
@@ -1270,31 +1299,12 @@ LValuePtr LLVMGenerator::Visitor::BuildFunctionCall(const NativeFunction* func,
   // based on the actual TimeUnit from the expression tree.
   std::string pc_name = func->pc_name();
   if (descriptor != nullptr) {
-    arrow::TimeUnit::type ts_unit = arrow::TimeUnit::MILLI;
-    bool found_ts = false;
-    for (auto& param : descriptor->params()) {
-      if (param->id() == arrow::Type::TIMESTAMP) {
-        auto unit =
-            arrow::internal::checked_cast<const arrow::TimestampType&>(*param).unit();
-        if (!found_ts) {
-          ts_unit = unit;
-          found_ts = true;
-        } else if (unit != ts_unit) {
-          status_ = Status::Invalid(
-              "Gandiva cannot compile expression: mixed timestamp units in function '",
-              pc_name, "'. All timestamp arguments must have the same TimeUnit.");
-          return nullptr;
-        }
-      }
+    auto resolve_result = ResolveTimestampPcName(pc_name, descriptor->params());
+    if (!resolve_result.ok()) {
+      status_ = resolve_result.status();
+      return nullptr;
     }
-    if (found_ts && ts_unit != arrow::TimeUnit::MILLI) {
-      std::string suffix = (ts_unit == arrow::TimeUnit::MICRO) ? "_us" : "_ns";
-      std::string remapped = pc_name + suffix;
-      ARROW_LOG(DEBUG) << "TimestampIR remap: " << pc_name << " -> " << remapped;
-      if (TimestampIR::IsTimestampIRFunction(remapped)) {
-        pc_name = remapped;
-      }
-    }
+    pc_name = resolve_result.MoveValueUnsafe();
   }
 
   if (arrow_return_type_id == arrow::Type::DECIMAL) {
