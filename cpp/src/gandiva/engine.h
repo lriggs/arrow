@@ -36,6 +36,7 @@
 #include "gandiva/visibility.h"
 
 namespace llvm::orc {
+class JITDylib;
 class LLJIT;
 }  // namespace llvm::orc
 
@@ -151,6 +152,10 @@ class GANDIVA_EXPORT Engine {
   std::unique_ptr<llvm::orc::LLJIT> owned_lljit_;
   // Non-owning pointer to the active LLJIT; always valid while the engine is alive.
   llvm::orc::LLJIT* lljit_;
+  // Per-query JITDylib (non-null in shared-session mode only). Each Engine in session
+  // mode gets its own isolated dylib so expression function names (e.g. expr_0_0) don't
+  // collide across concurrent queries that share the same LLJIT instance.
+  llvm::orc::JITDylib* query_dylib_ = nullptr;
   std::unique_ptr<llvm::IRBuilder<>> ir_builder_;
   std::unique_ptr<llvm::Module> module_;
   LLVMTypes types_;

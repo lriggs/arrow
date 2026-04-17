@@ -603,10 +603,32 @@ Status Engine::FinalizeModule() {
     }
 
     llvm::orc::ThreadSafeModule tsm(std::move(module_), std::move(context_));
-    auto error = lljit_->addIRModule(std::move(tsm));
-    if (error) {
-      return Status::CodeGenError("Failed to add IR module to LLJIT: ",
-                                  llvm::toString(std::move(error)));
+
+    if (session_ != nullptr) {
+      // Shared-session mode: add the query module to a fresh per-engine JITDylib so
+      // that query-function names (e.g. expr_0_0) don't collide across queries that
+      // share the same LLJIT instance.
+      auto dylib_name = "query_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+      auto maybe_dylib = lljit_->createJITDylib(dylib_name);
+      if (!maybe_dylib) {
+        return Status::CodeGenError("Failed to create query JITDylib: ",
+                                    llvm::toString(maybe_dylib.takeError()));
+      }
+      query_dylib_ = &*maybe_dylib;
+      // Allow the query dylib to resolve base IR symbols from the session's main dylib.
+      query_dylib_->addToLinkOrder(lljit_->getMainJITDylib(),
+                                   llvm::orc::JITDylibLookupFlags::MatchAllSymbols);
+      auto error = lljit_->addIRModule(*query_dylib_, std::move(tsm));
+      if (error) {
+        return Status::CodeGenError("Failed to add IR module to query JITDylib: ",
+                                    llvm::toString(std::move(error)));
+      }
+    } else {
+      auto error = lljit_->addIRModule(std::move(tsm));
+      if (error) {
+        return Status::CodeGenError("Failed to add IR module to LLJIT: ",
+                                    llvm::toString(std::move(error)));
+      }
     }
   }
   module_finalized_ = true;
@@ -617,6 +639,31 @@ Status Engine::FinalizeModule() {
 Result<void*> Engine::CompiledFunction(const std::string& function) {
   DCHECK(module_finalized_)
       << "module must be finalized before getting compiled function";
+
+  if (query_dylib_ != nullptr) {
+    // Session mode: the expression function lives in our per-query JITDylib, not in
+    // the main JITDylib. lljit_->lookup() searches the default (main) dylib and would
+    // miss it, so we ask the ExecutionSession to search only this engine's dylib.
+    llvm::orc::JITDylibSearchOrder search_order = {
+        {query_dylib_, llvm::orc::JITDylibLookupFlags::MatchAllSymbols}};
+    auto sym = lljit_->getExecutionSession().lookup(search_order,
+                                                    lljit_->mangleAndIntern(function));
+    if (!sym) {
+      return Status::CodeGenError("Failed to look up function: " + function +
+                                  " error: " + llvm::toString(sym.takeError()));
+    }
+#if LLVM_VERSION_MAJOR >= 15
+    auto fn_addr = sym->getAddress().getValue();
+#else
+    auto fn_addr = sym->getAddress();
+#endif
+    auto fn_ptr = reinterpret_cast<void*>(fn_addr);
+    if (fn_ptr == nullptr) {
+      return Status::CodeGenError("Failed to get address for function: " + function);
+    }
+    return fn_ptr;
+  }
+
   auto sym = lljit_->lookup(function);
   if (!sym) {
     return Status::CodeGenError("Failed to look up function: " + function +
