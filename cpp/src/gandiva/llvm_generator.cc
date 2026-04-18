@@ -888,6 +888,7 @@ void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
 
   // Evaluate condition.
   LValuePtr if_condition = BuildValueAndValidity(dex.condition_vv());
+  if (!status_.ok()) return;
 
   // Check if the result is valid, and there is match.
   llvm::Value* validAndMatched =
@@ -897,6 +898,7 @@ void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
   auto then_lambda = [&] {
     ADD_VISITOR_TRACE("branch to then block");
     LValuePtr then_lvalue = BuildValueAndValidity(dex.then_vv());
+    if (then_lvalue == nullptr) return then_lvalue;
     ClearLocalBitMapIfNotValid(dex.local_bitmap_idx(), then_lvalue->validity());
     ADD_VISITOR_TRACE("IfExpression result validity %T in matching then",
                       then_lvalue->validity());
@@ -910,6 +912,7 @@ void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
       ADD_VISITOR_TRACE("branch to terminal else block");
 
       else_lvalue = BuildValueAndValidity(dex.else_vv());
+      if (else_lvalue == nullptr) return else_lvalue;
       // update the local bitmap with the validity.
       ClearLocalBitMapIfNotValid(dex.local_bitmap_idx(), else_lvalue->validity());
       ADD_VISITOR_TRACE("IfExpression result validity %T in terminal else",
@@ -927,6 +930,7 @@ void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
 
   // build the if-else condition.
   result_ = BuildIfElse(validAndMatched, then_lambda, else_lambda, dex.result_type());
+  if (!status_.ok()) return;
   if (arrow::is_binary_like(dex.result_type()->id())) {
     ADD_VISITOR_TRACE("IfElse result length %T", result_->length());
   }
@@ -1198,6 +1202,7 @@ LValuePtr LLVMGenerator::Visitor::BuildIfElse(llvm::Value* condition,
   // Emit the then block.
   builder->SetInsertPoint(then_bb);
   LValuePtr then_lvalue = then_func();
+  if (then_lvalue == nullptr) return nullptr;
   builder->CreateBr(merge_bb);
 
   // refresh then_bb for phi (could have changed due to code generation of then_vv).
@@ -1206,6 +1211,7 @@ LValuePtr LLVMGenerator::Visitor::BuildIfElse(llvm::Value* condition,
   // Emit the else block.
   builder->SetInsertPoint(else_bb);
   LValuePtr else_lvalue = else_func();
+  if (else_lvalue == nullptr) return nullptr;
   builder->CreateBr(merge_bb);
 
   // refresh else_bb for phi (could have changed due to code generation of else_vv).
