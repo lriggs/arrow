@@ -167,9 +167,29 @@ std::vector<NativeFunction> GetDateTimeFunctionRegistry() {
                      timestamp(), kResultNullIfNull, "to_utc_timezone_timestamp",
                      NativeFunction::kNeedsContext),
 
+      NativeFunction("to_utc_timestamp", {},
+                     DataTypeVector{timestamp(arrow::TimeUnit::MICRO), utf8()},
+                     timestamp(arrow::TimeUnit::MICRO), kResultNullIfNull,
+                     "to_utc_timezone_timestamp_us", NativeFunction::kNeedsContext),
+
+      NativeFunction("to_utc_timestamp", {},
+                     DataTypeVector{timestamp(arrow::TimeUnit::NANO), utf8()},
+                     timestamp(arrow::TimeUnit::NANO), kResultNullIfNull,
+                     "to_utc_timezone_timestamp_ns", NativeFunction::kNeedsContext),
+
       NativeFunction("from_utc_timestamp", {}, DataTypeVector{timestamp(), utf8()},
                      timestamp(), kResultNullIfNull, "from_utc_timezone_timestamp",
                      NativeFunction::kNeedsContext),
+
+      NativeFunction("from_utc_timestamp", {},
+                     DataTypeVector{timestamp(arrow::TimeUnit::MICRO), utf8()},
+                     timestamp(arrow::TimeUnit::MICRO), kResultNullIfNull,
+                     "from_utc_timezone_timestamp_us", NativeFunction::kNeedsContext),
+
+      NativeFunction("from_utc_timestamp", {},
+                     DataTypeVector{timestamp(arrow::TimeUnit::NANO), utf8()},
+                     timestamp(arrow::TimeUnit::NANO), kResultNullIfNull,
+                     "from_utc_timezone_timestamp_ns", NativeFunction::kNeedsContext),
 
       DATE_TYPES(LAST_DAY_SAFE_NULL_IF_NULL, last_day, {}),
       BASE_NUMERIC_TYPES(TO_TIME_SAFE_NULL_IF_NULL, to_time, {}),
