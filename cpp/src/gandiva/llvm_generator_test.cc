@@ -216,6 +216,15 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
     EXPECT_THAT(result.status().message(), testing::HasSubstr("mixed timestamp units"));
   }
 
+  // Single timestamp[s] — no remap (SECOND unit falls back to Java; no _s IR variants)
+  {
+    DataTypeVector params{arrow::timestamp(arrow::TimeUnit::SECOND)};
+    ASSERT_OK_AND_ASSIGN(
+        auto name,
+        LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
+    EXPECT_EQ(name, "extractDay_timestamp");
+  }
+
   // Non-ms timestamp but no corresponding IR function — name unchanged
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::MICRO)};

@@ -1281,7 +1281,8 @@ Result<std::string> LLVMGenerator::ResolveTimestampPcName(const std::string& pc_
       }
     }
   }
-  if (found_ts && ts_unit != arrow::TimeUnit::MILLI) {
+  if (found_ts
+      && (ts_unit == arrow::TimeUnit::MICRO || ts_unit == arrow::TimeUnit::NANO)) {
     std::string suffix = (ts_unit == arrow::TimeUnit::MICRO) ? "_us" : "_ns";
     std::string remapped = pc_name + suffix;
     ARROW_LOG(DEBUG) << "TimestampIR remap: " << pc_name << " -> " << remapped;
