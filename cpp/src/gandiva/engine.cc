@@ -107,6 +107,7 @@
 
 #include "gandiva/configuration.h"
 #include "gandiva/decimal_ir.h"
+#include "gandiva/timestamp_ir.h"
 #include "gandiva/exported_funcs.h"
 #include "gandiva/exported_funcs_registry.h"
 
@@ -349,6 +350,7 @@ Status Engine::LoadFunctionIRs() {
   if (!functions_loaded_) {
     ARROW_RETURN_NOT_OK(LoadPreCompiledIR());
     ARROW_RETURN_NOT_OK(DecimalIR::AddFunctions(this));
+    ARROW_RETURN_NOT_OK(TimestampIR::AddFunctions(this));
     ARROW_RETURN_NOT_OK(LoadExternalPreCompiledIR());
     functions_loaded_ = true;
   }
