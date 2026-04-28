@@ -450,6 +450,75 @@ static void TimedTestExprCompilation(benchmark::State& state) {
   }
 }
 
+// Measures Projector::Make() cost on a cache miss for a MICRO timestamp expression.
+// The iteration-varying literal forces a unique expression tree (and cache key) each
+// time, so LoadFunctionIRs() runs on every call — exposing the cost of building the
+// timestamp wrapper functions (dynamic IR in old code, precompiled in new code).
+static void TimedTestTimestampMakeUncached(benchmark::State& state) {
+  int64_t iteration = 0;
+  auto ts_field = field("ts", arrow::timestamp(arrow::TimeUnit::MICRO));
+  auto schema = arrow::schema({ts_field});
+  auto field_out = field("out", int64());
+
+  for (auto _ : state) {
+    auto literal = TreeExprBuilder::MakeLiteral(iteration);
+    auto extract_year = TreeExprBuilder::MakeFunction(
+        "extractYear", {TreeExprBuilder::MakeField(ts_field)}, int64());
+    auto add_node =
+        TreeExprBuilder::MakeFunction("add", {extract_year, literal}, int64());
+    auto expr = TreeExprBuilder::MakeExpression(add_node, field_out);
+
+    std::shared_ptr<Projector> projector;
+    ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+    ++iteration;
+  }
+}
+
+// Measures evaluation throughput of extractYear on timestamp(MICRO) data.
+// The expression uses a unique schema not shared with any other benchmark, so
+// Projector::Make() always compiles fresh. TimedEvaluate pre-generates fixed
+// batches — no result caching at any level.
+static void TimedTestTimestampEvaluate(benchmark::State& state) {
+  auto ts_field = field("ts_eval", arrow::timestamp(arrow::TimeUnit::MICRO));
+  auto schema = arrow::schema({ts_field});
+  auto pool = arrow::default_memory_pool();
+  auto field_out = field("year", int64());
+
+  auto expr = TreeExprBuilder::MakeExpression("extractYear", {ts_field}, field_out);
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+
+  Int64DataGenerator data_generator;
+  ProjectEvaluator evaluator(projector);
+
+  Status status = TimedEvaluate<arrow::TimestampType, int64_t>(
+      schema, evaluator, data_generator, pool, 1 * MILLION, 16 * THOUSAND, state);
+  ASSERT_OK(status);
+}
+
+// Measures Projector::Make() cost on a cache hit for a MICRO timestamp expression.
+// The expression is identical every iteration, so after the pre-warm call outside
+// the loop all subsequent calls go through the fast cache path without rebuilding IR.
+static void TimedTestTimestampMakeCached(benchmark::State& state) {
+  auto ts_field = field("ts", arrow::timestamp(arrow::TimeUnit::MICRO));
+  auto schema = arrow::schema({ts_field});
+  auto field_out = field("out", int64());
+
+  auto extract_year = TreeExprBuilder::MakeFunction(
+      "extractYear", {TreeExprBuilder::MakeField(ts_field)}, int64());
+  auto expr = TreeExprBuilder::MakeExpression(extract_year, field_out);
+
+  // Pre-warm the cache so the loop measures pure cache-hit overhead.
+  std::shared_ptr<Projector> warmup;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &warmup));
+
+  for (auto _ : state) {
+    std::shared_ptr<Projector> projector;
+    ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+  }
+}
+
 static void DecimalAdd2Fast(benchmark::State& state) {
   // use lesser precision to test the fast-path
   DoDecimalAdd2(state, DecimalTypeUtil::kMaxPrecision - 6, 18);
@@ -491,6 +560,9 @@ static void DecimalAdd3Large(benchmark::State& state) {
 }
 
 BENCHMARK(TimedTestExprCompilation)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestTimestampMakeUncached)->Unit(benchmark::kMillisecond);
+BENCHMARK(TimedTestTimestampMakeCached)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestTimestampEvaluate)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestAdd3)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNested)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestExtractYear)->Unit(benchmark::kMicrosecond);
