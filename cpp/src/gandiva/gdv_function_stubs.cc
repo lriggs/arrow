@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <boost/crc.hpp>
+#include <cstdio>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -192,7 +193,10 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
   GANDIVA_EXPORT                                                                    \
   int64_t gdv_fn_crc_32_##TYPE(int64_t ctx, const char* input, int32_t input_len) { \
     if (input_len < 0) {                                                            \
-      gdv_fn_context_set_error_msg(ctx, "Input length can't be negative");          \
+      char err_msg[96];                                                             \
+      snprintf(err_msg, sizeof(err_msg),                                            \
+               "CRC32: Input length can't be negative, got %d", input_len);         \
+      gdv_fn_context_set_error_msg(ctx, err_msg);                                   \
       return 0;                                                                     \
     }                                                                               \
     boost::crc_32_type result;                                                      \
@@ -241,7 +245,10 @@ GANDIVA_EXPORT
 const char* gdv_fn_base64_encode_binary(int64_t context, const char* in, int32_t in_len,
                                         int32_t* out_len) {
   if (in_len < 0) {
-    gdv_fn_context_set_error_msg(context, "Buffer length cannot be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "BASE64: input length must be non-negative, got %d", in_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
@@ -268,7 +275,10 @@ GANDIVA_EXPORT
 const char* gdv_fn_base64_decode_utf8(int64_t context, const char* in, int32_t in_len,
                                       int32_t* out_len) {
   if (in_len < 0) {
-    gdv_fn_context_set_error_msg(context, "Buffer length cannot be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "UNBASE64: input length must be non-negative, got %d", in_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
