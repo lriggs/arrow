@@ -70,6 +70,7 @@ set(SRC_FILES
     encrypt_utils_cbc.cc
     encrypt_utils_gcm.cc
     encrypt_mode_dispatcher.cc
+    expr_cse.cc
     expr_decomposer.cc
     expr_validator.cc
     expression.cc
