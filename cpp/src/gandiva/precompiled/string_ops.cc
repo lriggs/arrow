@@ -27,6 +27,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "./types.h"
 
@@ -540,7 +541,9 @@ gdv_boolean compare_lower_strings(const char* base_str, gdv_int32 base_str_len,
 FORCE_INLINE
 gdv_boolean castBIT_utf8(gdv_int64 context, const char* data, gdv_int32 data_len) {
   if (data_len <= 0) {
-    gdv_fn_context_set_error_msg(context, "Invalid value for boolean.");
+    gdv_fn_context_set_error_msg(context,
+                                 "CAST_BIT: Invalid value for boolean: empty string "
+                                 "(expected 0, 1, true, false; case-insensitive)");
     return false;
   }
 
@@ -569,7 +572,10 @@ gdv_boolean castBIT_utf8(gdv_int64 context, const char* data, gdv_int32 data_len
     if (compare_lower_strings("false", 5, trimmed_data, trimmed_len)) return false;
   }
   // if no 'true', 'false', '0' or '1' value is found, set an error
-  gdv_fn_context_set_error_msg(context, "Invalid value for boolean.");
+  std::string err_msg = "CAST_BIT: Invalid value for boolean: '" +
+                        std::string(data, data_len) +
+                        "' (expected 0, 1, true, false; case-insensitive)";
+  gdv_fn_context_set_error_msg(context, err_msg.c_str());
   return false;
 }
 
@@ -578,7 +584,10 @@ const char* castVARCHAR_bool_int64(gdv_int64 context, gdv_boolean value,
                                    gdv_int64 out_len, gdv_int32* out_length) {
   gdv_int32 len = static_cast<gdv_int32>(out_len);
   if (len < 0) {
-    gdv_fn_context_set_error_msg(context, "Output buffer length can't be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "CAST_VARCHAR: Output buffer length can't be negative, got %d", len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_length = 0;
     return "";
   }
@@ -592,90 +601,93 @@ const char* castVARCHAR_bool_int64(gdv_int64 context, gdv_boolean value,
 }
 
 // Truncates the string to given length
-#define CAST_VARCHAR_FROM_VARLEN_TYPE(TYPE)                                            \
-  FORCE_INLINE                                                                         \
-  const char* castVARCHAR_##TYPE##_int64(gdv_int64 context, const char* data,          \
-                                         gdv_int32 data_len, int64_t out_len,          \
-                                         int32_t* out_length) {                        \
-    int32_t len = static_cast<int32_t>(out_len);                                       \
-                                                                                       \
-    if (len < 0) {                                                                     \
-      gdv_fn_context_set_error_msg(context, "Output buffer length can't be negative"); \
-      *out_length = 0;                                                                 \
-      return "";                                                                       \
-    }                                                                                  \
-                                                                                       \
-    if (len >= data_len || len == 0) {                                                 \
-      *out_length = data_len;                                                          \
-      return data;                                                                     \
-    }                                                                                  \
-                                                                                       \
-    int32_t remaining = len;                                                           \
-    int32_t index = 0;                                                                 \
-    bool is_multibyte = false;                                                         \
-    do {                                                                               \
-      /* In utf8, MSB of a single byte unicode char is always 0,                       \
-       * whereas for a multibyte character the MSB of each byte is 1.                  \
-       * So for a single byte char, a bitwise-and with x80 (10000000) will be 0        \
-       * and it won't be 0 for bytes of a multibyte char.                              \
-       */                                                                              \
-      char* data_ptr = const_cast<char*>(data);                                        \
-                                                                                       \
-      /* advance byte by byte till the 8-byte boundary then advance 8 bytes */         \
-      auto num_bytes = reinterpret_cast<uintptr_t>(data_ptr) & 0x07;                   \
-      num_bytes = (8 - num_bytes) & 0x07;                                              \
-      while (num_bytes > 0) {                                                          \
-        uint8_t* ptr = reinterpret_cast<uint8_t*>(data_ptr + index);                   \
-        if ((*ptr & 0x80) != 0) {                                                      \
-          is_multibyte = true;                                                         \
-          break;                                                                       \
-        }                                                                              \
-        index++;                                                                       \
-        remaining--;                                                                   \
-        num_bytes--;                                                                   \
-      }                                                                                \
-      if (is_multibyte) break;                                                         \
-      while (remaining >= 8) {                                                         \
-        uint64_t* ptr = reinterpret_cast<uint64_t*>(data_ptr + index);                 \
-        if ((*ptr & 0x8080808080808080) != 0) {                                        \
-          is_multibyte = true;                                                         \
-          break;                                                                       \
-        }                                                                              \
-        index += 8;                                                                    \
-        remaining -= 8;                                                                \
-      }                                                                                \
-      if (is_multibyte) break;                                                         \
-      if (remaining >= 4) {                                                            \
-        uint32_t* ptr = reinterpret_cast<uint32_t*>(data_ptr + index);                 \
-        if ((*ptr & 0x80808080) != 0) break;                                           \
-        index += 4;                                                                    \
-        remaining -= 4;                                                                \
-      }                                                                                \
-      while (remaining > 0) {                                                          \
-        uint8_t* ptr = reinterpret_cast<uint8_t*>(data_ptr + index);                   \
-        if ((*ptr & 0x80) != 0) {                                                      \
-          is_multibyte = true;                                                         \
-          break;                                                                       \
-        }                                                                              \
-        index++;                                                                       \
-        remaining--;                                                                   \
-      }                                                                                \
-      if (is_multibyte) break;                                                         \
-      /* reached here; all are single byte characters */                               \
-      *out_length = len;                                                               \
-      return data;                                                                     \
-    } while (false);                                                                   \
-                                                                                       \
-    /* detected multibyte utf8 characters; slow path */                                \
-    int32_t byte_pos =                                                                 \
-        utf8_byte_pos(context, data + index, data_len - index, len - index);           \
-    if (byte_pos < 0) {                                                                \
-      *out_length = 0;                                                                 \
-      return "";                                                                       \
-    }                                                                                  \
-                                                                                       \
-    *out_length = index + byte_pos;                                                    \
-    return data;                                                                       \
+#define CAST_VARCHAR_FROM_VARLEN_TYPE(TYPE)                                          \
+  FORCE_INLINE                                                                       \
+  const char* castVARCHAR_##TYPE##_int64(gdv_int64 context, const char* data,        \
+                                         gdv_int32 data_len, int64_t out_len,        \
+                                         int32_t* out_length) {                      \
+    int32_t len = static_cast<int32_t>(out_len);                                     \
+                                                                                     \
+    if (len < 0) {                                                                   \
+      char err_msg[96];                                                              \
+      snprintf(err_msg, sizeof(err_msg),                                             \
+               "CAST_VARCHAR: Output buffer length can't be negative, got %d", len); \
+      gdv_fn_context_set_error_msg(context, err_msg);                                \
+      *out_length = 0;                                                               \
+      return "";                                                                     \
+    }                                                                                \
+                                                                                     \
+    if (len >= data_len || len == 0) {                                               \
+      *out_length = data_len;                                                        \
+      return data;                                                                   \
+    }                                                                                \
+                                                                                     \
+    int32_t remaining = len;                                                         \
+    int32_t index = 0;                                                               \
+    bool is_multibyte = false;                                                       \
+    do {                                                                             \
+      /* In utf8, MSB of a single byte unicode char is always 0,                     \
+       * whereas for a multibyte character the MSB of each byte is 1.                \
+       * So for a single byte char, a bitwise-and with x80 (10000000) will be 0      \
+       * and it won't be 0 for bytes of a multibyte char.                            \
+       */                                                                            \
+      char* data_ptr = const_cast<char*>(data);                                      \
+                                                                                     \
+      /* advance byte by byte till the 8-byte boundary then advance 8 bytes */       \
+      auto num_bytes = reinterpret_cast<uintptr_t>(data_ptr) & 0x07;                 \
+      num_bytes = (8 - num_bytes) & 0x07;                                            \
+      while (num_bytes > 0) {                                                        \
+        uint8_t* ptr = reinterpret_cast<uint8_t*>(data_ptr + index);                 \
+        if ((*ptr & 0x80) != 0) {                                                    \
+          is_multibyte = true;                                                       \
+          break;                                                                     \
+        }                                                                            \
+        index++;                                                                     \
+        remaining--;                                                                 \
+        num_bytes--;                                                                 \
+      }                                                                              \
+      if (is_multibyte) break;                                                       \
+      while (remaining >= 8) {                                                       \
+        uint64_t* ptr = reinterpret_cast<uint64_t*>(data_ptr + index);               \
+        if ((*ptr & 0x8080808080808080) != 0) {                                      \
+          is_multibyte = true;                                                       \
+          break;                                                                     \
+        }                                                                            \
+        index += 8;                                                                  \
+        remaining -= 8;                                                              \
+      }                                                                              \
+      if (is_multibyte) break;                                                       \
+      if (remaining >= 4) {                                                          \
+        uint32_t* ptr = reinterpret_cast<uint32_t*>(data_ptr + index);               \
+        if ((*ptr & 0x80808080) != 0) break;                                         \
+        index += 4;                                                                  \
+        remaining -= 4;                                                              \
+      }                                                                              \
+      while (remaining > 0) {                                                        \
+        uint8_t* ptr = reinterpret_cast<uint8_t*>(data_ptr + index);                 \
+        if ((*ptr & 0x80) != 0) {                                                    \
+          is_multibyte = true;                                                       \
+          break;                                                                     \
+        }                                                                            \
+        index++;                                                                     \
+        remaining--;                                                                 \
+      }                                                                              \
+      if (is_multibyte) break;                                                       \
+      /* reached here; all are single byte characters */                             \
+      *out_length = len;                                                             \
+      return data;                                                                   \
+    } while (false);                                                                 \
+                                                                                     \
+    /* detected multibyte utf8 characters; slow path */                              \
+    int32_t byte_pos =                                                               \
+        utf8_byte_pos(context, data + index, data_len - index, len - index);         \
+    if (byte_pos < 0) {                                                              \
+      *out_length = 0;                                                               \
+      return "";                                                                     \
+    }                                                                                \
+                                                                                     \
+    *out_length = index + byte_pos;                                                  \
+    return data;                                                                     \
   }
 
 CAST_VARCHAR_FROM_VARLEN_TYPE(utf8)
@@ -691,7 +703,10 @@ CAST_VARCHAR_FROM_VARLEN_TYPE(binary)
                                            int32_t* out_length) {                      \
     int32_t len = static_cast<int32_t>(out_len);                                       \
     if (len < 0) {                                                                     \
-      gdv_fn_context_set_error_msg(context, "Output buffer length can't be negative"); \
+      char err_msg[96];                                                                \
+      snprintf(err_msg, sizeof(err_msg),                                               \
+               "CAST_VARBINARY: Output buffer length can't be negative, got %d", len); \
+      gdv_fn_context_set_error_msg(context, err_msg);                                  \
       *out_length = 0;                                                                 \
       return "";                                                                       \
     }                                                                                  \
@@ -839,13 +854,21 @@ const char* repeat_utf8_int32(gdv_int64 context, const char* in, gdv_int32 in_le
   }
   // if the repeat number is a negative number, an error is set on context
   if (repeat_number < 0) {
-    gdv_fn_context_set_error_msg(context, "Repeat number can't be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg), "REPEAT: Repeat number can't be negative, got %d",
+             repeat_number);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
   if (ARROW_PREDICT_FALSE(
           arrow::internal::MultiplyWithOverflow(repeat_number, in_len, out_len))) {
-    gdv_fn_context_set_error_msg(context, "Would overflow maximum output size");
+    char err_msg[128];
+    snprintf(err_msg, sizeof(err_msg),
+             "REPEAT: Would overflow maximum output size "
+             "(repeat count %d * input length %d)",
+             repeat_number, in_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
@@ -1387,12 +1410,32 @@ gdv_int32 ascii_utf8(const char* data, gdv_int32 data_len) {
   return static_cast<gdv_int32>(static_cast<signed char>(data[0]));
 }
 
-// Returns the ASCII character having the binary equivalent to A.
-// If A is larger than 256 the result is equivalent to chr(A % 256).
+// Returns the UTF-8 encoding of the Unicode code point A.
+// Raises an error if A is not a valid code point, i.e. it is negative, greater
+// than 0x10FFFF, or falls within the UTF-16 surrogate range 0xD800-0xDFFF.
 FORCE_INLINE
-const char* chr_int32(gdv_int64 context, gdv_int32 in, gdv_int32* out_len) {
-  in = in % 256;
-  *out_len = 1;
+const char* chr_int64(gdv_int64 context, gdv_int64 in, gdv_int32* out_len) {
+  if (in < 0 || in > 0x10FFFF || (in >= 0xD800 && in <= 0xDFFF)) {
+    char err_msg[128];
+    snprintf(err_msg, sizeof(err_msg),
+             "Input %" PRId64
+             " is not a valid Unicode code point in the range 0 to 1114111, excluding "
+             "the surrogate range 0xD800–0xDFFF",
+             in);
+    gdv_fn_context_set_error_msg(context, err_msg);
+    *out_len = 0;
+    return "";
+  }
+
+  if (in <= 0x7F) {
+    *out_len = 1;
+  } else if (in <= 0x7FF) {
+    *out_len = 2;
+  } else if (in <= 0xFFFF) {
+    *out_len = 3;
+  } else {
+    *out_len = 4;
+  }
 
   char* ret = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, *out_len));
   if (ret == nullptr) {
@@ -1400,25 +1443,34 @@ const char* chr_int32(gdv_int64 context, gdv_int32 in, gdv_int32* out_len) {
     *out_len = 0;
     return "";
   }
-  ret[0] = char(in);
+
+  switch (*out_len) {
+    case 1:
+      ret[0] = static_cast<char>(in);
+      break;
+    case 2:
+      ret[0] = static_cast<char>(0xC0 | (in >> 6));
+      ret[1] = static_cast<char>(0x80 | (in & 0x3F));
+      break;
+    case 3:
+      ret[0] = static_cast<char>(0xE0 | (in >> 12));
+      ret[1] = static_cast<char>(0x80 | ((in >> 6) & 0x3F));
+      ret[2] = static_cast<char>(0x80 | (in & 0x3F));
+      break;
+    case 4:
+      ret[0] = static_cast<char>(0xF0 | (in >> 18));
+      ret[1] = static_cast<char>(0x80 | ((in >> 12) & 0x3F));
+      ret[2] = static_cast<char>(0x80 | ((in >> 6) & 0x3F));
+      ret[3] = static_cast<char>(0x80 | (in & 0x3F));
+      break;
+  }
   return ret;
 }
 
-// Returns the ASCII character having the binary equivalent to A.
-// If A is larger than 256 the result is equivalent to chr(A % 256).
+// Returns the UTF-8 encoding of the Unicode code point A. See chr_int64.
 FORCE_INLINE
-const char* chr_int64(gdv_int64 context, gdv_int64 in, gdv_int32* out_len) {
-  in = in % 256;
-  *out_len = 1;
-
-  char* ret = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, *out_len));
-  if (ret == nullptr) {
-    gdv_fn_context_set_error_msg(context, "Could not allocate memory for output string");
-    *out_len = 0;
-    return "";
-  }
-  ret[0] = char(in);
-  return ret;
+const char* chr_int32(gdv_int64 context, gdv_int32 in, gdv_int32* out_len) {
+  return chr_int64(context, in, out_len);
 }
 
 FORCE_INLINE
@@ -1435,7 +1487,12 @@ const char* convert_replace_invalid_fromUTF8_binary(int64_t context, const char*
                                                     int32_t char_to_replace_len,
                                                     int32_t* out_len) {
   if (char_to_replace_len > 1) {
-    gdv_fn_context_set_error_msg(context, "Replacement of multiple bytes not supported");
+    char err_msg[128];
+    snprintf(err_msg, sizeof(err_msg),
+             "CONVERT_REPLACE_INVALID_FROM_UTF8: replacement must be a single byte, "
+             "got %d bytes",
+             char_to_replace_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
@@ -1815,7 +1872,10 @@ gdv_int32 locate_utf8_utf8_int32(gdv_int64 context, const char* sub_str,
                                  gdv_int32 sub_str_len, const char* str,
                                  gdv_int32 str_len, gdv_int32 start_pos) {
   if (start_pos < 1) {
-    gdv_fn_context_set_error_msg(context, "Start position must be greater than 0");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "LOCATE: Start position must be greater than 0, got %d", start_pos);
+    gdv_fn_context_set_error_msg(context, err_msg);
     return 0;
   }
 
@@ -1858,8 +1918,16 @@ const char* replace_with_max_len_utf8_utf8_utf8(gdv_int64 context, const char* t
 
   for (; text_index <= text_len - from_str_len;) {
     if (memcmp(text + text_index, from_str, from_str_len) == 0) {
-      if (out_index + text_index - last_match_index + to_str_len > max_length) {
-        gdv_fn_context_set_error_msg(context, "Buffer overflow for output string");
+      // Compute the prospective length in gdv_int64: now that the wrapper may
+      // pass a max_length near INT_MAX, out_index can approach INT_MAX and a
+      // 32-bit sum would overflow before this guard runs -- precisely the case
+      // the guard exists to catch. (text_index - last_match_index) is a bounded
+      // non-negative span.
+      gdv_int64 prospective_len = static_cast<gdv_int64>(out_index) +
+                                  (text_index - last_match_index) + to_str_len;
+      if (prospective_len > max_length) {
+        gdv_fn_context_set_error_msg(context,
+                                     "REPLACE: Buffer overflow for output string");
         *out_len = 0;
         return "";
       }
@@ -1893,8 +1961,9 @@ const char* replace_with_max_len_utf8_utf8_utf8(gdv_int64 context, const char* t
     return text;
   }
 
-  if (out_index + text_len - last_match_index > max_length) {
-    gdv_fn_context_set_error_msg(context, "Buffer overflow for output string");
+  gdv_int64 final_len = static_cast<gdv_int64>(out_index) + (text_len - last_match_index);
+  if (final_len > max_length) {
+    gdv_fn_context_set_error_msg(context, "REPLACE: Buffer overflow for output string");
     *out_len = 0;
     return "";
   }
@@ -1909,9 +1978,55 @@ const char* replace_utf8_utf8_utf8(gdv_int64 context, const char* text,
                                    gdv_int32 text_len, const char* from_str,
                                    gdv_int32 from_str_len, const char* to_str,
                                    gdv_int32 to_str_len, gdv_int32* out_len) {
+  // Size the output buffer so large results are not capped by an arbitrary
+  // limit, while avoiding a second pass over the input in the common case.
+  //   - No replacement possible, or the result can only shrink/stay equal:
+  //     text_len is a safe exact-or-upper bound, no scan.
+  //   - Bounded-ratio expansion (per-match growth <= match length, upper bound
+  //     fits within kMaxEagerAllocBytes): use an O(1) upper bound that assumes
+  //     every position matches, skipping the match-counting scan.
+  //   - Otherwise: count non-overlapping matches for the exact output size.
+  static constexpr gdv_int64 kMaxEagerAllocBytes = 32 * 1024 * 1024;  // 32 MB
+  gdv_int64 max_length;
+  if (from_str_len <= 0 || from_str_len > text_len || to_str_len <= from_str_len) {
+    max_length = text_len;
+  } else {
+    gdv_int32 delta = to_str_len - from_str_len;  // > 0
+    gdv_int64 upper_bound = static_cast<gdv_int64>(text_len) +
+                            (static_cast<gdv_int64>(text_len) / from_str_len) * delta;
+    if (delta <= from_str_len && upper_bound <= kMaxEagerAllocBytes) {
+      max_length = upper_bound;
+    } else {
+      gdv_int64 num_matches = 0;
+      for (gdv_int32 i = 0; i <= text_len - from_str_len;) {
+        if (memcmp(text + i, from_str, from_str_len) == 0) {
+          num_matches++;
+          i += from_str_len;
+        } else {
+          i++;
+        }
+      }
+      // No matches: the result is the input unchanged; return it without calling
+      // the helper (which would otherwise scan the text a second time).
+      if (num_matches == 0) {
+        *out_len = text_len;
+        return text;
+      }
+      max_length = static_cast<gdv_int64>(text_len) + num_matches * delta;
+    }
+  }
+  // Gandiva variable-length output uses int32 offsets, so a single output string
+  // cannot exceed INT_MAX bytes. Report this explicitly instead of letting the
+  // cast below wrap silently.
+  if (max_length > INT_MAX) {
+    gdv_fn_context_set_error_msg(context,
+                                 "REPLACE: output string exceeds maximum size of 2GB");
+    *out_len = 0;
+    return "";
+  }
   return replace_with_max_len_utf8_utf8_utf8(context, text, text_len, from_str,
-                                             from_str_len, to_str, to_str_len, 65535,
-                                             out_len);
+                                             from_str_len, to_str, to_str_len,
+                                             static_cast<gdv_int32>(max_length), out_len);
 }
 
 // Returns the quoted string (Includes escape character for any single quotes)
@@ -2315,62 +2430,75 @@ const char* binary_string(gdv_int64 context, const char* text, gdv_int32 text_le
   return ret;
 }
 
-#define CAST_INT_BIGINT_VARBINARY(OUT_TYPE, TYPE_NAME)                                 \
-  FORCE_INLINE                                                                         \
-  OUT_TYPE                                                                             \
-  cast##TYPE_NAME##_varbinary(gdv_int64 context, const char* in, int32_t in_len) {     \
-    if (in_len == 0) {                                                                 \
-      gdv_fn_context_set_error_msg(context, "Can't cast an empty string.");            \
-      return -1;                                                                       \
-    }                                                                                  \
-    char sign = in[0];                                                                 \
-                                                                                       \
-    bool negative = false;                                                             \
-    if (sign == '-') {                                                                 \
-      negative = true;                                                                 \
-      /* Ignores the sign char in the hexadecimal string */                            \
-      in++;                                                                            \
-      in_len--;                                                                        \
-    }                                                                                  \
-                                                                                       \
-    if (negative && in_len == 0) {                                                     \
-      gdv_fn_context_set_error_msg(context,                                            \
-                                   "Can't cast hexadecimal with only a minus sign.");  \
-      return -1;                                                                       \
-    }                                                                                  \
-                                                                                       \
-    OUT_TYPE result = 0;                                                               \
-    int digit;                                                                         \
-                                                                                       \
-    int read_index = 0;                                                                \
-    while (read_index < in_len) {                                                      \
-      char c1 = in[read_index];                                                        \
-      if (isxdigit(c1)) {                                                              \
-        digit = to_binary_from_hex(c1);                                                \
-                                                                                       \
-        OUT_TYPE next = result * 16 - digit;                                           \
-                                                                                       \
-        if (next > result) {                                                           \
-          gdv_fn_context_set_error_msg(context, "Integer overflow.");                  \
-          return -1;                                                                   \
-        }                                                                              \
-        result = next;                                                                 \
-        read_index++;                                                                  \
-      } else {                                                                         \
-        gdv_fn_context_set_error_msg(context,                                          \
-                                     "The hexadecimal given has invalid characters."); \
-        return -1;                                                                     \
-      }                                                                                \
-    }                                                                                  \
-    if (!negative) {                                                                   \
-      result *= -1;                                                                    \
-                                                                                       \
-      if (result < 0) {                                                                \
-        gdv_fn_context_set_error_msg(context, "Integer overflow.");                    \
-        return -1;                                                                     \
-      }                                                                                \
-    }                                                                                  \
-    return result;                                                                     \
+#define CAST_INT_BIGINT_VARBINARY(OUT_TYPE, TYPE_NAME)                                  \
+  FORCE_INLINE                                                                          \
+  OUT_TYPE                                                                              \
+  cast##TYPE_NAME##_varbinary(gdv_int64 context, const char* in, int32_t in_len) {      \
+    const char* in_original = in;                                                       \
+    int32_t in_len_original = in_len;                                                   \
+    if (in_len == 0) {                                                                  \
+      gdv_fn_context_set_error_msg(                                                     \
+          context, "CAST_" #TYPE_NAME "_FROM_HEX: can't cast an empty string");         \
+      return -1;                                                                        \
+    }                                                                                   \
+    char sign = in[0];                                                                  \
+                                                                                        \
+    bool negative = false;                                                              \
+    if (sign == '-') {                                                                  \
+      negative = true;                                                                  \
+      /* Ignores the sign char in the hexadecimal string */                             \
+      in++;                                                                             \
+      in_len--;                                                                         \
+    }                                                                                   \
+                                                                                        \
+    if (negative && in_len == 0) {                                                      \
+      gdv_fn_context_set_error_msg(                                                     \
+          context, "CAST_" #TYPE_NAME                                                   \
+                   "_FROM_HEX: can't cast hexadecimal with only a minus sign");         \
+      return -1;                                                                        \
+    }                                                                                   \
+                                                                                        \
+    OUT_TYPE result = 0;                                                                \
+    int digit;                                                                          \
+                                                                                        \
+    int read_index = 0;                                                                 \
+    while (read_index < in_len) {                                                       \
+      char c1 = in[read_index];                                                         \
+      if (isxdigit(c1)) {                                                               \
+        digit = to_binary_from_hex(c1);                                                 \
+                                                                                        \
+        OUT_TYPE next = result * 16 - digit;                                            \
+                                                                                        \
+        if (next > result) {                                                            \
+          std::string err_msg =                                                         \
+              "CAST_" #TYPE_NAME                                                        \
+              "_FROM_HEX: integer overflow while reading hex value '" +                 \
+              std::string(in_original, in_len_original) + "'";                          \
+          gdv_fn_context_set_error_msg(context, err_msg.c_str());                       \
+          return -1;                                                                    \
+        }                                                                               \
+        result = next;                                                                  \
+        read_index++;                                                                   \
+      } else {                                                                          \
+        std::string err_msg = "CAST_" #TYPE_NAME                                        \
+                              "_FROM_HEX: invalid character in hex value '" +           \
+                              std::string(in_original, in_len_original) + "'";          \
+        gdv_fn_context_set_error_msg(context, err_msg.c_str());                         \
+        return -1;                                                                      \
+      }                                                                                 \
+    }                                                                                   \
+    if (!negative) {                                                                    \
+      result *= -1;                                                                     \
+                                                                                        \
+      if (result < 0) {                                                                 \
+        std::string err_msg = "CAST_" #TYPE_NAME                                        \
+                              "_FROM_HEX: integer overflow while reading hex value '" + \
+                              std::string(in_original, in_len_original) + "'";          \
+        gdv_fn_context_set_error_msg(context, err_msg.c_str());                         \
+        return -1;                                                                      \
+      }                                                                                 \
+    }                                                                                   \
+    return result;                                                                      \
   }
 
 CAST_INT_BIGINT_VARBINARY(int32_t, INT)
