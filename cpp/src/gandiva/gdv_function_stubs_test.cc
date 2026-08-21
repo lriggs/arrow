@@ -1597,6 +1597,47 @@ TEST(TestGdvFnStubs, TestMaskOtherChar) {
   EXPECT_TRUE(ctx.get_error().empty()) << ctx.get_error();
 }
 
+// The output-size bound multiplies the widest replacement by the input length, both of
+// which come from user-supplied SQL expressions. In 32-bit math the product wraps
+// negative and SimpleArena::Allocate winds its cursor backwards, returning a pointer the
+// masking loop then writes past. It must be a clean error instead.
+TEST(TestGdvFnStubs, TestMaskOutputSizeOverflow) {
+  gandiva::ExecutionContext ctx;
+  int64_t ctx_ptr = reinterpret_cast<int64_t>(&ctx);
+  int32_t out_len = 0;
+
+  // 40,000 * 70,000 = 2.8e9, past INT32_MAX, so the guard must fire before any
+  // allocation is attempted.
+  const std::string data(40000, 'a');
+  const std::string replacement(70000, 'z');
+  auto data_len = static_cast<int32_t>(data.length());
+  auto repl_len = static_cast<int32_t>(replacement.length());
+
+  const char* result =
+      mask_utf8_utf8_utf8_utf8(ctx_ptr, data.data(), data_len, replacement.data(),
+                               repl_len, "x", 1, "n", 1, &out_len);
+  EXPECT_EQ(result, nullptr);
+  EXPECT_EQ(out_len, 0);
+  EXPECT_THAT(ctx.get_error(), ::testing::HasSubstr("exceed the maximum size"));
+  ctx.Reset();
+
+  // Same via the otherChar overload, where `other` is the widest argument.
+  result = mask_utf8_utf8_utf8_utf8_utf8(ctx_ptr, data.data(), data_len, "X", 1, "x", 1,
+                                         "n", 1, replacement.data(), repl_len, &out_len);
+  EXPECT_EQ(result, nullptr);
+  EXPECT_EQ(out_len, 0);
+  EXPECT_THAT(ctx.get_error(), ::testing::HasSubstr("exceed the maximum size"));
+  ctx.Reset();
+
+  // A replacement long enough to widen the output but well inside the bound still works,
+  // so the guard is not over-eager.
+  const std::string small(4, 'Z');
+  result = mask_utf8_utf8_utf8_utf8(ctx_ptr, "Ab1", 3, small.data(), 4, "x", 1, "n", 1,
+                                    &out_len);
+  EXPECT_EQ(std::string(result, out_len), "ZZZZxn");
+  EXPECT_TRUE(ctx.get_error().empty()) << ctx.get_error();
+}
+
 // Per the Hive MASK specification, only uppercase letters (Lu), lowercase letters
 // (Ll) and decimal digits (Nd) are masked. Every other Unicode general category
 // passes through unchanged. This test pins that contract for every mask variant,

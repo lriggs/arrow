@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <boost/crc.hpp>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -573,11 +574,23 @@ static const char* mask_impl(int64_t context, const char* data, int32_t data_len
     other = nullptr;
   }
 
-  int32_t max_length =
+  // Every replacement is at least one byte and so is every input character, so
+  // max_repl_len * data_len bounds the output. Both factors are user-supplied
+  // expressions, so compute in 64 bits: in 32-bit math a long replacement over a long
+  // input wraps negative, and SimpleArena::Allocate would then wind its cursor back by
+  // that amount and hand out a pointer the masking loop writes past.
+  const int32_t max_repl_len =
       std::max(other == nullptr ? 0 : other_length,
-               std::max(upper_length, std::max(lower_length, num_length))) *
-      data_len;
-  char* out = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, max_length));
+               std::max(upper_length, std::max(lower_length, num_length)));
+  const int64_t max_length = static_cast<int64_t>(max_repl_len) * data_len;
+  if (max_length > std::numeric_limits<int32_t>::max()) {
+    gdv_fn_context_set_error_msg(context, "Mask output would exceed the maximum size");
+    *out_len = 0;
+    return nullptr;
+  }
+
+  char* out = reinterpret_cast<char*>(
+      gdv_fn_context_arena_malloc(context, static_cast<int32_t>(max_length)));
   if (out == nullptr) {
     gdv_fn_context_set_error_msg(context, "Could not allocate memory for output string");
     *out_len = 0;
