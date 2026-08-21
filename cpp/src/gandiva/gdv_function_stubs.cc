@@ -21,7 +21,7 @@
 
 #include <algorithm>
 #include <boost/crc.hpp>
-#include <limits>
+#include <cstdio>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -193,7 +193,10 @@ int32_t gdv_fn_populate_varlen_vector(int64_t context_ptr, int8_t* data_ptr,
   GANDIVA_EXPORT                                                                    \
   int64_t gdv_fn_crc_32_##TYPE(int64_t ctx, const char* input, int32_t input_len) { \
     if (input_len < 0) {                                                            \
-      gdv_fn_context_set_error_msg(ctx, "Input length can't be negative");          \
+      char err_msg[96];                                                             \
+      snprintf(err_msg, sizeof(err_msg),                                            \
+               "CRC32: Input length can't be negative, got %d", input_len);         \
+      gdv_fn_context_set_error_msg(ctx, err_msg);                                   \
       return 0;                                                                     \
     }                                                                               \
     boost::crc_32_type result;                                                      \
@@ -222,14 +225,19 @@ char* gdv_fn_dec_to_string(int64_t context, int64_t x_high, uint64_t x_low,
                            int32_t x_scale, int32_t* dec_str_len) {
   arrow::Decimal128 dec(arrow::BasicDecimal128(x_high, x_low));
   std::string dec_str = dec.ToString(x_scale);
-  *dec_str_len = static_cast<int32_t>(dec_str.length());
-  char* ret = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, *dec_str_len));
+  auto dec_str_length = static_cast<int32_t>(dec_str.length());
+  char* ret =
+      reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, dec_str_length));
   if (ret == nullptr) {
     std::string err_msg = "Could not allocate memory for string: " + dec_str;
     gdv_fn_context_set_error_msg(context, err_msg.data());
+    // Report zero length so a caller can never combine a positive length with the
+    // null buffer (the original bug: memcpy(dst, nullptr, positive_len) -> SIGSEGV).
+    *dec_str_len = 0;
     return nullptr;
   }
-  memcpy(ret, dec_str.data(), *dec_str_len);
+  *dec_str_len = dec_str_length;
+  memcpy(ret, dec_str.data(), dec_str_length);
   return ret;
 }
 
@@ -237,7 +245,10 @@ GANDIVA_EXPORT
 const char* gdv_fn_base64_encode_binary(int64_t context, const char* in, int32_t in_len,
                                         int32_t* out_len) {
   if (in_len < 0) {
-    gdv_fn_context_set_error_msg(context, "Buffer length cannot be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "BASE64: input length must be non-negative, got %d", in_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
@@ -264,7 +275,10 @@ GANDIVA_EXPORT
 const char* gdv_fn_base64_decode_utf8(int64_t context, const char* in, int32_t in_len,
                                       int32_t* out_len) {
   if (in_len < 0) {
-    gdv_fn_context_set_error_msg(context, "Buffer length cannot be negative");
+    char err_msg[96];
+    snprintf(err_msg, sizeof(err_msg),
+             "UNBASE64: input length must be non-negative, got %d", in_len);
+    gdv_fn_context_set_error_msg(context, err_msg);
     *out_len = 0;
     return "";
   }
