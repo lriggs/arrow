@@ -17,11 +17,14 @@
 
 #include "gandiva/llvm_generator.h"
 
+#include <algorithm>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "arrow/type.h"
+#include "arrow/util/bit_util.h"
 #include "arrow/util/logging_internal.h"
 #include "gandiva/bitmap_accumulator.h"
 #include "gandiva/decimal_ir.h"
@@ -33,6 +36,47 @@
 #include "gandiva/timestamp_ir.h"
 
 namespace gandiva {
+
+namespace {
+
+/// Packs num_bytes bytes, each 0 or 1, into a bitmap. bytes must be readable up to
+/// the next multiple of 8, with the padding zeroed. Writes whole bytes of bitmap.
+void PackBytesToBits(const uint8_t* bytes, int64_t num_bytes, uint8_t* bitmap) {
+  for (int64_t i = 0; i < num_bytes; i += 8) {
+    uint64_t word;
+    memcpy(&word, bytes + i, sizeof(word));
+    word = arrow::bit_util::FromLittleEndian(word);
+    // Moves byte k's low bit to bit (56 + k); every partial product lands on a distinct
+    // bit, so there are no carries.
+    bitmap[i / 8] = static_cast<uint8_t>((word * 0x0102040810204080ULL) >> 56);
+  }
+}
+
+/// Sets bit i of dst_bitmap to the bit of src_bitmap at indices[i], for i < num_indices.
+/// Writes whole bytes, so trailing bits of the last byte are cleared.
+template <typename C_TYPE>
+void GatherBits(const uint8_t* src_bitmap, const C_TYPE* indices, int64_t num_indices,
+                uint8_t* dst_bitmap) {
+  int64_t i = 0;
+  for (; i + 8 <= num_indices; i += 8) {
+    uint8_t byte = 0;
+    for (int j = 0; j < 8; ++j) {
+      byte |= static_cast<uint8_t>(arrow::bit_util::GetBit(src_bitmap, indices[i + j]))
+              << j;
+    }
+    dst_bitmap[i / 8] = byte;
+  }
+  if (i < num_indices) {
+    uint8_t byte = 0;
+    for (int j = 0; i + j < num_indices; ++j) {
+      byte |= static_cast<uint8_t>(arrow::bit_util::GetBit(src_bitmap, indices[i + j]))
+              << j;
+    }
+    dst_bitmap[i / 8] = byte;
+  }
+}
+
+}  // namespace
 
 #define ADD_TRACE(...)     \
   if (enable_ir_traces_) { \
@@ -145,6 +189,7 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
                            selection_vector_mode_, " received vector with mode ", mode);
   }
 
+  std::vector<uint8_t> bool_bytes;
   for (auto& compiled_expr : compiled_exprs_) {
     // generate data/offset vectors.
     const uint8_t* selection_buffer = nullptr;
@@ -154,11 +199,31 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
       num_output_rows = selection_vector->GetNumSlots();
     }
 
+    // Boolean outputs are written by the generated code as one byte per row into a
+    // scratch buffer, and packed into the output bitmap after the call.
+    const bool bool_output = compiled_expr->output()->Type()->id() == arrow::Type::BOOL;
+    const int out_data_idx = compiled_expr->output()->data_idx();
+    uint8_t* out_bitmap = nullptr;
+    int64_t out_bitmap_offset = 0;
+    if (bool_output) {
+      out_bitmap = eval_batch->GetBuffer(out_data_idx);
+      out_bitmap_offset = eval_batch->GetBufferOffset(out_data_idx);
+      // Padded to a multiple of 8, with the padding zeroed, for PackBytesToBits().
+      bool_bytes.resize(arrow::bit_util::RoundUpToMultipleOf8(num_output_rows));
+      std::fill(bool_bytes.begin() + num_output_rows, bool_bytes.end(), 0);
+      eval_batch->SetBuffer(out_data_idx, bool_bytes.data(), 0);
+    }
+
     EvalFunc jit_function = compiled_expr->GetJITFunction(mode);
     jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
                  eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
                  selection_buffer, (int64_t)eval_batch->GetExecutionContext(),
                  num_output_rows);
+
+    if (bool_output) {
+      eval_batch->SetBuffer(out_data_idx, out_bitmap, out_bitmap_offset);
+      PackBytesToBits(bool_bytes.data(), num_output_rows, out_bitmap);
+    }
 
     // check for execution errors
     ARROW_RETURN_IF(
@@ -401,7 +466,12 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
   builder->SetInsertPoint(loop_body_tail);
 
   if (output_type_id == arrow::Type::BOOL) {
-    SetPackedBitValue(output_ref, loop_var, output_value->data());
+    // Store one byte per row rather than doing a read-modify-write of a packed bit,
+    // which serializes the loop and blocks vectorization. Execute() points this buffer
+    // at a byte-per-row scratch area and packs it into the output bitmap afterwards.
+    auto slot_offset = builder->CreateGEP(types()->i8_type(), output_ref, loop_var);
+    builder->CreateStore(builder->CreateZExt(output_value->data(), types()->i8_type()),
+                         slot_offset);
   } else if (output_type_id == arrow::Type::DECIMAL) {
     // Arrow decimal128 data is only 8-byte aligned, not 16-byte aligned.
     // Use CreateAlignedStore with 8-byte alignment to match Arrow's actual alignment.
@@ -522,12 +592,21 @@ void LLVMGenerator::ComputeBitMapsForExpr(const CompiledExpr& compiled_expr,
     uint8_t* temp_bitmap = bit_map_holder.GetLocalBitMap(0);
     accumulator.ComputeResult(temp_bitmap);
 
+    const uint8_t* indices = selection_vector->GetBuffer().data();
     auto num_out_records = selection_vector->GetNumSlots();
-    // the memset isn't required, doing it just for valgrind.
-    memset(dst_bitmap, 0, arrow::bit_util::BytesForBits(num_out_records));
-    for (auto i = 0; i < num_out_records; ++i) {
-      auto bit = arrow::bit_util::GetBit(temp_bitmap, selection_vector->GetIndex(i));
-      arrow::bit_util::SetBitTo(dst_bitmap, i, bit);
+    switch (selection_vector->GetMode()) {
+      case SelectionVector::MODE_UINT16:
+        GatherBits(temp_bitmap, reinterpret_cast<const uint16_t*>(indices),
+                   num_out_records, dst_bitmap);
+        break;
+      case SelectionVector::MODE_UINT32:
+        GatherBits(temp_bitmap, reinterpret_cast<const uint32_t*>(indices),
+                   num_out_records, dst_bitmap);
+        break;
+      default:
+        GatherBits(temp_bitmap, reinterpret_cast<const uint64_t*>(indices),
+                   num_out_records, dst_bitmap);
+        break;
     }
   }
 }

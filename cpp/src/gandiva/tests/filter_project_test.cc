@@ -16,6 +16,8 @@
 // under the License.
 
 #include <gtest/gtest.h>
+
+#include <random>
 #include "arrow/memory_pool.h"
 #include "gandiva/filter.h"
 #include "gandiva/projector.h"
@@ -273,4 +275,88 @@ TEST_F(TestFilterProject, TestSimpleIf) {
   // Validate results
   EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
 }
+// Boolean outputs are generated as bytes and packed into bitmaps after the jitted loop.
+// Check the packing at sizes around byte/word boundaries, with nulls, several boolean
+// outputs from one projector, and a projection over a filter's selection vector.
+TEST_F(TestFilterProject, TestBooleanOutputsAtBoundarySizes) {
+  auto field0 = field("f0", int32());
+  auto field1 = field("f1", int32());
+  auto schema = arrow::schema({field0, field1});
+
+  auto lt_expr = TreeExprBuilder::MakeExpression("less_than", {field0, field1},
+                                                 field("lt", arrow::boolean()));
+  auto eq_expr = TreeExprBuilder::MakeExpression("equal", {field0, field1},
+                                                 field("eq", arrow::boolean()));
+  auto add_expr =
+      TreeExprBuilder::MakeExpression("add", {field0, field1}, field("sum", int32()));
+  auto gt_expr = TreeExprBuilder::MakeExpression("greater_than", {field0, field1},
+                                                 field("gt", arrow::boolean()));
+  auto condition = TreeExprBuilder::MakeCondition("less_than", {field0, field1});
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {lt_expr, eq_expr, add_expr}, TestConfiguration(),
+                            &projector));
+  std::shared_ptr<Filter> filter;
+  ASSERT_OK(Filter::Make(schema, condition, TestConfiguration(), &filter));
+  std::shared_ptr<Projector> sv_projector;
+  ASSERT_OK(Projector::Make(schema, {gt_expr}, SelectionVector::MODE_UINT16,
+                            TestConfiguration(), &sv_projector));
+
+  std::mt19937 rng(42);
+  for (int num_records : {1, 7, 8, 9, 15, 63, 64, 65, 127, 1000, 4097}) {
+    std::vector<int32_t> v0(num_records), v1(num_records);
+    std::vector<bool> valid0(num_records), valid1(num_records);
+    for (int i = 0; i < num_records; ++i) {
+      v0[i] = static_cast<int32_t>(rng() % 4);
+      v1[i] = static_cast<int32_t>(rng() % 4);
+      valid0[i] = rng() % 5 != 0;
+      valid1[i] = rng() % 5 != 0;
+    }
+    auto in_batch = arrow::RecordBatch::Make(
+        schema, num_records,
+        {MakeArrowArrayInt32(v0, valid0), MakeArrowArrayInt32(v1, valid1)});
+
+    std::vector<bool> lt(num_records), eq(num_records), gt(num_records),
+        valid(num_records);
+    std::vector<int32_t> sum(num_records);
+    std::vector<int> selected;
+    for (int i = 0; i < num_records; ++i) {
+      valid[i] = valid0[i] && valid1[i];
+      lt[i] = valid[i] && v0[i] < v1[i];
+      eq[i] = valid[i] && v0[i] == v1[i];
+      gt[i] = valid[i] && v0[i] > v1[i];
+      sum[i] = valid[i] ? v0[i] + v1[i] : 0;
+      if (lt[i]) {
+        selected.push_back(i);
+      }
+    }
+
+    arrow::ArrayVector outputs;
+    ASSERT_OK(projector->Evaluate(*in_batch, pool_, &outputs));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayBool(lt, valid), outputs.at(0));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayBool(eq, valid), outputs.at(1));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayInt32(sum, valid), outputs.at(2));
+
+    std::shared_ptr<SelectionVector> selection_vector;
+    ASSERT_OK(SelectionVector::MakeInt16(num_records, pool_, &selection_vector));
+    ASSERT_OK(filter->Evaluate(*in_batch, selection_vector));
+    ASSERT_EQ(selection_vector->GetNumSlots(), static_cast<int64_t>(selected.size()));
+    for (size_t i = 0; i < selected.size(); ++i) {
+      ASSERT_EQ(selection_vector->GetIndex(i), static_cast<uint64_t>(selected[i]));
+    }
+
+    if (!selected.empty()) {
+      std::vector<bool> exp_gt, exp_valid;
+      for (int idx : selected) {
+        exp_gt.push_back(gt[idx]);
+        exp_valid.push_back(valid[idx]);
+      }
+      arrow::ArrayVector sv_outputs;
+      ASSERT_OK(
+          sv_projector->Evaluate(*in_batch, selection_vector.get(), pool_, &sv_outputs));
+      EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayBool(exp_gt, exp_valid), sv_outputs.at(0));
+    }
+  }
+}
+
 }  // namespace gandiva

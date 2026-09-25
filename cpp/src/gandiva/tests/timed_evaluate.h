@@ -82,6 +82,29 @@ class FilterEvaluator : public BaseEvaluator {
   std::shared_ptr<SelectionVector> selection_;
 };
 
+// Runs a filter, then evaluates the projector over the rows the filter selected.
+class FilterProjectEvaluator : public BaseEvaluator {
+ public:
+  FilterProjectEvaluator(std::shared_ptr<Filter> filter,
+                         std::shared_ptr<Projector> projector)
+      : filter_(filter), projector_(projector) {}
+
+  Status Evaluate(arrow::RecordBatch& batch, arrow::MemoryPool* pool) override {
+    if (selection_ == nullptr || selection_->GetMaxSlots() < batch.num_rows()) {
+      ARROW_RETURN_NOT_OK(
+          SelectionVector::MakeInt16(batch.num_rows(), pool, &selection_));
+    }
+    ARROW_RETURN_NOT_OK(filter_->Evaluate(batch, selection_));
+    arrow::ArrayVector outputs;
+    return projector_->Evaluate(batch, selection_.get(), pool, &outputs);
+  }
+
+ private:
+  std::shared_ptr<Filter> filter_;
+  std::shared_ptr<Projector> projector_;
+  std::shared_ptr<SelectionVector> selection_;
+};
+
 template <typename TYPE, typename C_TYPE>
 Status TimedEvaluate(SchemaPtr schema, BaseEvaluator& evaluator,
                      DataGenerator<C_TYPE>& data_generator, arrow::MemoryPool* pool,

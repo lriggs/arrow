@@ -87,8 +87,18 @@ gdv_int32 mem_compare(const char* left, gdv_int32 left_len, const char* right,
     return mem_compare(left, left_len, right, right_len) OP 0;               \
   }
 
-VAR_LEN_OP_TYPES(BINARY_RELATIONAL, equal, ==)
-VAR_LEN_OP_TYPES(BINARY_RELATIONAL, not_equal, !=)
+// Equality can be decided from the lengths alone when they differ.
+#define BINARY_EQUALITY(NAME, TYPE, NEGATE)                                     \
+  FORCE_INLINE                                                                  \
+  bool NAME##_##TYPE##_##TYPE(const gdv_##TYPE left, gdv_int32 left_len,        \
+                              const gdv_##TYPE right, gdv_int32 right_len) {    \
+    return NEGATE(left_len == right_len && memcmp(left, right, left_len) == 0); \
+  }
+
+VAR_LEN_OP_TYPES(BINARY_EQUALITY, equal, )
+VAR_LEN_OP_TYPES(BINARY_EQUALITY, not_equal, !)
+
+#undef BINARY_EQUALITY
 VAR_LEN_OP_TYPES(BINARY_RELATIONAL, less_than, <)
 VAR_LEN_OP_TYPES(BINARY_RELATIONAL, less_than_or_equal_to, <=)
 VAR_LEN_OP_TYPES(BINARY_RELATIONAL, greater_than, >)
@@ -128,10 +138,25 @@ bool ends_with_utf8_utf8(const char* data, gdv_int32 data_len, const char* suffi
 FORCE_INLINE
 bool is_substr_utf8_utf8(const char* data, int32_t data_len, const char* substr,
                          int32_t substr_len) {
-  for (int32_t i = 0; i <= data_len - substr_len; ++i) {
-    if (memcmp(data + i, substr, substr_len) == 0) {
+  if (substr_len <= 0) {
+    return data_len >= substr_len;
+  }
+  if (data_len < substr_len) {
+    return false;
+  }
+  // Use memchr to skip to each candidate first byte, then compare the rest.
+  const char first = substr[0];
+  const char* cur = data;
+  const char* last = data + (data_len - substr_len);
+  while (cur <= last) {
+    cur = static_cast<const char*>(memchr(cur, first, last - cur + 1));
+    if (cur == nullptr) {
+      return false;
+    }
+    if (memcmp(cur + 1, substr + 1, substr_len - 1) == 0) {
       return true;
     }
+    ++cur;
   }
   return false;
 }

@@ -21,6 +21,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <limits>
 
 #include "arrow/util/logging.h"
@@ -592,6 +593,52 @@ TEST(TestGdvFnStubs, TestSubstringIndex) {
                                    std::numeric_limits<int32_t>::min(), &out_len);
   EXPECT_EQ(std::string(out_str, out_len), "a.b.c");
   EXPECT_FALSE(ctx.has_error());
+}
+
+TEST(TestGdvFnStubs, TestUpperLowerAsciiBlocks) {
+  gandiva::ExecutionContext ctx;
+  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
+  gdv_int32 out_len = 0;
+
+  // Every ASCII byte, so each 8-byte block covers the case-range boundaries.
+  std::string all_ascii;
+  for (int c = 0; c < 128; ++c) {
+    all_ascii.push_back(static_cast<char>(c));
+  }
+  std::string expected_upper, expected_lower;
+  for (char c : all_ascii) {
+    expected_upper.push_back(static_cast<char>(std::toupper(c)));
+    expected_lower.push_back(static_cast<char>(std::tolower(c)));
+  }
+  // Run at every alignment/length so the block loop and the scalar tail both get used.
+  for (size_t start = 0; start < 8; ++start) {
+    std::string in = all_ascii.substr(start);
+    const char* out_str = gdv_fn_upper_utf8(ctx_ptr, in.data(),
+                                            static_cast<int32_t>(in.size()), &out_len);
+    EXPECT_EQ(std::string(out_str, out_len), expected_upper.substr(start));
+    out_str = gdv_fn_lower_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()),
+                                &out_len);
+    EXPECT_EQ(std::string(out_str, out_len), expected_lower.substr(start));
+    EXPECT_FALSE(ctx.has_error());
+  }
+
+  // A multibyte character after, and inside, ASCII blocks.
+  std::string in = "abcdefghIJKLMNOPqrstuvwxyzmünchenXYZ";
+  const char* out_str =
+      gdv_fn_upper_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()), &out_len);
+  EXPECT_EQ(std::string(out_str, out_len), "ABCDEFGHIJKLMNOPQRSTUVWXYZMÜNCHENXYZ");
+  out_str =
+      gdv_fn_lower_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()), &out_len);
+  EXPECT_EQ(std::string(out_str, out_len), "abcdefghijklmnopqrstuvwxyzmünchenxyz");
+  EXPECT_FALSE(ctx.has_error());
+
+  // Invalid utf8 after a full ASCII block is still reported.
+  std::string bad = "abcdefghij\xff";
+  out_str =
+      gdv_fn_upper_utf8(ctx_ptr, bad.data(), static_cast<int32_t>(bad.size()), &out_len);
+  EXPECT_EQ(out_len, 0);
+  EXPECT_TRUE(ctx.has_error());
+  ctx.Reset();
 }
 
 TEST(TestGdvFnStubs, TestUpper) {
