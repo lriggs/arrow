@@ -18,6 +18,7 @@
 #include "gandiva/gdv_function_stubs.h"
 
 #include <utf8proc.h>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -34,6 +35,36 @@
 #include "gandiva/formatting_utils.h"
 #include "gandiva/precompiled/types.h"
 #include "gandiva/regex_functions_holder.h"
+
+namespace {
+
+// Converts the leading run of ASCII bytes of data into out, eight bytes at a time,
+// flipping the case of bytes in [kLow, kHigh]. Stops at the first 8-byte block that
+// contains a non-ASCII byte. Returns the number of bytes converted.
+template <char kLow, char kHigh>
+int32_t ConvertAsciiCaseBlocks(const char* data, int32_t data_len, char* out) {
+  constexpr uint64_t kOnes = 0x0101010101010101ULL;
+  constexpr uint64_t kHighBits = 0x8080808080808080ULL;
+  int32_t i = 0;
+  for (; i + 8 <= data_len; i += 8) {
+    uint64_t word;
+    memcpy(&word, data + i, sizeof(word));
+    if (word & kHighBits) {
+      break;
+    }
+    // Every byte is < 0x80, so these per-byte additions never carry into the next
+    // byte. The high bit of each byte ends up set iff byte >= kLow (resp. > kHigh).
+    uint64_t at_least_low = word + kOnes * static_cast<uint8_t>(0x80 - kLow);
+    uint64_t above_high = word + kOnes * static_cast<uint8_t>(0x80 - kHigh - 1);
+    uint64_t in_range = (at_least_low ^ above_high) & kHighBits;
+    // 0x80 >> 2 == 0x20, the ASCII case bit.
+    word ^= in_range >> 2;
+    memcpy(out + i, &word, sizeof(word));
+  }
+  return i;
+}
+
+}  // namespace
 
 extern "C" {
 
@@ -244,10 +275,13 @@ const char* gdv_fn_lower_utf8(int64_t context, const char* data, int32_t data_le
     return "";
   }
 
-  int32_t char_len, out_char_len, out_idx = 0;
+  int32_t char_len, out_char_len;
   uint32_t char_codepoint;
 
-  for (int32_t i = 0; i < data_len; i += char_len) {
+  // Fast path for the leading ASCII run.
+  int32_t out_idx = ConvertAsciiCaseBlocks<'A', 'Z'>(data, data_len, out);
+
+  for (int32_t i = out_idx; i < data_len; i += char_len) {
     char_len = gdv_fn_utf8_char_length(data[i]);
     // For single byte characters:
     // If it is an uppercase ASCII character, set the output to its corresponding
@@ -316,10 +350,13 @@ const char* gdv_fn_upper_utf8(int64_t context, const char* data, int32_t data_le
     return "";
   }
 
-  int32_t char_len, out_char_len, out_idx = 0;
+  int32_t char_len, out_char_len;
   uint32_t char_codepoint;
 
-  for (int32_t i = 0; i < data_len; i += char_len) {
+  // Fast path for the leading ASCII run.
+  int32_t out_idx = ConvertAsciiCaseBlocks<'a', 'z'>(data, data_len, out);
+
+  for (int32_t i = out_idx; i < data_len; i += char_len) {
     char_len = gdv_fn_utf8_char_length(data[i]);
     // For single byte characters:
     // If it is a lowercase ASCII character, set the output to its corresponding uppercase

@@ -211,6 +211,20 @@ TEST(TestStringOps, TestIsSubstr) {
   EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "world", 5));
   EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "lo wo", 5));
   EXPECT_FALSE(is_substr_utf8_utf8("hello world", 11, "adsed", 5));
+  EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "", 0));
+  EXPECT_TRUE(is_substr_utf8_utf8("", 0, "", 0));
+  EXPECT_FALSE(is_substr_utf8_utf8("", 0, "a", 1));
+  EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "hello world", 11));
+  EXPECT_FALSE(is_substr_utf8_utf8("hello world", 11, "hello world!", 12));
+  EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "h", 1));
+  EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "d", 1));
+  // The first byte of the pattern repeats before the real match.
+  EXPECT_TRUE(is_substr_utf8_utf8("aaaab", 5, "aab", 3));
+  EXPECT_FALSE(is_substr_utf8_utf8("aaaaa", 5, "aab", 3));
+  // A candidate first byte near the end of data, with too few bytes left to match.
+  EXPECT_FALSE(is_substr_utf8_utf8("xxxxwo", 6, "wor", 3));
+  // Only a prefix of data is valid; a match past data_len must not be found.
+  EXPECT_FALSE(is_substr_utf8_utf8("hello world", 5, "o w", 3));
   EXPECT_FALSE(is_substr_utf8_utf8("hel", 3, "hello", 5));
   EXPECT_TRUE(is_substr_utf8_utf8("hello", 5, "hello", 5));
   EXPECT_TRUE(is_substr_utf8_utf8("hello world", 11, "", 0));

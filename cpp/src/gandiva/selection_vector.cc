@@ -31,6 +31,60 @@ namespace gandiva {
 
 constexpr SelectionVector::Mode SelectionVector::kAllModes[kNumModes];
 
+namespace {
+
+// Appends the index of every set bit in bitmap (up to and including max_bitmap_index)
+// through set_index. Returns the number of indices written, or -1 if more than
+// max_slots bits are set.
+template <typename SetIndexFn>
+int64_t PopulateIndicesFromBitMap(const uint8_t* bitmap, int64_t bitmap_size,
+                                  int64_t max_bitmap_index, int64_t max_slots,
+                                  SetIndexFn&& set_index) {
+  // jump 8-bytes at a time, add the index corresponding to each valid bit to the
+  // the selection vector.
+  int64_t selection_idx = 0;
+  const uint64_t* bitmap_64 = reinterpret_cast<const uint64_t*>(bitmap);
+  for (int64_t bitmap_idx = 0; bitmap_idx < bitmap_size / 8; ++bitmap_idx) {
+    uint64_t current_word = arrow::bit_util::ToLittleEndian(bitmap_64[bitmap_idx]);
+
+    while (current_word != 0) {
+      int pos_in_word = arrow::bit_util::CountTrailingZeros(current_word);
+
+      int64_t pos_in_bitmap = bitmap_idx * 64 + pos_in_word;
+      if (pos_in_bitmap > max_bitmap_index) {
+        // the bitmap may be slightly larger for alignment/padding.
+        return selection_idx;
+      }
+
+      if (ARROW_PREDICT_FALSE(selection_idx >= max_slots)) {
+        return -1;
+      }
+
+      set_index(selection_idx, pos_in_bitmap);
+      ++selection_idx;
+
+      // clear the lowest set bit.
+      current_word &= current_word - 1;
+    }
+  }
+  return selection_idx;
+}
+
+template <typename C_TYPE>
+int64_t PopulateTypedIndicesFromBitMap(SelectionVector* selection_vector,
+                                       const uint8_t* bitmap, int64_t bitmap_size,
+                                       int64_t max_bitmap_index) {
+  auto* raw_data =
+      reinterpret_cast<C_TYPE*>(selection_vector->GetBuffer().mutable_data());
+  return PopulateIndicesFromBitMap(
+      bitmap, bitmap_size, max_bitmap_index, selection_vector->GetMaxSlots(),
+      [raw_data](int64_t index, int64_t value) {
+        raw_data[index] = static_cast<C_TYPE>(value);
+      });
+}
+
+}  // namespace
+
 Status SelectionVector::PopulateFromBitMap(const uint8_t* bitmap, int64_t bitmap_size,
                                            int64_t max_bitmap_index) {
   const uint64_t max_idx = static_cast<uint64_t>(max_bitmap_index);
@@ -43,46 +97,35 @@ Status SelectionVector::PopulateFromBitMap(const uint8_t* bitmap, int64_t bitmap
       Status::Invalid("max_bitmap_index ", max_idx, " must be <= maxSupportedValue ",
                       GetMaxSupportedValue(), " in selection vector"));
 
-  int64_t max_slots = GetMaxSlots();
-
-  // jump 8-bytes at a time, add the index corresponding to each valid bit to the
-  // the selection vector.
-  int64_t selection_idx = 0;
-  const uint64_t* bitmap_64 = reinterpret_cast<const uint64_t*>(bitmap);
-  for (int64_t bitmap_idx = 0; bitmap_idx < bitmap_size / 8; ++bitmap_idx) {
-    uint64_t current_word = arrow::bit_util::ToLittleEndian(bitmap_64[bitmap_idx]);
-
-    while (current_word != 0) {
-#if defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4146)
-#endif
-      // MSVC warns about negating an unsigned type. We suppress it for now
-      uint64_t highest_only = current_word & -current_word;
-
-#if defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
-
-      int pos_in_word = arrow::bit_util::CountTrailingZeros(highest_only);
-
-      int64_t pos_in_bitmap = bitmap_idx * 64 + pos_in_word;
-      if (pos_in_bitmap > max_bitmap_index) {
-        // the bitmap may be slightly larger for alignment/padding.
-        break;
-      }
-
-      ARROW_RETURN_IF(selection_idx >= max_slots,
-                      Status::Invalid("selection vector has no remaining slots"));
-
-      SetIndex(selection_idx, pos_in_bitmap);
-      ++selection_idx;
-
-      current_word ^= highest_only;
-    }
+  // Write the indices straight into the buffer when possible, avoiding a virtual
+  // SetIndex() call per selected row.
+  auto generic_set_index = [this](int64_t index, int64_t value) {
+    SetIndex(index, value);
+  };
+  const auto mode = GetBuffer().is_mutable() ? GetMode() : MODE_NONE;
+  int64_t num_slots;
+  switch (mode) {
+    case MODE_UINT16:
+      num_slots = PopulateTypedIndicesFromBitMap<uint16_t>(this, bitmap, bitmap_size,
+                                                           max_bitmap_index);
+      break;
+    case MODE_UINT32:
+      num_slots = PopulateTypedIndicesFromBitMap<uint32_t>(this, bitmap, bitmap_size,
+                                                           max_bitmap_index);
+      break;
+    case MODE_UINT64:
+      num_slots = PopulateTypedIndicesFromBitMap<uint64_t>(this, bitmap, bitmap_size,
+                                                           max_bitmap_index);
+      break;
+    default:
+      num_slots = PopulateIndicesFromBitMap(bitmap, bitmap_size, max_bitmap_index,
+                                            GetMaxSlots(), generic_set_index);
+      break;
   }
+  ARROW_RETURN_IF(num_slots < 0,
+                  Status::Invalid("selection vector has no remaining slots"));
 
-  SetNumSlots(selection_idx);
+  SetNumSlots(num_slots);
   return Status::OK();
 }
 

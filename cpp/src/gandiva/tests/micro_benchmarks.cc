@@ -159,6 +159,68 @@ static void TimedTestFilterAdd2(benchmark::State& state) {
   ASSERT_TRUE(status.ok());
 }
 
+static void TimedTestFilterProjectAdd2(benchmark::State& state) {
+  // schema for input fields
+  auto field0 = field("f0", int64());
+  auto field1 = field("f1", int64());
+  auto field2 = field("f2", int64());
+  auto schema = arrow::schema({field0, field1, field2});
+  auto pool_ = arrow::default_memory_pool();
+
+  // filter : f0 < f2 (selects roughly half the rows)
+  auto less_than = TreeExprBuilder::MakeFunction(
+      "less_than",
+      {TreeExprBuilder::MakeField(field0), TreeExprBuilder::MakeField(field2)},
+      boolean());
+  auto condition = TreeExprBuilder::MakeCondition(less_than);
+
+  std::shared_ptr<Filter> filter;
+  ASSERT_OK(Filter::Make(schema, condition, TestConfiguration(), &filter));
+
+  // project : f0 + f1 over the selected rows
+  auto sum_expr = TreeExprBuilder::MakeExpression(
+      TreeExprBuilder::MakeFunction(
+          "add", {TreeExprBuilder::MakeField(field0), TreeExprBuilder::MakeField(field1)},
+          int64()),
+      field("add", int64()));
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {sum_expr}, SelectionVector::MODE_UINT16,
+                            TestConfiguration(), &projector));
+
+  Int64DataGenerator data_generator;
+  FilterProjectEvaluator evaluator(filter, projector);
+
+  Status status = TimedEvaluate<arrow::Int64Type, int64_t>(
+      schema, evaluator, data_generator, pool_, MILLION, 16 * THOUSAND, state);
+  ASSERT_TRUE(status.ok());
+}
+
+static void TimedTestLower(benchmark::State& state) {
+  // schema for input fields
+  auto field_a = field("a", arrow::utf8());
+  auto schema = arrow::schema({field_a});
+  auto pool_ = arrow::default_memory_pool();
+
+  // output field
+  auto field_res = field("res", utf8());
+
+  // lower(a) with a string output
+  auto node_a = TreeExprBuilder::MakeField(field_a);
+  auto lower = TreeExprBuilder::MakeFunction("lower", {node_a}, utf8());
+  auto expr = TreeExprBuilder::MakeExpression(lower, field_res);
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+
+  FastUtf8DataGenerator data_generator(64);
+  ProjectEvaluator evaluator(projector);
+
+  Status status = TimedEvaluate<arrow::StringType, std::string>(
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state);
+  ASSERT_OK(status);
+}
+
 static void TimedTestFilterLike(benchmark::State& state) {
   // schema for input fields
   auto fielda = field("a", utf8());
@@ -495,11 +557,13 @@ BENCHMARK(TimedTestAdd3)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNested)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestExtractYear)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterAdd2)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestFilterProjectAdd2)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterLike)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestCastFloatFromString)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestCastIntFromString)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestAllocs)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestOutputStringAllocs)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestLower)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestMultiOr)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestInExpr)->Unit(benchmark::kMicrosecond);
 BENCHMARK(DecimalAdd2Fast)->Unit(benchmark::kMicrosecond);
