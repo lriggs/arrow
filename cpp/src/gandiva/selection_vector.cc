@@ -76,11 +76,11 @@ int64_t PopulateTypedIndicesFromBitMap(SelectionVector* selection_vector,
                                        int64_t max_bitmap_index) {
   auto* raw_data =
       reinterpret_cast<C_TYPE*>(selection_vector->GetBuffer().mutable_data());
-  return PopulateIndicesFromBitMap(
-      bitmap, bitmap_size, max_bitmap_index, selection_vector->GetMaxSlots(),
-      [raw_data](int64_t index, int64_t value) {
-        raw_data[index] = static_cast<C_TYPE>(value);
-      });
+  return PopulateIndicesFromBitMap(bitmap, bitmap_size, max_bitmap_index,
+                                   selection_vector->GetMaxSlots(),
+                                   [raw_data](int64_t index, int64_t value) {
+                                     raw_data[index] = static_cast<C_TYPE>(value);
+                                   });
 }
 
 }  // namespace

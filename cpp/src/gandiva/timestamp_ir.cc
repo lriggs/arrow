@@ -55,13 +55,17 @@ static std::unordered_set<std::string> BuildAllFunctionNames() {
   const char* suffixes[] = {"_us", "_ns"};
 
   // Fixed-unit timestampadd (4 arg-order variants each)
-  static const struct { const char* name; } kFixedAdds[] = {
+  static const struct {
+    const char* name;
+  } kFixedAdds[] = {
       {"timestampaddSecond"}, {"timestampaddMinute"}, {"timestampaddHour"},
       {"timestampaddDay"},    {"timestampaddWeek"},
   };
   // Calendar-based timestampadd (4 arg-order variants each)
   static const char* kCalendarAdds[] = {
-      "timestampaddMonth", "timestampaddQuarter", "timestampaddYear",
+      "timestampaddMonth",
+      "timestampaddQuarter",
+      "timestampaddYear",
   };
   // Extract functions
   static const char* kExtracts[] = {
@@ -88,9 +92,8 @@ static std::unordered_set<std::string> BuildAllFunctionNames() {
     const char* name;
     bool count_first;
   } kDateArith[] = {
-      {"date_add", true},  {"add", true},      {"date_add", false},
-      {"add", false},      {"date_sub", false}, {"subtract", false},
-      {"date_diff", false},
+      {"date_add", true},  {"add", true},       {"date_add", false},  {"add", false},
+      {"date_sub", false}, {"subtract", false}, {"date_diff", false},
   };
 
   for (const auto* sfx : suffixes) {

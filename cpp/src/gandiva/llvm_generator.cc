@@ -1345,7 +1345,7 @@ LValuePtr LLVMGenerator::Visitor::BuildValueAndValidity(const ValueValidityPair&
 }
 
 Result<std::string> LLVMGenerator::ResolveTimestampPcName(const std::string& pc_name,
-                                                           const DataTypeVector& params) {
+                                                          const DataTypeVector& params) {
   arrow::TimeUnit::type ts_unit = arrow::TimeUnit::MILLI;
   bool found_ts = false;
   for (const auto& param : params) {
@@ -1362,8 +1362,8 @@ Result<std::string> LLVMGenerator::ResolveTimestampPcName(const std::string& pc_
       }
     }
   }
-  if (found_ts
-      && (ts_unit == arrow::TimeUnit::MICRO || ts_unit == arrow::TimeUnit::NANO)) {
+  if (found_ts &&
+      (ts_unit == arrow::TimeUnit::MICRO || ts_unit == arrow::TimeUnit::NANO)) {
     std::string suffix = (ts_unit == arrow::TimeUnit::MICRO) ? "_us" : "_ns";
     std::string remapped = pc_name + suffix;
     ARROW_LOG(DEBUG) << "TimestampIR remap: " << pc_name << " -> " << remapped;

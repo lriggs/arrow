@@ -1133,9 +1133,9 @@ static int64_t EvalDateArith(const std::string& func_name, arrow::TimeUnit::type
 }
 
 // Helper: evaluate func(int64 count, timestamp) -> timestamp
-static int64_t EvalCountFirstI64(const std::string& func_name,
-                                  arrow::TimeUnit::type unit, int64_t count,
-                                  int64_t ts_value, arrow::MemoryPool* pool) {
+static int64_t EvalCountFirstI64(const std::string& func_name, arrow::TimeUnit::type unit,
+                                 int64_t count, int64_t ts_value,
+                                 arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f_count = field("count", int64());
   auto f_ts = field("ts", ts_type);
@@ -1168,8 +1168,7 @@ static int64_t EvalCountFirstI64(const std::string& func_name,
 
 // Helper: evaluate func(timestamp, int64 count) -> timestamp
 static int64_t EvalTsFirstI64(const std::string& func_name, arrow::TimeUnit::type unit,
-                               int64_t ts_value, int64_t count,
-                               arrow::MemoryPool* pool) {
+                              int64_t ts_value, int64_t count, arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f_ts = field("ts", ts_type);
   auto f_count = field("count", int64());
@@ -1202,7 +1201,7 @@ static int64_t EvalTsFirstI64(const std::string& func_name, arrow::TimeUnit::typ
 
 // Helper: evaluate last_day(timestamp) -> date64 (returned as int64 millis)
 static int64_t EvalLastDayFrom(arrow::TimeUnit::type unit, int64_t ts_value,
-                                arrow::MemoryPool* pool) {
+                               arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f0 = field("f0", ts_type);
   auto schema = arrow::schema({f0});
@@ -1227,8 +1226,8 @@ static int64_t EvalLastDayFrom(arrow::TimeUnit::type unit, int64_t ts_value,
 
 // Helper: evaluate to_utc_timestamp / from_utc_timestamp(timestamp, tz) -> timestamp
 static int64_t EvalTimezone(const std::string& func_name, arrow::TimeUnit::type unit,
-                             int64_t ts_value, const std::string& tz,
-                             arrow::MemoryPool* pool) {
+                            int64_t ts_value, const std::string& tz,
+                            arrow::MemoryPool* pool) {
   auto ts_type = timestamp(unit);
   auto f_ts = field("ts", ts_type);
   auto f_tz = field("tz", arrow::utf8());
@@ -1358,7 +1357,8 @@ TEST_F(DateTimeTestProjector, TestNegativeTimestampPrecisions) {
   // extractSecond: neg_millis is at 06:30:00.000 (second=0).
   // neg_millis-1 would be 06:29:59.999 (second=59), so this assertion distinguishes
   // floor(neg_micros/1000)==neg_millis (correct) from floor==neg_millis-1 (wrong sign).
-  auto second_ms = EvalExtract("extractSecond", arrow::TimeUnit::MILLI, neg_millis, pool_);
+  auto second_ms =
+      EvalExtract("extractSecond", arrow::TimeUnit::MILLI, neg_millis, pool_);
   EXPECT_EQ(second_ms,
             EvalExtract("extractSecond", arrow::TimeUnit::MICRO, neg_micros, pool_));
   EXPECT_EQ(second_ms,
@@ -1594,8 +1594,10 @@ TEST_F(DateTimeTestProjector, TestExtractRemainingFunctions) {
   EXPECT_EQ(166, EvalExtract("extractDoy", arrow::TimeUnit::MICRO, kTestMicros, pool_));
   EXPECT_EQ(166, EvalExtract("extractDoy", arrow::TimeUnit::NANO, kTestNanos, pool_));
   // kTestMillis / 1000 = 1623767445 seconds since epoch
-  EXPECT_EQ(1623767445, EvalExtract("extractEpoch", arrow::TimeUnit::MICRO, kTestMicros, pool_));
-  EXPECT_EQ(1623767445, EvalExtract("extractEpoch", arrow::TimeUnit::NANO, kTestNanos, pool_));
+  EXPECT_EQ(1623767445,
+            EvalExtract("extractEpoch", arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(1623767445,
+            EvalExtract("extractEpoch", arrow::TimeUnit::NANO, kTestNanos, pool_));
   // June = Q2
   EXPECT_EQ(2, EvalExtract("extractQuarter", arrow::TimeUnit::MICRO, kTestMicros, pool_));
   EXPECT_EQ(2, EvalExtract("extractQuarter", arrow::TimeUnit::NANO, kTestNanos, pool_));
@@ -1610,8 +1612,7 @@ TEST_F(DateTimeTestProjector, TestDateTruncRemainingFunctions) {
   };
   for (const char* name : names) {
     int64_t ms_val = EvalTrunc(name, arrow::TimeUnit::MILLI, kTestMillis, pool_);
-    EXPECT_EQ(ms_val * 1000,
-              EvalTrunc(name, arrow::TimeUnit::MICRO, kTestMicros, pool_))
+    EXPECT_EQ(ms_val * 1000, EvalTrunc(name, arrow::TimeUnit::MICRO, kTestMicros, pool_))
         << name;
     EXPECT_EQ(ms_val * 1000000LL,
               EvalTrunc(name, arrow::TimeUnit::NANO, kTestNanos, pool_))
@@ -1631,17 +1632,16 @@ TEST_F(DateTimeTestProjector, TestDateTruncRemainingFunctions) {
   EXPECT_EQ(0, trunc_m_us % (60LL * 1000000));
 }
 
-// kFixedAdds: all 5 functions × us/ns × all 4 arg patterns (int32/int64, count-first/ts-first)
+// kFixedAdds: all 5 functions × us/ns × all 4 arg patterns (int32/int64,
+// count-first/ts-first)
 TEST_F(DateTimeTestProjector, TestFixedAddAllArgVariants) {
   struct FixedCase {
     const char* name;
     int64_t seconds;
   };
   const FixedCase cases[] = {
-      {"timestampaddSecond", 1},
-      {"timestampaddMinute", 60},
-      {"timestampaddHour", 3600},
-      {"timestampaddDay", 86400},
+      {"timestampaddSecond", 1},    {"timestampaddMinute", 60},
+      {"timestampaddHour", 3600},   {"timestampaddDay", 86400},
       {"timestampaddWeek", 604800},
   };
   for (int count : {3, -3}) {
@@ -1653,25 +1653,25 @@ TEST_F(DateTimeTestProjector, TestFixedAddAllArgVariants) {
       int64_t delta_ns = count64 * c.seconds * 1000000000LL;
 
       // microseconds — all 4 arg patterns
-      EXPECT_EQ(kTestMicros + delta_us,
-                EvalTimestampadd(c.name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
+      EXPECT_EQ(kTestMicros + delta_us, EvalTimestampadd(c.name, arrow::TimeUnit::MICRO,
+                                                         count32, kTestMicros, pool_))
           << c.name << " count=" << count;
-      EXPECT_EQ(kTestMicros + delta_us,
-                EvalCountFirstI64(c.name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
+      EXPECT_EQ(kTestMicros + delta_us, EvalCountFirstI64(c.name, arrow::TimeUnit::MICRO,
+                                                          count64, kTestMicros, pool_))
           << c.name << " count=" << count;
-      EXPECT_EQ(kTestMicros + delta_us,
-                EvalDateArith(c.name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
+      EXPECT_EQ(kTestMicros + delta_us, EvalDateArith(c.name, arrow::TimeUnit::MICRO,
+                                                      kTestMicros, count32, pool_))
           << c.name << " count=" << count;
-      EXPECT_EQ(kTestMicros + delta_us,
-                EvalTsFirstI64(c.name, arrow::TimeUnit::MICRO, kTestMicros, count64, pool_))
+      EXPECT_EQ(kTestMicros + delta_us, EvalTsFirstI64(c.name, arrow::TimeUnit::MICRO,
+                                                       kTestMicros, count64, pool_))
           << c.name << " count=" << count;
 
       // nanoseconds — all 4 arg patterns
-      EXPECT_EQ(kTestNanos + delta_ns,
-                EvalTimestampadd(c.name, arrow::TimeUnit::NANO, count32, kTestNanos, pool_))
+      EXPECT_EQ(kTestNanos + delta_ns, EvalTimestampadd(c.name, arrow::TimeUnit::NANO,
+                                                        count32, kTestNanos, pool_))
           << c.name << " count=" << count;
-      EXPECT_EQ(kTestNanos + delta_ns,
-                EvalCountFirstI64(c.name, arrow::TimeUnit::NANO, count64, kTestNanos, pool_))
+      EXPECT_EQ(kTestNanos + delta_ns, EvalCountFirstI64(c.name, arrow::TimeUnit::NANO,
+                                                         count64, kTestNanos, pool_))
           << c.name << " count=" << count;
       EXPECT_EQ(kTestNanos + delta_ns,
                 EvalDateArith(c.name, arrow::TimeUnit::NANO, kTestNanos, count32, pool_))
@@ -1707,8 +1707,8 @@ TEST_F(DateTimeTestProjector, TestCalendarAddAllArgVariants) {
     EXPECT_EQ(expected_us,
               EvalTimestampadd(name, arrow::TimeUnit::MICRO, count32, kTestMicros, pool_))
         << name;
-    EXPECT_EQ(expected_us,
-              EvalCountFirstI64(name, arrow::TimeUnit::MICRO, count64, kTestMicros, pool_))
+    EXPECT_EQ(expected_us, EvalCountFirstI64(name, arrow::TimeUnit::MICRO, count64,
+                                             kTestMicros, pool_))
         << name;
     EXPECT_EQ(expected_us,
               EvalDateArith(name, arrow::TimeUnit::MICRO, kTestMicros, count32, pool_))
@@ -1755,17 +1755,14 @@ TEST_F(DateTimeTestProjector, TestTimestampdiffAllFunctions) {
       {"timestampdiffYear", 730LL * 86400000, 2},
   };
   for (const auto& c : cases) {
-    EXPECT_EQ(c.expected,
-              EvalDiff(c.name, arrow::TimeUnit::MILLI, kTestMillis,
-                       kTestMillis + c.delta_ms, pool_))
+    EXPECT_EQ(c.expected, EvalDiff(c.name, arrow::TimeUnit::MILLI, kTestMillis,
+                                   kTestMillis + c.delta_ms, pool_))
         << c.name;
-    EXPECT_EQ(c.expected,
-              EvalDiff(c.name, arrow::TimeUnit::MICRO, kTestMicros,
-                       kTestMicros + c.delta_ms * 1000, pool_))
+    EXPECT_EQ(c.expected, EvalDiff(c.name, arrow::TimeUnit::MICRO, kTestMicros,
+                                   kTestMicros + c.delta_ms * 1000, pool_))
         << c.name;
-    EXPECT_EQ(c.expected,
-              EvalDiff(c.name, arrow::TimeUnit::NANO, kTestNanos,
-                       kTestNanos + c.delta_ms * 1000000LL, pool_))
+    EXPECT_EQ(c.expected, EvalDiff(c.name, arrow::TimeUnit::NANO, kTestNanos,
+                                   kTestNanos + c.delta_ms * 1000000LL, pool_))
         << c.name;
   }
 }
@@ -1775,11 +1772,11 @@ TEST_F(DateTimeTestProjector, TestTimestampdiffAllFunctions) {
 TEST_F(DateTimeTestProjector, TestDatediffTwoTimestamps) {
   int64_t five_days_ms = 5LL * 86400000;
   EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::MILLI, kTestMillis,
-                          kTestMillis + five_days_ms, pool_));
+                         kTestMillis + five_days_ms, pool_));
   EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::MICRO, kTestMicros,
-                          kTestMicros + five_days_ms * 1000, pool_));
+                         kTestMicros + five_days_ms * 1000, pool_));
   EXPECT_EQ(-5, EvalDiff("datediff", arrow::TimeUnit::NANO, kTestNanos,
-                          kTestNanos + five_days_ms * 1000000LL, pool_));
+                         kTestNanos + five_days_ms * 1000000LL, pool_));
 }
 
 // kCastsFromTs: last_day(timestamp) -> date64 for ms/us/ns
@@ -1787,8 +1784,10 @@ TEST_F(DateTimeTestProjector, TestLastDayAllPrecisions) {
   time_t epoch = Epoch();
   // kTestMillis = 2021-06-15 -> last day of June = 2021-06-30
   int64_t expected_date_ms = MillisSince(epoch, 2021, 6, 30, 0, 0, 0, 0);
-  EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::MILLI, kTestMillis, pool_));
-  EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::MICRO, kTestMicros, pool_));
+  EXPECT_EQ(expected_date_ms,
+            EvalLastDayFrom(arrow::TimeUnit::MILLI, kTestMillis, pool_));
+  EXPECT_EQ(expected_date_ms,
+            EvalLastDayFrom(arrow::TimeUnit::MICRO, kTestMicros, pool_));
   EXPECT_EQ(expected_date_ms, EvalLastDayFrom(arrow::TimeUnit::NANO, kTestNanos, pool_));
 }
 
@@ -1854,7 +1853,8 @@ TEST_F(DateTimeTestProjector, TestDateArithAllVariants) {
             EvalTsFirstI64("date_diff", arrow::TimeUnit::NANO, kTestNanos, n64, pool_));
 
   // Sub-ms data is preserved through date arithmetic
-  int64_t r_us = EvalDateArith("date_add", arrow::TimeUnit::MICRO, kTestMicros, n32, pool_);
+  int64_t r_us =
+      EvalDateArith("date_add", arrow::TimeUnit::MICRO, kTestMicros, n32, pool_);
   EXPECT_EQ(kSubMs, r_us % 1000);
   int64_t r_ns = EvalDateArith("date_add", arrow::TimeUnit::NANO, kTestNanos, n32, pool_);
   EXPECT_EQ(kSubUs, r_ns % 1000);
@@ -1865,33 +1865,33 @@ TEST_F(DateTimeTestProjector, TestTimezoneAllPrecisions) {
   // Asia/Kolkata is UTC+5:30 (fixed offset, no DST), so from_utc adds the offset
   // and to_utc subtracts it. The offset is a whole-second value, so sub-ms data
   // is preserved through the split-recombine IR pattern.
-  int64_t offset_us = (5LL * 3600 + 30 * 60) * 1000000;   // 5:30 in micros
+  int64_t offset_us = (5LL * 3600 + 30 * 60) * 1000000;  // 5:30 in micros
   int64_t offset_ns = (5LL * 3600 + 30 * 60) * 1000000000LL;
 
   // from_utc: UTC -> local (add offset)
   int64_t r_us = EvalTimezone("from_utc_timestamp", arrow::TimeUnit::MICRO, kTestMicros,
-                               "Asia/Kolkata", pool_);
+                              "Asia/Kolkata", pool_);
   EXPECT_EQ(kTestMicros + offset_us, r_us);
   EXPECT_EQ(kSubMs, r_us % 1000);  // sub-ms preserved
 
   int64_t r_ns = EvalTimezone("from_utc_timestamp", arrow::TimeUnit::NANO, kTestNanos,
-                               "Asia/Kolkata", pool_);
+                              "Asia/Kolkata", pool_);
   EXPECT_EQ(kTestNanos + offset_ns, r_ns);
   EXPECT_EQ(kSubUs, r_ns % 1000);  // sub-us preserved
 
   // to_utc: local -> UTC (subtract offset). Round-trip recovers original.
   EXPECT_EQ(kTestMicros, EvalTimezone("to_utc_timestamp", arrow::TimeUnit::MICRO, r_us,
-                                       "Asia/Kolkata", pool_));
-  EXPECT_EQ(kTestNanos, EvalTimezone("to_utc_timestamp", arrow::TimeUnit::NANO, r_ns,
                                       "Asia/Kolkata", pool_));
+  EXPECT_EQ(kTestNanos, EvalTimezone("to_utc_timestamp", arrow::TimeUnit::NANO, r_ns,
+                                     "Asia/Kolkata", pool_));
 }
 
 // Edge case: fixed add crosses a second boundary — extractSecond reflects new second
 // and sub-ms fraction is unchanged.
 TEST_F(DateTimeTestProjector, TestFixedAddCrossesSecondBoundary) {
   // kTestMicros = 14:30:45.123456. After +1 second: 14:30:46.123456
-  int64_t r_us =
-      EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::MICRO, 1, kTestMicros, pool_);
+  int64_t r_us = EvalTimestampadd("timestampaddSecond", arrow::TimeUnit::MICRO, 1,
+                                  kTestMicros, pool_);
   EXPECT_EQ(kTestMicros + 1000000LL, r_us);
   EXPECT_EQ(46, EvalExtract("extractSecond", arrow::TimeUnit::MICRO, r_us, pool_));
   EXPECT_EQ(kSubMs, r_us % 1000);
@@ -1910,17 +1910,17 @@ TEST_F(DateTimeTestProjector, TestFixedAddCrossesSecondBoundary) {
 TEST_F(DateTimeTestProjector, TestTimestampdiffSubSecondSensitivity) {
   // 999 ms apart in micros -> same second -> diff = 0
   EXPECT_EQ(0, EvalDiff("timestampdiffSecond", arrow::TimeUnit::MICRO, kTestMicros,
-                         kTestMicros + 999000LL, pool_));
+                        kTestMicros + 999000LL, pool_));
   // just over 1 second apart in micros (millis difference = 1000) -> diff = 1
   EXPECT_EQ(1, EvalDiff("timestampdiffSecond", arrow::TimeUnit::MICRO, kTestMicros,
-                         kTestMicros + 1000001LL, pool_));
+                        kTestMicros + 1000001LL, pool_));
 
   // 999 ms apart in nanos -> diff = 0
   EXPECT_EQ(0, EvalDiff("timestampdiffSecond", arrow::TimeUnit::NANO, kTestNanos,
-                         kTestNanos + 999000000LL, pool_));
+                        kTestNanos + 999000000LL, pool_));
   // just over 1 second apart in nanos -> diff = 1
   EXPECT_EQ(1, EvalDiff("timestampdiffSecond", arrow::TimeUnit::NANO, kTestNanos,
-                         kTestNanos + 1000000001LL, pool_));
+                        kTestNanos + 1000000001LL, pool_));
 }
 
 // NOTE: TIME type handling

@@ -68,7 +68,7 @@ class GANDIVA_EXPORT LLVMGenerator {
   /// when the function's params include a non-millisecond timestamp argument.
   /// Returns an error if params contain mixed timestamp TimeUnits.
   static Result<std::string> ResolveTimestampPcName(const std::string& pc_name,
-                                                     const DataTypeVector& params);
+                                                    const DataTypeVector& params);
 
   /// \brief Build the code for the expression trees for default mode with a LLVM
   /// ObjectCache. Each element in the vector represents an expression tree

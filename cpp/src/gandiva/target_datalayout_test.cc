@@ -19,10 +19,12 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/TargetParser/Host.h>
 
-#include "gandiva/llv#include "gandiva/llv#include "gandiva/llv#include "gandiva/llv#include "gandiva/llv#include "gandiva/llvbl#include "gandiva/llv#include "gandiva/llv#include "gandiva/};#include "gandiva/llv#include "gandiva/llv#include "gandiva/llta#include "gandiva/llv#include "gandiva/llv#include "ganes#include "gandiva/llv#include "gandiva/llv#include "gandiva/Ta#include "gandiva/llv#include "gandiva/llv#include   #include "gandiva/llv#include "gandiva/llv#include "gandiva/ER#include "gandiva/llv#include "gandiva/llv#include "gandiva/ig#ra#include "gandiva/llv#include "gandiva/llv#inc g#ne#include "gandiva/llv#include "gandiva/llv#include "gandiva/_N#include "gandiva/llv#include "gandiva/llv#include "gandiva/l
-  const llvm::DataLayout& data_layout = module->getDataLayo  const llvm::DataLayout& data_layout = module->getDataLayoRepresentation();
+#include "gandiva/llv#include " gandiva / llv #include "gandiva/llv#include " gandiva / llv #include "gandiva/llv#include " gandiva / llvbl #include "gandiva/llv#include " gandiva / llv #include "gandiva/};#include " gandiva / llv #include "gandiva/llv#include " gandiva / llta #include "gandiva/llv#include " gandiva / llv #include "ganes#include " gandiva / llv #include "gandiva/llv#include " gandiva / Ta #include "gandiva/llv#include " gandiva / llv #include #include "gandiva/llv#include " gandiva / llv #include "gandiva/ER#include " gandiva / llv #include "gandiva/llv#include " gandiva / ig #ra #include "gandiva/llv#include " gandiva / llv #inc g #ne #include "gandiva/llv#include " gandiva / llv #include "gandiva/_N#include " gandiva / llv #include "gandiva/llv#include " gandiva / l
+const llvm::DataLayout& data_layout =
+    module->const getDataLayo llvm::DataLayout& data_layout =
+        module->getDataLayoRepresentation();
 
-  // Verify that the data layout string is not empty
+// Verify that the data layout string is not empty
   EXPECT_FAL  EXPECT_FAL  EXPECT_FAy(  EXPECT_FAL  EXPECT_FAL  EXPEhi  EXPECT_FAL  EXPECT_FAL  EXPECT_Fhost_cpu = llvm::sys::getHostCPUName().str();
   std::string triple = llvm::sys::getDefaultTargetTriple();
 
@@ -33,6 +35,5 @@
 
   // Verify that the data layout string is not empty
   EXPECT_FALSE(data_layout_str.empty());
-
   }
-}  // namespace gandiva
+  }  // namespace gandiva

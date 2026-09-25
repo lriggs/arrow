@@ -31,9 +31,9 @@
 #include "arrow/util/double_conversion_internal.h"
 #include "arrow/util/value_parsing.h"
 
-#include "gandiva/encrypt_utils_ecb.h"
-#include "gandiva/encrypt_utils_cbc.h"
 #include "gandiva/encrypt_mode_dispatcher.h"
+#include "gandiva/encrypt_utils_cbc.h"
+#include "gandiva/encrypt_utils_ecb.h"
 #include "gandiva/engine.h"
 #include "gandiva/exported_funcs.h"
 #include "gandiva/in_holder.h"
@@ -347,8 +347,6 @@ CAST_NUMERIC_FROM_VARBINARY(double, arrow::DoubleType, FLOAT8)
 
 #undef GDV_FN_CAST_VARCHAR_INTEGER
 #undef GDV_FN_CAST_VARCHAR_REAL
-
-
 
 GANDIVA_EXPORT
 const char* gdv_mask_first_n_utf8_int32(int64_t context, const char* data,
@@ -809,12 +807,9 @@ ARROW_UNSUPPRESS_MISSING_DECLARATIONS_WARNING
 // This is called by the LLVM engine with string calling convention
 // WARNING: This function is for backward compatibility only. Encrypted binary
 // data is not guaranteed to be valid UTF-8. Use binary signatures for new code.
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_aes_encrypt_ecb_legacy(int64_t context, const char* data,
-                                          int32_t data_len,
-                                          const char* key_data,
-                                          int32_t key_data_len,
-                                          int32_t* out_len) {
+extern "C" GANDIVA_EXPORT const char* gdv_fn_aes_encrypt_ecb_legacy(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, int32_t* out_len) {
   // Delegate to the core implementation with ECB mode
   // This function is ECB-only, so we enforce the mode
   const char* mode = "AES-ECB";
@@ -836,12 +831,9 @@ const char* gdv_fn_aes_encrypt_ecb_legacy(int64_t context, const char* data,
 // This is called by the LLVM engine with string calling convention
 // WARNING: This function is for backward compatibility only. Decrypted data
 // may not be valid UTF-8. Use binary signatures for new code.
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_aes_decrypt_ecb_legacy(int64_t context, const char* data,
-                                          int32_t data_len,
-                                          const char* key_data,
-                                          int32_t key_data_len,
-                                          int32_t* out_len) {
+extern "C" GANDIVA_EXPORT const char* gdv_fn_aes_decrypt_ecb_legacy(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, int32_t* out_len) {
   // Delegate to the core implementation with ECB mode
   // This function is ECB-only, so we enforce the mode
   const char* mode = "AES-ECB";
@@ -860,52 +852,43 @@ const char* gdv_fn_aes_decrypt_ecb_legacy(int64_t context, const char* data,
 }
 
 // The 3- and 4-arg signatures exist to support optional IV and other arguments
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_encrypt_dispatcher_3args(
+extern "C" GANDIVA_EXPORT const char* gdv_fn_encrypt_dispatcher_3args(
     int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
+    int32_t key_data_len, const char* mode, int32_t mode_len, int32_t* out_len) {
+  return gdv_fn_encrypt_dispatcher_5args(context, data, data_len, key_data, key_data_len,
+                                         mode, mode_len, nullptr, 0, nullptr, 0, out_len);
+}
+
+extern "C" GANDIVA_EXPORT const char* gdv_fn_decrypt_dispatcher_3args(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, const char* mode, int32_t mode_len, int32_t* out_len) {
+  return gdv_fn_decrypt_dispatcher_5args(context, data, data_len, key_data, key_data_len,
+                                         mode, mode_len, nullptr, 0, nullptr, 0, out_len);
+}
+
+extern "C" GANDIVA_EXPORT const char* gdv_fn_encrypt_dispatcher_4args(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, const char* mode, int32_t mode_len, const char* iv_data,
+    int32_t iv_data_len, int32_t* out_len) {
+  return gdv_fn_encrypt_dispatcher_5args(context, data, data_len, key_data, key_data_len,
+                                         mode, mode_len, iv_data, iv_data_len, nullptr, 0,
+                                         out_len);
+}
+
+extern "C" GANDIVA_EXPORT const char* gdv_fn_decrypt_dispatcher_4args(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, const char* mode, int32_t mode_len, const char* iv_data,
+    int32_t iv_data_len, int32_t* out_len) {
+  return gdv_fn_decrypt_dispatcher_5args(context, data, data_len, key_data, key_data_len,
+                                         mode, mode_len, iv_data, iv_data_len, nullptr, 0,
+                                         out_len);
+}
+
+extern "C" GANDIVA_EXPORT const char* gdv_fn_encrypt_dispatcher_5args(
+    int64_t context, const char* data, int32_t data_len, const char* key_data,
+    int32_t key_data_len, const char* mode, int32_t mode_len, const char* iv_data,
+    int32_t iv_data_len, const char* fifth_argument, int32_t fifth_argument_len,
     int32_t* out_len) {
-  return gdv_fn_encrypt_dispatcher_5args(
-      context, data, data_len, key_data, key_data_len, mode, mode_len, nullptr,
-      0, nullptr, 0, out_len);
-}
-
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_decrypt_dispatcher_3args(
-    int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
-    int32_t* out_len) {
-  return gdv_fn_decrypt_dispatcher_5args(
-      context, data, data_len, key_data, key_data_len, mode, mode_len, nullptr,
-      0, nullptr, 0, out_len);
-}
-
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_encrypt_dispatcher_4args(
-    int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
-    const char* iv_data, int32_t iv_data_len, int32_t* out_len) {
-  return gdv_fn_encrypt_dispatcher_5args(
-      context, data, data_len, key_data, key_data_len, mode, mode_len, iv_data,
-      iv_data_len, nullptr, 0, out_len);
-}
-
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_decrypt_dispatcher_4args(
-    int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
-    const char* iv_data, int32_t iv_data_len, int32_t* out_len) {
-  return gdv_fn_decrypt_dispatcher_5args(
-      context, data, data_len, key_data, key_data_len, mode, mode_len, iv_data,
-      iv_data_len, nullptr, 0, out_len);
-}
-
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_encrypt_dispatcher_5args(
-    int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
-    const char* iv_data, int32_t iv_data_len, const char* fifth_argument,
-    int32_t fifth_argument_len, int32_t* out_len) {
   try {
     // Allocate extra 16 bytes for AES block padding (PKCS7 padding can add
     // up to 16 bytes for a 128-bit block cipher)
@@ -913,13 +896,12 @@ const char* gdv_fn_encrypt_dispatcher_5args(
     auto* output = reinterpret_cast<unsigned char*>(
         gdv_fn_context_arena_malloc(context, data_len + 16));
     if (output == nullptr) {
-      throw std::runtime_error(
-          "Memory allocation failed for encryption output");
+      throw std::runtime_error("Memory allocation failed for encryption output");
     }
 
     int32_t cipher_len = gandiva::EncryptModeDispatcher::encrypt(
-        data, data_len, key_data, key_data_len, mode, mode_len, iv_data,
-        iv_data_len, fifth_argument, fifth_argument_len, output);
+        data, data_len, key_data, key_data_len, mode, mode_len, iv_data, iv_data_len,
+        fifth_argument, fifth_argument_len, output);
 
     *out_len = cipher_len;
     return reinterpret_cast<const char*>(output);
@@ -930,23 +912,21 @@ const char* gdv_fn_encrypt_dispatcher_5args(
   }
 }
 
-extern "C" GANDIVA_EXPORT
-const char* gdv_fn_decrypt_dispatcher_5args(
+extern "C" GANDIVA_EXPORT const char* gdv_fn_decrypt_dispatcher_5args(
     int64_t context, const char* data, int32_t data_len, const char* key_data,
-    int32_t key_data_len, const char* mode, int32_t mode_len,
-    const char* iv_data, int32_t iv_data_len, const char* fifth_argument,
-    int32_t fifth_argument_len, int32_t* out_len) {
+    int32_t key_data_len, const char* mode, int32_t mode_len, const char* iv_data,
+    int32_t iv_data_len, const char* fifth_argument, int32_t fifth_argument_len,
+    int32_t* out_len) {
   try {
-    auto* output = reinterpret_cast<unsigned char*>(
-        gdv_fn_context_arena_malloc(context, data_len));
+    auto* output =
+        reinterpret_cast<unsigned char*>(gdv_fn_context_arena_malloc(context, data_len));
     if (output == nullptr) {
-      throw std::runtime_error(
-          "Memory allocation failed for decryption output");
+      throw std::runtime_error("Memory allocation failed for decryption output");
     }
 
     int32_t plaintext_len = gandiva::EncryptModeDispatcher::decrypt(
-        data, data_len, key_data, key_data_len, mode, mode_len, iv_data,
-        iv_data_len, fifth_argument, fifth_argument_len, output);
+        data, data_len, key_data, key_data_len, mode, mode_len, iv_data, iv_data_len,
+        fifth_argument, fifth_argument_len, output);
 
     *out_len = plaintext_len;
     return reinterpret_cast<const char*>(output);
@@ -1223,8 +1203,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_encrypt_dispatcher_3args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_encrypt_dispatcher_3args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_encrypt_dispatcher_3args));
 
   // gdv_fn_decrypt_dispatcher_3args (data, key, mode)
@@ -1240,8 +1219,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_decrypt_dispatcher_3args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_decrypt_dispatcher_3args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_decrypt_dispatcher_3args));
 
   // gdv_fn_encrypt_dispatcher_4args (data, key, mode, iv)
@@ -1259,8 +1237,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_encrypt_dispatcher_4args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_encrypt_dispatcher_4args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_encrypt_dispatcher_4args));
 
   // gdv_fn_decrypt_dispatcher_4args (data, key, mode, iv)
@@ -1278,8 +1255,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_decrypt_dispatcher_4args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_decrypt_dispatcher_4args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_decrypt_dispatcher_4args));
 
   // gdv_fn_encrypt_dispatcher_5args (data, key, mode, iv,
@@ -1300,8 +1276,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_encrypt_dispatcher_5args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_encrypt_dispatcher_5args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_encrypt_dispatcher_5args));
 
   // gdv_fn_decrypt_dispatcher_5args (data, key, mode, iv,
@@ -1322,8 +1297,7 @@ arrow::Status ExportedStubFunctions::AddMappings(Engine* engine) const {
   };
 
   engine->AddGlobalMappingForFunc(
-      "gdv_fn_decrypt_dispatcher_5args",
-      types->i8_ptr_type() /*return_type*/, args,
+      "gdv_fn_decrypt_dispatcher_5args", types->i8_ptr_type() /*return_type*/, args,
       reinterpret_cast<void*>(gdv_fn_decrypt_dispatcher_5args));
 
   // gdv_mask_first_n and gdv_mask_last_n

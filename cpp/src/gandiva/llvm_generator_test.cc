@@ -164,8 +164,7 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   // Non-timestamp params — name unchanged
   {
     DataTypeVector params{arrow::int32(), arrow::int32()};
-    ASSERT_OK_AND_ASSIGN(auto name,
-                         LLVMGenerator::ResolveTimestampPcName("add", params));
+    ASSERT_OK_AND_ASSIGN(auto name, LLVMGenerator::ResolveTimestampPcName("add", params));
     EXPECT_EQ(name, "add");
   }
 
@@ -182,8 +181,7 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::MICRO)};
     ASSERT_OK_AND_ASSIGN(
-        auto name,
-        LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
+        auto name, LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
     EXPECT_EQ(name, "extractDay_timestamp_us");
   }
 
@@ -191,8 +189,7 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::NANO)};
     ASSERT_OK_AND_ASSIGN(
-        auto name,
-        LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
+        auto name, LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
     EXPECT_EQ(name, "extractDay_timestamp_ns");
   }
 
@@ -200,9 +197,8 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::MICRO),
                           arrow::timestamp(arrow::TimeUnit::MICRO)};
-    ASSERT_OK_AND_ASSIGN(
-        auto name, LLVMGenerator::ResolveTimestampPcName("datediff_timestamp_timestamp",
-                                                          params));
+    ASSERT_OK_AND_ASSIGN(auto name, LLVMGenerator::ResolveTimestampPcName(
+                                        "datediff_timestamp_timestamp", params));
     EXPECT_EQ(name, "datediff_timestamp_timestamp_us");
   }
 
@@ -210,8 +206,8 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::MICRO),
                           arrow::timestamp(arrow::TimeUnit::NANO)};
-    auto result = LLVMGenerator::ResolveTimestampPcName("datediff_timestamp_timestamp",
-                                                         params);
+    auto result =
+        LLVMGenerator::ResolveTimestampPcName("datediff_timestamp_timestamp", params);
     EXPECT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(), testing::HasSubstr("mixed timestamp units"));
   }
@@ -220,8 +216,7 @@ TEST_F(TestLLVMGenerator, ResolveTimestampPcName) {
   {
     DataTypeVector params{arrow::timestamp(arrow::TimeUnit::SECOND)};
     ASSERT_OK_AND_ASSIGN(
-        auto name,
-        LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
+        auto name, LLVMGenerator::ResolveTimestampPcName("extractDay_timestamp", params));
     EXPECT_EQ(name, "extractDay_timestamp");
   }
 

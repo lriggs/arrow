@@ -82,18 +82,18 @@ extern "C" {
 
 // Fixed-unit timestampadd: ts ± count * constant (pure arithmetic).
 // Four arg-order variants per base name: (int32,ts), (int64,ts), (ts,int32), (ts,int64).
-#define FIXED_ADD_US(FN, UNITS_PER_SECOND)                                              \
-  FORCE_INLINE gdv_int64 FN##_int32_timestamp_us(gdv_int32 cnt, gdv_timestamp ts) {    \
-    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000LL);                        \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_int64_timestamp_us(gdv_int64 cnt, gdv_timestamp ts) {    \
-    return ts + cnt * ((UNITS_PER_SECOND)*1000000LL);                                   \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int32_us(gdv_timestamp ts, gdv_int32 cnt) {    \
-    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000LL);                        \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int64_us(gdv_timestamp ts, gdv_int64 cnt) {    \
-    return ts + cnt * ((UNITS_PER_SECOND)*1000000LL);                                   \
+#define FIXED_ADD_US(FN, UNITS_PER_SECOND)                                          \
+  FORCE_INLINE gdv_int64 FN##_int32_timestamp_us(gdv_int32 cnt, gdv_timestamp ts) { \
+    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000LL);                    \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_int64_timestamp_us(gdv_int64 cnt, gdv_timestamp ts) { \
+    return ts + cnt * ((UNITS_PER_SECOND)*1000000LL);                               \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int32_us(gdv_timestamp ts, gdv_int32 cnt) { \
+    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000LL);                    \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int64_us(gdv_timestamp ts, gdv_int64 cnt) { \
+    return ts + cnt * ((UNITS_PER_SECOND)*1000000LL);                               \
   }
 
 FIXED_ADD_US(timestampaddSecond, 1)
@@ -105,26 +105,26 @@ FIXED_ADD_US(timestampaddWeek, 604800)
 // Calendar-based timestampadd: floor-split ts into (millis, sub-ms remainder),
 // call the precompiled milli function, then reassemble.
 // All four arg-order variants share the same (int32, millis) base function.
-#define CALENDAR_ADD_US(FN)                                                             \
-  FORCE_INLINE gdv_int64 FN##_int32_timestamp_us(gdv_int32 cnt, gdv_timestamp ts) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                            \
-    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                           \
-    return FN##_int32_timestamp(cnt, ms) * 1000LL + rem;                                \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int32_us(gdv_timestamp ts, gdv_int32 cnt) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                            \
-    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                           \
-    return FN##_int32_timestamp(cnt, ms) * 1000LL + rem;                                \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_int64_timestamp_us(gdv_int64 cnt, gdv_timestamp ts) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                            \
-    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                           \
-    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000LL + rem;                    \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int64_us(gdv_timestamp ts, gdv_int64 cnt) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                            \
-    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                           \
-    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000LL + rem;                    \
+#define CALENDAR_ADD_US(FN)                                                         \
+  FORCE_INLINE gdv_int64 FN##_int32_timestamp_us(gdv_int32 cnt, gdv_timestamp ts) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                        \
+    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                       \
+    return FN##_int32_timestamp(cnt, ms) * 1000LL + rem;                            \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int32_us(gdv_timestamp ts, gdv_int32 cnt) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                        \
+    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                       \
+    return FN##_int32_timestamp(cnt, ms) * 1000LL + rem;                            \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_int64_timestamp_us(gdv_int64 cnt, gdv_timestamp ts) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                        \
+    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                       \
+    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000LL + rem;                 \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int64_us(gdv_timestamp ts, gdv_int64 cnt) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000LL);                                        \
+    gdv_int64 rem = ts_floor_rem(ts, 1000LL);                                       \
+    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000LL + rem;                 \
   }
 
 CALENDAR_ADD_US(timestampaddMonth)
@@ -132,9 +132,9 @@ CALENDAR_ADD_US(timestampaddQuarter)
 CALENDAR_ADD_US(timestampaddYear)
 
 // Extract: scale ts to millis, call precompiled extractor, return scalar.
-#define EXTRACT_US(FN)                                                                  \
-  FORCE_INLINE gdv_int64 FN##_timestamp_us(gdv_timestamp ts) {                         \
-    return FN##_timestamp(ts_floor_div(ts, 1000LL));                                    \
+#define EXTRACT_US(FN)                                         \
+  FORCE_INLINE gdv_int64 FN##_timestamp_us(gdv_timestamp ts) { \
+    return FN##_timestamp(ts_floor_div(ts, 1000LL));           \
   }
 
 EXTRACT_US(extractMillennium)
@@ -153,9 +153,9 @@ EXTRACT_US(extractDow)
 EXTRACT_US(extractEpoch)
 
 // date_trunc: scale to millis, truncate, scale back (sub-ms remainder is zeroed).
-#define TRUNC_US(FN)                                                                    \
-  FORCE_INLINE gdv_int64 FN##_timestamp_us(gdv_timestamp ts) {                         \
-    return FN##_timestamp(ts_floor_div(ts, 1000LL)) * 1000LL;                          \
+#define TRUNC_US(FN)                                           \
+  FORCE_INLINE gdv_int64 FN##_timestamp_us(gdv_timestamp ts) { \
+    return FN##_timestamp(ts_floor_div(ts, 1000LL)) * 1000LL;  \
   }
 
 TRUNC_US(date_trunc_Millennium)
@@ -171,11 +171,11 @@ TRUNC_US(date_trunc_Minute)
 TRUNC_US(date_trunc_Second)
 
 // timestampdiff: scale both inputs to millis, call precompiled, return int32.
-#define DIFF_US(FN)                                                                     \
-  FORCE_INLINE gdv_int32 FN##_timestamp_timestamp_us(gdv_timestamp ts1,                \
-                                                      gdv_timestamp ts2) {              \
-    return FN##_timestamp_timestamp(ts_floor_div(ts1, 1000LL),                         \
-                                    ts_floor_div(ts2, 1000LL));                         \
+#define DIFF_US(FN)                                                       \
+  FORCE_INLINE gdv_int32 FN##_timestamp_timestamp_us(gdv_timestamp ts1,   \
+                                                     gdv_timestamp ts2) { \
+    return FN##_timestamp_timestamp(ts_floor_div(ts1, 1000LL),            \
+                                    ts_floor_div(ts2, 1000LL));           \
   }
 
 DIFF_US(timestampdiffSecond)
@@ -187,14 +187,14 @@ DIFF_US(timestampdiffMonth)
 DIFF_US(timestampdiffQuarter)
 DIFF_US(timestampdiffYear)
 
-FORCE_INLINE gdv_float64
-months_between_timestamp_timestamp_us(gdv_timestamp ts1, gdv_timestamp ts2) {
+FORCE_INLINE gdv_float64 months_between_timestamp_timestamp_us(gdv_timestamp ts1,
+                                                               gdv_timestamp ts2) {
   return months_between_timestamp_timestamp((gdv_uint64)ts_floor_div(ts1, 1000LL),
                                             (gdv_uint64)ts_floor_div(ts2, 1000LL));
 }
 
-FORCE_INLINE gdv_int32
-datediff_timestamp_timestamp_us(gdv_timestamp ts1, gdv_timestamp ts2) {
+FORCE_INLINE gdv_int32 datediff_timestamp_timestamp_us(gdv_timestamp ts1,
+                                                       gdv_timestamp ts2) {
   return datediff_timestamp_timestamp(ts_floor_div(ts1, 1000LL),
                                       ts_floor_div(ts2, 1000LL));
 }
@@ -258,15 +258,14 @@ FORCE_INLINE gdv_int64 date_diff_timestamp_int64_us(gdv_timestamp ts, gdv_int64 
 // Timezone: floor-split ts, apply milli-scale tz conversion, reassemble.
 // The UTC offset is a whole-second delta so sub-ms precision survives unchanged.
 FORCE_INLINE gdv_int64 to_utc_timezone_timestamp_us(gdv_int64 ctx, gdv_int64 ts,
-                                                     const char* tz, gdv_int32 tz_len) {
+                                                    const char* tz, gdv_int32 tz_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000LL);
   gdv_int64 rem = ts_floor_rem(ts, 1000LL);
   return to_utc_timezone_timestamp(ctx, ms, tz, tz_len) * 1000LL + rem;
 }
 
 FORCE_INLINE gdv_int64 from_utc_timezone_timestamp_us(gdv_int64 ctx, gdv_int64 ts,
-                                                       const char* tz,
-                                                       gdv_int32 tz_len) {
+                                                      const char* tz, gdv_int32 tz_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000LL);
   gdv_int64 rem = ts_floor_rem(ts, 1000LL);
   return from_utc_timezone_timestamp(ctx, ms, tz, tz_len) * 1000LL + rem;
@@ -274,8 +273,8 @@ FORCE_INLINE gdv_int64 from_utc_timezone_timestamp_us(gdv_int64 ctx, gdv_int64 t
 
 // castVARCHAR(timestamp_us, int64): call the milli formatter for the base string,
 // then append 3 sub-millisecond digits (the microseconds-within-the-millisecond).
-const char* castVARCHAR_timestamp_int64_us(gdv_int64 ctx, gdv_timestamp ts,
-                                           gdv_int64 len, gdv_int32* out_len) {
+const char* castVARCHAR_timestamp_int64_us(gdv_int64 ctx, gdv_timestamp ts, gdv_int64 len,
+                                           gdv_int32* out_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000LL);
   const char* base_buf = castVARCHAR_timestamp_int64(ctx, ms, len, out_len);
   gdv_int32 base_len = *out_len;
@@ -283,11 +282,11 @@ const char* castVARCHAR_timestamp_int64_us(gdv_int64 ctx, gdv_timestamp ts,
 
   gdv_int32 full_len = base_len + 3;
   gdv_int32 clamped_len = (full_len < (gdv_int32)len) ? full_len : (gdv_int32)len;
-  char* new_buf =
-      reinterpret_cast<char*>(gdv_fn_context_arena_malloc(ctx, clamped_len));
+  char* new_buf = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(ctx, clamped_len));
   memcpy(new_buf, base_buf, base_len);
 
-  gdv_int64 sub = ts_floor_rem(ts, 1000LL);  // microseconds within the millisecond [0,999]
+  gdv_int64 sub =
+      ts_floor_rem(ts, 1000LL);  // microseconds within the millisecond [0,999]
   if (base_len + 0 < clamped_len) new_buf[base_len + 0] = '0' + (char)((sub / 100) % 10);
   if (base_len + 1 < clamped_len) new_buf[base_len + 1] = '0' + (char)((sub / 10) % 10);
   if (base_len + 2 < clamped_len) new_buf[base_len + 2] = '0' + (char)(sub % 10);
@@ -298,7 +297,7 @@ const char* castVARCHAR_timestamp_int64_us(gdv_int64 ctx, gdv_timestamp ts,
 
 // next_day(timestamp_us, string): scale to millis, call precompiled, return date64.
 FORCE_INLINE gdv_int64 next_day_from_timestamp_us(gdv_int64 ctx, gdv_timestamp ts,
-                                                   const char* day, gdv_int32 day_len) {
+                                                  const char* day, gdv_int32 day_len) {
   return next_day_from_timestamp(ctx, ts_floor_div(ts, 1000LL), day, day_len);
 }
 
@@ -306,18 +305,18 @@ FORCE_INLINE gdv_int64 next_day_from_timestamp_us(gdv_int64 ctx, gdv_timestamp t
 // NANOSECOND variants  (units per millisecond = 1000000)
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define FIXED_ADD_NS(FN, UNITS_PER_SECOND)                                              \
-  FORCE_INLINE gdv_int64 FN##_int32_timestamp_ns(gdv_int32 cnt, gdv_timestamp ts) {    \
-    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000000LL);                     \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_int64_timestamp_ns(gdv_int64 cnt, gdv_timestamp ts) {    \
-    return ts + cnt * ((UNITS_PER_SECOND)*1000000000LL);                                \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int32_ns(gdv_timestamp ts, gdv_int32 cnt) {    \
-    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000000LL);                     \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int64_ns(gdv_timestamp ts, gdv_int64 cnt) {    \
-    return ts + cnt * ((UNITS_PER_SECOND)*1000000000LL);                                \
+#define FIXED_ADD_NS(FN, UNITS_PER_SECOND)                                          \
+  FORCE_INLINE gdv_int64 FN##_int32_timestamp_ns(gdv_int32 cnt, gdv_timestamp ts) { \
+    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000000LL);                 \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_int64_timestamp_ns(gdv_int64 cnt, gdv_timestamp ts) { \
+    return ts + cnt * ((UNITS_PER_SECOND)*1000000000LL);                            \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int32_ns(gdv_timestamp ts, gdv_int32 cnt) { \
+    return ts + (gdv_int64)cnt * ((UNITS_PER_SECOND)*1000000000LL);                 \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int64_ns(gdv_timestamp ts, gdv_int64 cnt) { \
+    return ts + cnt * ((UNITS_PER_SECOND)*1000000000LL);                            \
   }
 
 FIXED_ADD_NS(timestampaddSecond, 1)
@@ -326,35 +325,35 @@ FIXED_ADD_NS(timestampaddHour, 3600)
 FIXED_ADD_NS(timestampaddDay, 86400)
 FIXED_ADD_NS(timestampaddWeek, 604800)
 
-#define CALENDAR_ADD_NS(FN)                                                             \
-  FORCE_INLINE gdv_int64 FN##_int32_timestamp_ns(gdv_int32 cnt, gdv_timestamp ts) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                         \
-    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                        \
-    return FN##_int32_timestamp(cnt, ms) * 1000000LL + rem;                             \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int32_ns(gdv_timestamp ts, gdv_int32 cnt) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                         \
-    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                        \
-    return FN##_int32_timestamp(cnt, ms) * 1000000LL + rem;                             \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_int64_timestamp_ns(gdv_int64 cnt, gdv_timestamp ts) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                         \
-    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                        \
-    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000000LL + rem;                 \
-  }                                                                                     \
-  FORCE_INLINE gdv_int64 FN##_timestamp_int64_ns(gdv_timestamp ts, gdv_int64 cnt) {    \
-    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                         \
-    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                        \
-    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000000LL + rem;                 \
+#define CALENDAR_ADD_NS(FN)                                                         \
+  FORCE_INLINE gdv_int64 FN##_int32_timestamp_ns(gdv_int32 cnt, gdv_timestamp ts) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                     \
+    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                    \
+    return FN##_int32_timestamp(cnt, ms) * 1000000LL + rem;                         \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int32_ns(gdv_timestamp ts, gdv_int32 cnt) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                     \
+    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                    \
+    return FN##_int32_timestamp(cnt, ms) * 1000000LL + rem;                         \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_int64_timestamp_ns(gdv_int64 cnt, gdv_timestamp ts) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                     \
+    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                    \
+    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000000LL + rem;              \
+  }                                                                                 \
+  FORCE_INLINE gdv_int64 FN##_timestamp_int64_ns(gdv_timestamp ts, gdv_int64 cnt) { \
+    gdv_int64 ms = ts_floor_div(ts, 1000000LL);                                     \
+    gdv_int64 rem = ts_floor_rem(ts, 1000000LL);                                    \
+    return FN##_int32_timestamp((gdv_int32)cnt, ms) * 1000000LL + rem;              \
   }
 
 CALENDAR_ADD_NS(timestampaddMonth)
 CALENDAR_ADD_NS(timestampaddQuarter)
 CALENDAR_ADD_NS(timestampaddYear)
 
-#define EXTRACT_NS(FN)                                                                  \
-  FORCE_INLINE gdv_int64 FN##_timestamp_ns(gdv_timestamp ts) {                         \
-    return FN##_timestamp(ts_floor_div(ts, 1000000LL));                                 \
+#define EXTRACT_NS(FN)                                         \
+  FORCE_INLINE gdv_int64 FN##_timestamp_ns(gdv_timestamp ts) { \
+    return FN##_timestamp(ts_floor_div(ts, 1000000LL));        \
   }
 
 EXTRACT_NS(extractMillennium)
@@ -372,9 +371,9 @@ EXTRACT_NS(extractDoy)
 EXTRACT_NS(extractDow)
 EXTRACT_NS(extractEpoch)
 
-#define TRUNC_NS(FN)                                                                    \
-  FORCE_INLINE gdv_int64 FN##_timestamp_ns(gdv_timestamp ts) {                         \
-    return FN##_timestamp(ts_floor_div(ts, 1000000LL)) * 1000000LL;                    \
+#define TRUNC_NS(FN)                                                \
+  FORCE_INLINE gdv_int64 FN##_timestamp_ns(gdv_timestamp ts) {      \
+    return FN##_timestamp(ts_floor_div(ts, 1000000LL)) * 1000000LL; \
   }
 
 TRUNC_NS(date_trunc_Millennium)
@@ -389,11 +388,11 @@ TRUNC_NS(date_trunc_Hour)
 TRUNC_NS(date_trunc_Minute)
 TRUNC_NS(date_trunc_Second)
 
-#define DIFF_NS(FN)                                                                     \
-  FORCE_INLINE gdv_int32 FN##_timestamp_timestamp_ns(gdv_timestamp ts1,                \
-                                                      gdv_timestamp ts2) {              \
-    return FN##_timestamp_timestamp(ts_floor_div(ts1, 1000000LL),                      \
-                                    ts_floor_div(ts2, 1000000LL));                      \
+#define DIFF_NS(FN)                                                       \
+  FORCE_INLINE gdv_int32 FN##_timestamp_timestamp_ns(gdv_timestamp ts1,   \
+                                                     gdv_timestamp ts2) { \
+    return FN##_timestamp_timestamp(ts_floor_div(ts1, 1000000LL),         \
+                                    ts_floor_div(ts2, 1000000LL));        \
   }
 
 DIFF_NS(timestampdiffSecond)
@@ -405,14 +404,14 @@ DIFF_NS(timestampdiffMonth)
 DIFF_NS(timestampdiffQuarter)
 DIFF_NS(timestampdiffYear)
 
-FORCE_INLINE gdv_float64
-months_between_timestamp_timestamp_ns(gdv_timestamp ts1, gdv_timestamp ts2) {
+FORCE_INLINE gdv_float64 months_between_timestamp_timestamp_ns(gdv_timestamp ts1,
+                                                               gdv_timestamp ts2) {
   return months_between_timestamp_timestamp((gdv_uint64)ts_floor_div(ts1, 1000000LL),
                                             (gdv_uint64)ts_floor_div(ts2, 1000000LL));
 }
 
-FORCE_INLINE gdv_int32
-datediff_timestamp_timestamp_ns(gdv_timestamp ts1, gdv_timestamp ts2) {
+FORCE_INLINE gdv_int32 datediff_timestamp_timestamp_ns(gdv_timestamp ts1,
+                                                       gdv_timestamp ts2) {
   return datediff_timestamp_timestamp(ts_floor_div(ts1, 1000000LL),
                                       ts_floor_div(ts2, 1000000LL));
 }
@@ -471,23 +470,22 @@ FORCE_INLINE gdv_int64 date_diff_timestamp_int64_ns(gdv_timestamp ts, gdv_int64 
 }
 
 FORCE_INLINE gdv_int64 to_utc_timezone_timestamp_ns(gdv_int64 ctx, gdv_int64 ts,
-                                                     const char* tz, gdv_int32 tz_len) {
+                                                    const char* tz, gdv_int32 tz_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000000LL);
   gdv_int64 rem = ts_floor_rem(ts, 1000000LL);
   return to_utc_timezone_timestamp(ctx, ms, tz, tz_len) * 1000000LL + rem;
 }
 
 FORCE_INLINE gdv_int64 from_utc_timezone_timestamp_ns(gdv_int64 ctx, gdv_int64 ts,
-                                                       const char* tz,
-                                                       gdv_int32 tz_len) {
+                                                      const char* tz, gdv_int32 tz_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000000LL);
   gdv_int64 rem = ts_floor_rem(ts, 1000000LL);
   return from_utc_timezone_timestamp(ctx, ms, tz, tz_len) * 1000000LL + rem;
 }
 
 // castVARCHAR(timestamp_ns, int64): append 6 sub-millisecond digits.
-const char* castVARCHAR_timestamp_int64_ns(gdv_int64 ctx, gdv_timestamp ts,
-                                           gdv_int64 len, gdv_int32* out_len) {
+const char* castVARCHAR_timestamp_int64_ns(gdv_int64 ctx, gdv_timestamp ts, gdv_int64 len,
+                                           gdv_int32* out_len) {
   gdv_int64 ms = ts_floor_div(ts, 1000000LL);
   const char* base_buf = castVARCHAR_timestamp_int64(ctx, ms, len, out_len);
   gdv_int32 base_len = *out_len;
@@ -495,13 +493,15 @@ const char* castVARCHAR_timestamp_int64_ns(gdv_int64 ctx, gdv_timestamp ts,
 
   gdv_int32 full_len = base_len + 6;
   gdv_int32 clamped_len = (full_len < (gdv_int32)len) ? full_len : (gdv_int32)len;
-  char* new_buf =
-      reinterpret_cast<char*>(gdv_fn_context_arena_malloc(ctx, clamped_len));
+  char* new_buf = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(ctx, clamped_len));
   memcpy(new_buf, base_buf, base_len);
 
-  gdv_int64 sub = ts_floor_rem(ts, 1000000LL);  // nanoseconds within the millisecond [0,999999]
-  if (base_len + 0 < clamped_len) new_buf[base_len + 0] = '0' + (char)((sub / 100000) % 10);
-  if (base_len + 1 < clamped_len) new_buf[base_len + 1] = '0' + (char)((sub / 10000) % 10);
+  gdv_int64 sub =
+      ts_floor_rem(ts, 1000000LL);  // nanoseconds within the millisecond [0,999999]
+  if (base_len + 0 < clamped_len)
+    new_buf[base_len + 0] = '0' + (char)((sub / 100000) % 10);
+  if (base_len + 1 < clamped_len)
+    new_buf[base_len + 1] = '0' + (char)((sub / 10000) % 10);
   if (base_len + 2 < clamped_len) new_buf[base_len + 2] = '0' + (char)((sub / 1000) % 10);
   if (base_len + 3 < clamped_len) new_buf[base_len + 3] = '0' + (char)((sub / 100) % 10);
   if (base_len + 4 < clamped_len) new_buf[base_len + 4] = '0' + (char)((sub / 10) % 10);
@@ -512,7 +512,7 @@ const char* castVARCHAR_timestamp_int64_ns(gdv_int64 ctx, gdv_timestamp ts,
 }
 
 FORCE_INLINE gdv_int64 next_day_from_timestamp_ns(gdv_int64 ctx, gdv_timestamp ts,
-                                                   const char* day, gdv_int32 day_len) {
+                                                  const char* day, gdv_int32 day_len) {
   return next_day_from_timestamp(ctx, ts_floor_div(ts, 1000000LL), day, day_len);
 }
 
