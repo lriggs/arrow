@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "arrow/util/macros.h"
@@ -116,7 +117,7 @@ class GANDIVA_EXPORT LLVMGenerator {
             llvm::BasicBlock* entry_block, llvm::Value* arg_addrs,
             llvm::Value* arg_local_bitmaps, llvm::Value* arg_holder_ptrs,
             std::vector<llvm::Value*> slice_offsets, llvm::Value* arg_context_ptr,
-            llvm::Value* loop_var);
+            llvm::Value* loop_var, llvm::BasicBlock* row_prologue_block);
 
     void Visit(const VectorReadValidityDex& dex) override;
     void Visit(const VectorReadFixedLenValueDex& dex) override;
@@ -173,6 +174,10 @@ class GANDIVA_EXPORT LLVMGenerator {
                                 const FuncDescriptorPtr& descriptor = nullptr);
 
     // Generate code for an if-else condition.
+    /// Build an if-else chain with selects, evaluating every branch. Only valid when
+    /// IsSpeculatable() holds for the chain.
+    LValuePtr BuildIfElseSelect(const IfDex& dex);
+
     LValuePtr BuildIfElse(llvm::Value* condition, std::function<LValuePtr()> then_func,
                           std::function<LValuePtr()> else_func,
                           DataTypePtr arrow_return_type);
@@ -200,6 +205,12 @@ class GANDIVA_EXPORT LLVMGenerator {
     std::vector<llvm::Value*> slice_offsets_;
     llvm::Value* arg_context_ptr_;
     llvm::Value* loop_var_;
+    /// Block at the start of each row's iteration, which dominates all of the code
+    /// generated for the row. Per-row values that are used more than once are
+    /// computed here.
+    llvm::BasicBlock* row_prologue_block_;
+    /// Validity bit of each input buffer for the current row, by validity buffer index.
+    std::unordered_map<int, llvm::Value*> row_validity_;
     bool has_arena_allocs_;
   };
 
@@ -233,17 +244,6 @@ class GANDIVA_EXPORT LLVMGenerator {
 
   /// Generate code to get the bit value at 'position' in the bitmap.
   llvm::Value* GetPackedBitValue(llvm::Value* bitmap, llvm::Value* position);
-
-  /// Generate code to get the bit value at 'position' in the validity bitmap.
-  llvm::Value* GetPackedValidityBitValue(llvm::Value* bitmap, llvm::Value* position);
-
-  /// Generate code to set the bit value at 'position' in the bitmap to 'value'.
-  void SetPackedBitValue(llvm::Value* bitmap, llvm::Value* position, llvm::Value* value);
-
-  /// Generate code to clear the bit value at 'position' in the bitmap if 'value'
-  /// is false.
-  void ClearPackedBitValueIfFalse(llvm::Value* bitmap, llvm::Value* position,
-                                  llvm::Value* value);
 
   // Generate code to build a DecimalLValue with specified value/precision/scale.
   std::shared_ptr<DecimalLValue> BuildDecimalLValue(llvm::Value* value,

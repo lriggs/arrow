@@ -19,7 +19,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -38,6 +41,185 @@
 namespace gandiva {
 
 namespace {
+
+bool IsSpeculatable(const ValueValidityPair& pair);
+
+/// True if dex is a call to a cheap function that can neither fail nor trap on any
+/// input, so that evaluating it for rows whose result is unused is harmless.
+bool IsSpeculatableFunction(const FuncDex& dex) {
+  static const std::unordered_set<std::string> kFunctions = {
+      "equal",        "not_equal",
+      "less_than",    "less_than_or_equal_to",
+      "greater_than", "greater_than_or_equal_to",
+      "add",          "subtract",
+      "multiply",     "not",
+      "isnull",       "isnotnull"};
+  const auto& desc = dex.func_descriptor();
+  if (dex.native_function()->NeedsContext() || dex.get_holder_idx() >= 0 ||
+      kFunctions.count(desc->name()) == 0) {
+    return false;
+  }
+  auto is_simple_type = [](const DataTypePtr& type) {
+    return arrow::is_fixed_width(type->id()) && type->id() != arrow::Type::DECIMAL;
+  };
+  if (!is_simple_type(desc->return_type())) {
+    return false;
+  }
+  for (const auto& param : desc->params()) {
+    if (!is_simple_type(param)) {
+      return false;
+    }
+  }
+  for (const auto& arg : dex.args()) {
+    if (!IsSpeculatable(*arg)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// True if the code for dex has no side effects and is cheap, so it may be evaluated
+/// unconditionally instead of behind a branch.
+bool IsSpeculatable(const Dex& dex) {
+  if (dynamic_cast<const LiteralDex*>(&dex) || dynamic_cast<const TrueDex*>(&dex) ||
+      dynamic_cast<const FalseDex*>(&dex) ||
+      dynamic_cast<const VectorReadValidityDex*>(&dex) ||
+      dynamic_cast<const VectorReadFixedLenValueDex*>(&dex) ||
+      dynamic_cast<const VectorReadVarLenValueDex*>(&dex) ||
+      dynamic_cast<const LocalBitMapValidityDex*>(&dex)) {
+    return true;
+  }
+  if (dynamic_cast<const NonNullableFuncDex*>(&dex) ||
+      dynamic_cast<const NullableNeverFuncDex*>(&dex)) {
+    return IsSpeculatableFunction(static_cast<const FuncDex&>(dex));
+  }
+  if (auto if_dex = dynamic_cast<const IfDex*>(&dex)) {
+    return if_dex->result_type()->id() != arrow::Type::DECIMAL &&
+           IsSpeculatable(if_dex->condition_vv()) && IsSpeculatable(if_dex->then_vv()) &&
+           IsSpeculatable(if_dex->else_vv());
+  }
+  return false;
+}
+
+bool IsSpeculatable(const ValueValidityPair& pair) {
+  if (!IsSpeculatable(*pair.value_expr())) {
+    return false;
+  }
+  for (const auto& validity : pair.validity_exprs()) {
+    if (!IsSpeculatable(*validity)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Collects the validity buffers and local bitmaps that the generated code for an
+/// expression accesses row by row.
+class RowValidityCollector : public DexVisitor {
+ public:
+  const std::vector<int>& indices() const { return indices_; }
+  const std::vector<int>& local_bitmap_indices() const { return local_bitmap_indices_; }
+
+  void Collect(const ValueValidityPair& pair) {
+    pair.value_expr()->Accept(*this);
+    for (const auto& validity : pair.validity_exprs()) {
+      validity->Accept(*this);
+    }
+  }
+
+  void Visit(const VectorReadValidityDex& dex) override {
+    AddUnique(&indices_, dex.ValidityIdx());
+  }
+  void Visit(const VectorReadFixedLenValueDex&) override {}
+  void Visit(const VectorReadVarLenValueDex&) override {}
+  void Visit(const LocalBitMapValidityDex& dex) override {
+    AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
+  }
+  void Visit(const TrueDex&) override {}
+  void Visit(const FalseDex&) override {}
+  void Visit(const LiteralDex&) override {}
+  void Visit(const NonNullableFuncDex& dex) override { CollectAll(dex.args()); }
+  void Visit(const NullableNeverFuncDex& dex) override { CollectAll(dex.args()); }
+  void Visit(const NullableInternalFuncDex& dex) override {
+    AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
+    CollectAll(dex.args());
+  }
+  void Visit(const IfDex& dex) override {
+    AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
+    Collect(dex.condition_vv());
+    Collect(dex.then_vv());
+    Collect(dex.else_vv());
+  }
+  void Visit(const BooleanAndDex& dex) override {
+    AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
+    CollectAll(dex.args());
+  }
+  void Visit(const BooleanOrDex& dex) override {
+    AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
+    CollectAll(dex.args());
+  }
+  void Visit(const InExprDexBase<int32_t>& dex) override { CollectAll(dex.args()); }
+  void Visit(const InExprDexBase<int64_t>& dex) override { CollectAll(dex.args()); }
+  void Visit(const InExprDexBase<float>& dex) override { CollectAll(dex.args()); }
+  void Visit(const InExprDexBase<double>& dex) override { CollectAll(dex.args()); }
+  void Visit(const InExprDexBase<gandiva::DecimalScalar128>& dex) override {
+    CollectAll(dex.args());
+  }
+  void Visit(const InExprDexBase<std::string>& dex) override { CollectAll(dex.args()); }
+
+ private:
+  void CollectAll(const ValueValidityPairVector& pairs) {
+    for (const auto& pair : pairs) {
+      Collect(*pair);
+    }
+  }
+
+  static void AddUnique(std::vector<int>* indices, int idx) {
+    if (std::find(indices->begin(), indices->end(), idx) == indices->end()) {
+      indices->push_back(idx);
+    }
+  }
+
+  std::vector<int> indices_;
+  std::vector<int> local_bitmap_indices_;
+};
+
+/// Returns at least num_bytes bytes set to 1, for inputs without a validity buffer.
+/// The buffer is per thread, and only ever grows, so that it is not refilled for every
+/// batch.
+uint8_t* AllOnesBytes(int64_t num_bytes) {
+  thread_local std::vector<uint8_t> ones;
+  if (static_cast<int64_t>(ones.size()) < num_bytes) {
+    ones.assign(num_bytes, 1);
+  }
+  return ones.data();
+}
+
+/// Expands num_bits bits of bitmap, starting at bit offset, into one byte (0 or 1) per
+/// bit. A null bitmap means all bits are set.
+void ExpandBitsToBytes(const uint8_t* bitmap, int64_t offset, int64_t num_bits,
+                       uint8_t* bytes) {
+  if (bitmap == nullptr) {
+    memset(bytes, 1, num_bits);
+    return;
+  }
+  int64_t i = 0;
+  if (offset % 8 == 0) {
+    const uint8_t* src = bitmap + offset / 8;
+    for (; i + 8 <= num_bits; i += 8) {
+      // Copy the byte into all 8 lanes, keep bit k in lane k, then turn each non-zero
+      // lane into 1. No lane exceeds 0xff, so nothing carries between lanes.
+      uint64_t word = src[i / 8] * 0x0101010101010101ULL;
+      word &= 0x8040201008040201ULL;
+      word = ((word + 0x7f7f7f7f7f7f7f7fULL) >> 7) & 0x0101010101010101ULL;
+      word = arrow::bit_util::ToLittleEndian(word);
+      memcpy(bytes + i, &word, sizeof(word));
+    }
+  }
+  for (; i < num_bits; ++i) {
+    bytes[i] = arrow::bit_util::GetBit(bitmap, offset + i) ? 1 : 0;
+  }
+}
 
 /// Packs num_bytes bytes, each 0 or 1, into a bitmap. bytes must be readable up to
 /// the next multiple of 8, with the padding zeroed. Writes whole bytes of bitmap.
@@ -131,6 +313,10 @@ Status LLVMGenerator::Add(const ExpressionPtr expr, const FieldDescriptorPtr out
                                          selection_vector_mode_));
   }
   compiled_expr->SetFunctionName(selection_vector_mode_, fn_name);
+  RowValidityCollector collector;
+  value_validity->value_expr()->Accept(collector);
+  compiled_expr->set_row_validity_indices(collector.indices());
+  compiled_expr->set_local_bitmap_indices(collector.local_bitmap_indices());
   compiled_exprs_.push_back(std::move(compiled_expr));
   return Status::OK();
 }
@@ -191,6 +377,20 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
   }
 
   std::vector<uint8_t> bool_bytes;
+  // Validity buffers read by the generated code, expanded to one byte per row. They
+  // cover all the input rows, since a selection vector can refer to any of them.
+  std::unordered_map<int, std::unique_ptr<uint8_t[]>> validity_bytes;
+  struct SavedBuffer {
+    int idx;
+    uint8_t* buffer;
+    int64_t offset;
+  };
+  std::vector<SavedBuffer> saved_validity;
+  // Byte-per-row stand-ins for the local bitmaps, padded for PackBytesToBits().
+  const int64_t local_bytes_size =
+      arrow::bit_util::RoundUpToMultipleOf8(record_batch.num_rows());
+  std::vector<std::vector<uint8_t>> local_bytes;
+  std::vector<uint8_t*> saved_local_bitmaps;
   for (auto& compiled_expr : compiled_exprs_) {
     // generate data/offset vectors.
     const uint8_t* selection_buffer = nullptr;
@@ -215,12 +415,55 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
       eval_batch->SetBuffer(out_data_idx, bool_bytes.data(), 0);
     }
 
+    saved_validity.clear();
+    for (int idx : compiled_expr->row_validity_indices()) {
+      if (eval_batch->GetBuffer(idx) == nullptr) {
+        // No validity buffer: every row is valid.
+        saved_validity.push_back({idx, nullptr, eval_batch->GetBufferOffset(idx)});
+        eval_batch->SetBuffer(idx, AllOnesBytes(record_batch.num_rows()), 0);
+        continue;
+      }
+      auto& bytes = validity_bytes[idx];
+      if (bytes == nullptr) {
+        bytes.reset(new uint8_t[record_batch.num_rows()]);
+        ExpandBitsToBytes(eval_batch->GetBuffer(idx), eval_batch->GetBufferOffset(idx),
+                          record_batch.num_rows(), bytes.get());
+      }
+      saved_validity.push_back(
+          {idx, eval_batch->GetBuffer(idx), eval_batch->GetBufferOffset(idx)});
+      eval_batch->SetBuffer(idx, bytes.get(), 0);
+    }
+
+    // The local bitmaps are pre-filled with 1s, and the generated code stores the
+    // validity of each row.
+    uint8_t** local_bitmaps = eval_batch->GetLocalBitMapArray();
+    const auto& local_bitmap_indices = compiled_expr->local_bitmap_indices();
+    if (local_bytes.size() < local_bitmap_indices.size()) {
+      local_bytes.resize(local_bitmap_indices.size());
+    }
+    saved_local_bitmaps.clear();
+    for (size_t i = 0; i < local_bitmap_indices.size(); ++i) {
+      local_bytes[i].assign(local_bytes_size, 1);
+      std::fill(local_bytes[i].begin() + record_batch.num_rows(), local_bytes[i].end(),
+                0);
+      saved_local_bitmaps.push_back(local_bitmaps[local_bitmap_indices[i]]);
+      local_bitmaps[local_bitmap_indices[i]] = local_bytes[i].data();
+    }
+
     EvalFunc jit_function = compiled_expr->GetJITFunction(mode);
     jit_function(eval_batch->GetBufferArray(), eval_batch->GetBufferOffsetArray(),
                  eval_batch->GetLocalBitMapArray(), annotator_.GetHolderPointersArray(),
                  selection_buffer, (int64_t)eval_batch->GetExecutionContext(),
                  num_output_rows);
 
+    for (const auto& saved : saved_validity) {
+      eval_batch->SetBuffer(saved.idx, saved.buffer, saved.offset);
+    }
+    for (size_t i = 0; i < local_bitmap_indices.size(); ++i) {
+      local_bitmaps[local_bitmap_indices[i]] = saved_local_bitmaps[i];
+      PackBytesToBits(local_bytes[i].data(), record_batch.num_rows(),
+                      saved_local_bitmaps[i]);
+    }
     if (bool_output) {
       eval_batch->SetBuffer(out_data_idx, out_bitmap, out_bitmap_offset);
       PackBytesToBits(bool_bytes.data(), num_output_rows, out_bitmap);
@@ -449,9 +692,15 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
         types()->i64_type(), true, "position_var");
   }
 
+  // The row's code goes in its own block, so values that the visitor computes once per
+  // row can be placed in the (dominating) loop block ahead of it.
+  llvm::BasicBlock* row_body = llvm::BasicBlock::Create(*context(), "row", fn);
+  builder->CreateBr(row_body);
+  builder->SetInsertPoint(row_body);
+
   // The visitor can add code to both the entry/loop blocks.
   Visitor visitor(this, fn, loop_entry, arg_addrs, arg_local_bitmaps, arg_holder_ptrs,
-                  slice_offsets, arg_context_ptr, position_var);
+                  slice_offsets, arg_context_ptr, position_var, loop_body);
   value_expr->Accept(visitor);
   ARROW_RETURN_NOT_OK(visitor.status());
   LValuePtr output_value = visitor.result();
@@ -529,39 +778,6 @@ llvm::Value* LLVMGenerator::GetPackedBitValue(llvm::Value* bitmap,
   llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
       bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
   return AddFunctionCall("bitMapGetBit", types()->i1_type(), {bitmap8, position});
-}
-
-/// Set the value of a bit in bitMap.
-void LLVMGenerator::SetPackedBitValue(llvm::Value* bitmap, llvm::Value* position,
-                                      llvm::Value* value) {
-  ADD_TRACE("set bit at position %T", position);
-  ADD_TRACE("  to value %T ", value);
-
-  llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
-      bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
-  AddFunctionCall("bitMapSetBit", types()->void_type(), {bitmap8, position, value});
-}
-
-/// Return value of a bit in validity bitMap (handles null bitmaps too).
-llvm::Value* LLVMGenerator::GetPackedValidityBitValue(llvm::Value* bitmap,
-                                                      llvm::Value* position) {
-  ADD_TRACE("fetch validity bit at position %T", position);
-
-  llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
-      bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
-  return AddFunctionCall("bitMapValidityGetBit", types()->i1_type(), {bitmap8, position});
-}
-
-/// Clear the bit in bitMap if value = false.
-void LLVMGenerator::ClearPackedBitValueIfFalse(llvm::Value* bitmap, llvm::Value* position,
-                                               llvm::Value* value) {
-  ADD_TRACE("ClearIfFalse bit at position %T", position);
-  ADD_TRACE("   value %T ", value);
-
-  llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
-      bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
-  AddFunctionCall("bitMapClearBitIfFalse", types()->void_type(),
-                  {bitmap8, position, value});
 }
 
 /// Extract the bitmap addresses, and do an intersection.
@@ -660,7 +876,8 @@ LLVMGenerator::Visitor::Visitor(LLVMGenerator* generator, llvm::Function* functi
                                 llvm::Value* arg_local_bitmaps,
                                 llvm::Value* arg_holder_ptrs,
                                 std::vector<llvm::Value*> slice_offsets,
-                                llvm::Value* arg_context_ptr, llvm::Value* loop_var)
+                                llvm::Value* arg_context_ptr, llvm::Value* loop_var,
+                                llvm::BasicBlock* row_prologue_block)
     : generator_(generator),
       function_(function),
       entry_block_(entry_block),
@@ -670,6 +887,7 @@ LLVMGenerator::Visitor::Visitor(LLVMGenerator* generator, llvm::Function* functi
       slice_offsets_(slice_offsets),
       arg_context_ptr_(arg_context_ptr),
       loop_var_(loop_var),
+      row_prologue_block_(row_prologue_block),
       has_arena_allocs_(false) {
   ADD_VISITOR_TRACE("Iteration %T", loop_var);
 }
@@ -749,20 +967,46 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueDex& dex) {
 }
 
 void LLVMGenerator::Visitor::Visit(const VectorReadValidityDex& dex) {
+  // Execute() presents the validity buffers read here as one byte per row (all ones if
+  // the input has no validity buffer), so the read is a plain load without a null check
+  // or bit extraction, which the loop vectorizer can handle.
+  //
+  // The same field's validity is often checked many times per row, e.g. in each term
+  // of "a = x OR a = y OR ...". Read it once, at the start of the row, so that each
+  // use doesn't repeat the load, and so the optimizer sees the uses as the same value.
+  auto cached = row_validity_.find(dex.ValidityIdx());
+  if (cached != row_validity_.end()) {
+    result_.reset(new LValue(cached->second));
+    return;
+  }
+
   llvm::IRBuilder<>* builder = ir_builder();
   llvm::Value* slot_ref =
       GetBufferReference(dex.ValidityIdx(), kBufferTypeValidity, dex.Field());
+
+  llvm::IRBuilderBase::InsertPointGuard guard(*builder);
+  builder->SetInsertPoint(row_prologue_block_->getTerminator());
   llvm::Value* slot_index =
       builder->CreateAdd(loop_var_, GetSliceOffset(dex.ValidityIdx()));
-  llvm::Value* validity = generator_->GetPackedValidityBitValue(slot_ref, slot_index);
+  auto types = generator_->types();
+  llvm::Value* byte = builder->CreateLoad(
+      types->i8_type(), builder->CreateGEP(types->i8_type(), slot_ref, slot_index));
+  llvm::Value* validity =
+      builder->CreateICmpNE(byte, types->i8_constant(0), dex.FieldName() + "_valid");
+  row_validity_[dex.ValidityIdx()] = validity;
 
   ADD_VISITOR_TRACE("visit validity vector " + dex.FieldName() + " value %T", validity);
   result_.reset(new LValue(validity));
 }
 
 void LLVMGenerator::Visitor::Visit(const LocalBitMapValidityDex& dex) {
+  // Execute() presents local bitmaps as one byte per row.
+  auto types = generator_->types();
+  llvm::IRBuilder<>* builder = ir_builder();
   llvm::Value* slot_ref = GetLocalBitMapReference(dex.local_bitmap_idx());
-  llvm::Value* validity = generator_->GetPackedBitValue(slot_ref, loop_var_);
+  llvm::Value* byte = builder->CreateLoad(
+      types->i8_type(), builder->CreateGEP(types->i8_type(), slot_ref, loop_var_));
+  llvm::Value* validity = builder->CreateICmpNE(byte, types->i8_constant(0));
 
   ADD_VISITOR_TRACE(
       "visit local bitmap " + std::to_string(dex.local_bitmap_idx()) + " value %T",
@@ -966,6 +1210,18 @@ void LLVMGenerator::Visitor::Visit(const NullableInternalFuncDex& dex) {
 void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
   ADD_VISITOR_TRACE("visit IfExpression");
   llvm::IRBuilder<>* builder = ir_builder();
+
+  // A chain of cheap, side-effect free branches, e.g. CASE WHEN a < 10 THEN 1 WHEN ...,
+  // is built with selects: branches on data-dependent conditions mispredict and keep the
+  // loop from being vectorized.
+  if (IsSpeculatable(dex)) {
+    LValuePtr lvalue = BuildIfElseSelect(dex);
+    if (lvalue == nullptr) return;
+    // All the branches of an if-else-if chain share the local bitmap.
+    ClearLocalBitMapIfNotValid(dex.local_bitmap_idx(), lvalue->validity());
+    result_ = lvalue;
+    return;
+  }
 
   // Evaluate condition.
   LValuePtr if_condition = BuildValueAndValidity(dex.condition_vv());
@@ -1265,6 +1521,43 @@ void LLVMGenerator::Visitor::Visit(const InExprDexBase<std::string>& dex) {
   VisitInExpression<std::string>(dex);
 }
 
+LValuePtr LLVMGenerator::Visitor::BuildIfElseSelect(const IfDex& dex) {
+  llvm::IRBuilder<>* builder = ir_builder();
+
+  LValuePtr condition = BuildValueAndValidity(dex.condition_vv());
+  if (condition == nullptr) return nullptr;
+  llvm::Value* take_then =
+      builder->CreateAnd(condition->data(), condition->validity(), "validAndMatch");
+
+  LValuePtr then_lvalue = BuildValueAndValidity(dex.then_vv());
+  if (then_lvalue == nullptr) return nullptr;
+
+  LValuePtr else_lvalue;
+  if (dex.is_terminal_else()) {
+    else_lvalue = BuildValueAndValidity(dex.else_vv());
+  } else {
+    // A non-terminal else holds the next if-else of the chain.
+    auto nested = dynamic_cast<const IfDex*>(dex.else_vv().value_expr().get());
+    if (nested == nullptr) {
+      status_ = Status::CodeGenError("expected a nested if-else expression");
+      return nullptr;
+    }
+    else_lvalue = BuildIfElseSelect(*nested);
+  }
+  if (else_lvalue == nullptr) return nullptr;
+
+  llvm::Value* data =
+      builder->CreateSelect(take_then, then_lvalue->data(), else_lvalue->data());
+  llvm::Value* length = nullptr;
+  if (arrow::is_binary_like(dex.result_type()->id())) {
+    length =
+        builder->CreateSelect(take_then, then_lvalue->length(), else_lvalue->length());
+  }
+  llvm::Value* validity =
+      builder->CreateSelect(take_then, then_lvalue->validity(), else_lvalue->validity());
+  return std::make_shared<LValue>(data, length, validity);
+}
+
 LValuePtr LLVMGenerator::Visitor::BuildIfElse(llvm::Value* condition,
                                               std::function<LValuePtr()> then_func,
                                               std::function<LValuePtr()> else_func,
@@ -1553,11 +1846,17 @@ llvm::Value* LLVMGenerator::Visitor::GetLocalBitMapReference(int idx) {
   return slot_ref;
 }
 
-/// The local bitmap is pre-filled with 1s. Clear only if invalid.
+/// Record the row's validity in the local bitmap, which is pre-filled with 1s.
 void LLVMGenerator::Visitor::ClearLocalBitMapIfNotValid(int local_bitmap_idx,
                                                         llvm::Value* is_valid) {
+  // Execute() presents local bitmaps as one byte per row, pre-filled with 1s. Storing
+  // the validity unconditionally is equivalent to clearing it if invalid, and doesn't
+  // need a branch or a read-modify-write.
+  auto types = generator_->types();
+  llvm::IRBuilder<>* builder = ir_builder();
   llvm::Value* slot_ref = GetLocalBitMapReference(local_bitmap_idx);
-  generator_->ClearPackedBitValueIfFalse(slot_ref, loop_var_, is_valid);
+  builder->CreateStore(builder->CreateZExt(is_valid, types->i8_type()),
+                       builder->CreateGEP(types->i8_type(), slot_ref, loop_var_));
 }
 
 // Hooks for tracing/printfs.

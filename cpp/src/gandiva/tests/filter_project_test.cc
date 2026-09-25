@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
 #include <random>
 #include "arrow/memory_pool.h"
 #include "gandiva/filter.h"
@@ -355,6 +356,158 @@ TEST_F(TestFilterProject, TestBooleanOutputsAtBoundarySizes) {
       ASSERT_OK(
           sv_projector->Evaluate(*in_batch, selection_vector.get(), pool_, &sv_outputs));
       EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayBool(exp_gt, exp_valid), sv_outputs.at(0));
+    }
+  }
+}
+
+// The generated code reads input validity and local bitmaps as one byte per row, and
+// builds cheap if-else chains with selects. Compare against a reference evaluation, with
+// nulls in every input, sliced inputs (non-zero bit offsets), and a selection vector.
+TEST_F(TestFilterProject, TestNullableExprsWithValidityBuffers) {
+  auto fa = field("a", int32());
+  auto fb = field("b", int32());
+  auto fc = field("c", int32());
+  auto fs = field("s", arrow::utf8());
+  auto schema = arrow::schema({fa, fb, fc, fs});
+  auto a = TreeExprBuilder::MakeField(fa);
+  auto b = TreeExprBuilder::MakeField(fb);
+  auto c = TreeExprBuilder::MakeField(fc);
+  auto s = TreeExprBuilder::MakeField(fs);
+  auto lit = [](int32_t v) { return TreeExprBuilder::MakeLiteral(v); };
+  auto fn = [](const std::string& name, const NodeVector& args, DataTypePtr type) {
+    return TreeExprBuilder::MakeFunction(name, args, type);
+  };
+  auto boolean = arrow::boolean();
+
+  // if (a < b) a else if (a > 1) b else c : speculatable, built with selects.
+  auto if_select = TreeExprBuilder::MakeIf(
+      fn("less_than", {a, b}, boolean), a,
+      TreeExprBuilder::MakeIf(fn("greater_than", {a, lit(1)}, boolean), b, c, int32()),
+      int32());
+  // if (a < b) negative(a) else c : not speculatable, built with branches.
+  auto if_branch = TreeExprBuilder::MakeIf(fn("less_than", {a, b}, boolean),
+                                           fn("negative", {a}, int32()), c, int32());
+  // (a < 2 and b > 1) or isnull(c)
+  auto and_or = TreeExprBuilder::MakeOr(
+      {TreeExprBuilder::MakeAnd({fn("less_than", {a, lit(2)}, boolean),
+                                 fn("greater_than", {b, lit(1)}, boolean)}),
+       fn("isnull", {c}, boolean)});
+  // s = "x" or s = "yy" or s = "zzz"
+  auto str_or = TreeExprBuilder::MakeOr(
+      {fn("equal", {s, TreeExprBuilder::MakeStringLiteral("x")}, boolean),
+       fn("equal", {s, TreeExprBuilder::MakeStringLiteral("yy")}, boolean),
+       fn("equal", {s, TreeExprBuilder::MakeStringLiteral("zzz")}, boolean)});
+
+  ExpressionVector exprs = {
+      TreeExprBuilder::MakeExpression(if_select, field("if_select", int32())),
+      TreeExprBuilder::MakeExpression(if_branch, field("if_branch", int32())),
+      TreeExprBuilder::MakeExpression(and_or, field("and_or", boolean)),
+      TreeExprBuilder::MakeExpression(str_or, field("str_or", boolean))};
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, exprs, TestConfiguration(), &projector));
+  std::shared_ptr<Projector> sv_projector;
+  ASSERT_OK(Projector::Make(schema, exprs, SelectionVector::MODE_UINT16,
+                            TestConfiguration(), &sv_projector));
+  std::shared_ptr<Filter> filter;
+  ASSERT_OK(Filter::Make(schema, TreeExprBuilder::MakeCondition(and_or),
+                         TestConfiguration(), &filter));
+
+  using OptInt = std::optional<int32_t>;
+  using OptBool = std::optional<bool>;
+  const std::vector<std::string> strings = {"x", "yy", "zzz", "w", "", "xx"};
+
+  std::mt19937 rng(7);
+  for (int total : {9, 64, 200, 1001}) {
+    std::vector<int32_t> va(total), vb(total), vc(total);
+    std::vector<std::string> vs(total);
+    std::vector<bool> na(total), nb(total), nc(total), ns(total);
+    for (int i = 0; i < total; ++i) {
+      va[i] = static_cast<int32_t>(rng() % 4);
+      vb[i] = static_cast<int32_t>(rng() % 4);
+      vc[i] = static_cast<int32_t>(rng() % 4);
+      vs[i] = strings[rng() % strings.size()];
+      na[i] = rng() % 4 != 0;
+      nb[i] = rng() % 4 != 0;
+      nc[i] = rng() % 4 != 0;
+      ns[i] = rng() % 4 != 0;
+    }
+    auto full_batch = arrow::RecordBatch::Make(
+        schema, total,
+        {MakeArrowArrayInt32(va, na), MakeArrowArrayInt32(vb, nb),
+         MakeArrowArrayInt32(vc, nc), MakeArrowArrayUtf8(vs, ns)});
+
+    for (int offset : {0, 3, 8}) {
+      if (offset >= total) continue;
+      auto batch = full_batch->Slice(offset);
+      const int n = static_cast<int>(batch->num_rows());
+
+      std::vector<OptInt> exp_select(n), exp_branch(n);
+      std::vector<OptBool> exp_and_or(n), exp_str_or(n);
+      for (int r = 0; r < n; ++r) {
+        const int i = r + offset;
+        OptInt oa = na[i] ? OptInt(va[i]) : std::nullopt;
+        OptInt ob = nb[i] ? OptInt(vb[i]) : std::nullopt;
+        OptInt oc = nc[i] ? OptInt(vc[i]) : std::nullopt;
+        bool a_lt_b = oa && ob && *oa < *ob;
+        exp_select[r] = a_lt_b ? oa : ((oa && *oa > 1) ? ob : oc);
+        exp_branch[r] = a_lt_b ? OptInt(-*oa) : oc;
+        // Three-valued logic.
+        OptBool x = oa ? OptBool(*oa < 2) : std::nullopt;
+        OptBool y = ob ? OptBool(*ob > 1) : std::nullopt;
+        OptBool x_and_y = (x == false || y == false) ? OptBool(false)
+                          : (x && y)                 ? OptBool(true)
+                                                     : std::nullopt;
+        bool c_null = !oc.has_value();
+        exp_and_or[r] = (x_and_y == true || c_null) ? OptBool(true)
+                        : x_and_y.has_value()       ? OptBool(false)
+                                                    : std::nullopt;
+        exp_str_or[r] = ns[i] ? OptBool(vs[i] == "x" || vs[i] == "yy" || vs[i] == "zzz")
+                              : std::nullopt;
+      }
+
+      auto int_array = [](const std::vector<OptInt>& v, const std::vector<int>& rows) {
+        std::vector<int32_t> values;
+        std::vector<bool> valid;
+        for (int r : rows) {
+          values.push_back(v[r].value_or(0));
+          valid.push_back(v[r].has_value());
+        }
+        return MakeArrowArrayInt32(values, valid);
+      };
+      auto bool_array = [](const std::vector<OptBool>& v, const std::vector<int>& rows) {
+        std::vector<bool> values, valid;
+        for (int r : rows) {
+          values.push_back(v[r].value_or(false));
+          valid.push_back(v[r].has_value());
+        }
+        return MakeArrowArrayBool(values, valid);
+      };
+
+      std::vector<int> all_rows(n), selected;
+      for (int r = 0; r < n; ++r) {
+        all_rows[r] = r;
+        if (exp_and_or[r] == true) selected.push_back(r);
+      }
+
+      arrow::ArrayVector outputs;
+      ASSERT_OK(projector->Evaluate(*batch, pool_, &outputs));
+      EXPECT_ARROW_ARRAY_EQUALS(int_array(exp_select, all_rows), outputs.at(0));
+      EXPECT_ARROW_ARRAY_EQUALS(int_array(exp_branch, all_rows), outputs.at(1));
+      EXPECT_ARROW_ARRAY_EQUALS(bool_array(exp_and_or, all_rows), outputs.at(2));
+      EXPECT_ARROW_ARRAY_EQUALS(bool_array(exp_str_or, all_rows), outputs.at(3));
+
+      std::shared_ptr<SelectionVector> selection_vector;
+      ASSERT_OK(SelectionVector::MakeInt16(n, pool_, &selection_vector));
+      ASSERT_OK(filter->Evaluate(*batch, selection_vector));
+      ASSERT_EQ(selection_vector->GetNumSlots(), static_cast<int64_t>(selected.size()));
+      if (selected.empty()) continue;
+      arrow::ArrayVector sv_outputs;
+      ASSERT_OK(
+          sv_projector->Evaluate(*batch, selection_vector.get(), pool_, &sv_outputs));
+      EXPECT_ARROW_ARRAY_EQUALS(int_array(exp_select, selected), sv_outputs.at(0));
+      EXPECT_ARROW_ARRAY_EQUALS(int_array(exp_branch, selected), sv_outputs.at(1));
+      EXPECT_ARROW_ARRAY_EQUALS(bool_array(exp_and_or, selected), sv_outputs.at(2));
+      EXPECT_ARROW_ARRAY_EQUALS(bool_array(exp_str_or, selected), sv_outputs.at(3));
     }
   }
 }

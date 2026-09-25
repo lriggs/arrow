@@ -54,6 +54,22 @@ class CompiledExpr {
     return jit_functions_[static_cast<int>(mode)];
   }
 
+  /// Indices of the validity buffers that the generated code reads row by row. The
+  /// generated code reads these as one byte per row, see LLVMGenerator::Execute().
+  const std::vector<int>& row_validity_indices() const { return row_validity_indices_; }
+
+  void set_row_validity_indices(std::vector<int> indices) {
+    row_validity_indices_ = std::move(indices);
+  }
+
+  /// Indices of the local bitmaps that the generated code reads or writes. The
+  /// generated code accesses these as one byte per row, see LLVMGenerator::Execute().
+  const std::vector<int>& local_bitmap_indices() const { return local_bitmap_indices_; }
+
+  void set_local_bitmap_indices(std::vector<int> indices) {
+    local_bitmap_indices_ = std::move(indices);
+  }
+
  private:
   // value & validities for the expression tree (root)
   ValueValidityPairPtr value_validity_;
@@ -66,6 +82,9 @@ class CompiledExpr {
 
   // JIT functions in the generated code (set after the module is optimised and finalized)
   std::array<EvalFunc, SelectionVector::kNumModes> jit_functions_;
+
+  std::vector<int> row_validity_indices_;
+  std::vector<int> local_bitmap_indices_;
 };
 
 }  // namespace gandiva

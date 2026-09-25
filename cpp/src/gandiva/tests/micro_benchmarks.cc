@@ -66,7 +66,7 @@ static void TimedTestAdd3(benchmark::State& state) {
   ASSERT_OK(status);
 }
 
-static void TimedTestBigNested(benchmark::State& state) {
+static void TimedTestBigNestedImpl(benchmark::State& state, bool with_validity_buffer) {
   // schema for input fields
   auto fielda = field("a", int32());
   auto schema = arrow::schema({fielda});
@@ -105,8 +105,50 @@ static void TimedTestBigNested(benchmark::State& state) {
   ProjectEvaluator evaluator(projector);
 
   Status status = TimedEvaluate<arrow::Int32Type, int32_t>(
-      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state);
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
+      with_validity_buffer);
   ASSERT_TRUE(status.ok());
+}
+
+static void TimedTestBigNested(benchmark::State& state) {
+  TimedTestBigNestedImpl(state, false);
+}
+
+// Inputs that carry a validity buffer, as they always do in Dremio.
+static void TimedTestBigNestedValidityBuffer(benchmark::State& state) {
+  TimedTestBigNestedImpl(state, true);
+}
+
+static void TimedTestIfElseFieldArms(benchmark::State& state) {
+  // schema for input fields
+  auto field0 = field("f0", int64());
+  auto field1 = field("f1", int64());
+  auto field2 = field("f2", int64());
+  auto schema = arrow::schema({field0, field1, field2});
+  auto pool_ = arrow::default_memory_pool();
+
+  // if (f0 < f1) f1 else if (f0 < f2) f2 else f0, with nullable arms.
+  auto node0 = TreeExprBuilder::MakeField(field0);
+  auto node1 = TreeExprBuilder::MakeField(field1);
+  auto node2 = TreeExprBuilder::MakeField(field2);
+  auto inner = TreeExprBuilder::MakeIf(
+      TreeExprBuilder::MakeFunction("less_than", {node0, node2}, boolean()), node2, node0,
+      int64());
+  auto outer = TreeExprBuilder::MakeIf(
+      TreeExprBuilder::MakeFunction("less_than", {node0, node1}, boolean()), node1, inner,
+      int64());
+  auto expr = TreeExprBuilder::MakeExpression(outer, field("res", int64()));
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+
+  Int64DataGenerator data_generator;
+  ProjectEvaluator evaluator(projector);
+
+  Status status = TimedEvaluate<arrow::Int64Type, int64_t>(
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
+      /*with_validity_buffer=*/true);
+  ASSERT_OK(status);
 }
 
 static void TimedTestExtractYear(benchmark::State& state) {
@@ -341,7 +383,7 @@ static void TimedTestOutputStringAllocs(benchmark::State& state) {
 // following two tests are for benchmark optimization of
 // in expr. will be used in follow-up PRs to optimize in expr.
 
-static void TimedTestMultiOr(benchmark::State& state) {
+static void TimedTestMultiOrImpl(benchmark::State& state, bool with_validity_buffer) {
   // schema for input fields
   auto fielda = field("a", utf8());
   auto schema = arrow::schema({fielda});
@@ -372,8 +414,18 @@ static void TimedTestMultiOr(benchmark::State& state) {
   FastUtf8DataGenerator data_generator(250);
   ProjectEvaluator evaluator(projector);
   Status status = TimedEvaluate<arrow::StringType, std::string>(
-      schema, evaluator, data_generator, pool_, 100 * THOUSAND, 16 * THOUSAND, state);
+      schema, evaluator, data_generator, pool_, 100 * THOUSAND, 16 * THOUSAND, state,
+      with_validity_buffer);
   ASSERT_OK(status);
+}
+
+static void TimedTestMultiOr(benchmark::State& state) {
+  TimedTestMultiOrImpl(state, false);
+}
+
+// Inputs that carry a validity buffer, as they always do in Dremio.
+static void TimedTestMultiOrValidityBuffer(benchmark::State& state) {
+  TimedTestMultiOrImpl(state, true);
 }
 
 static void TimedTestInExpr(benchmark::State& state) {
@@ -555,6 +607,8 @@ static void DecimalAdd3Large(benchmark::State& state) {
 BENCHMARK(TimedTestExprCompilation)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestAdd3)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNested)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestBigNestedValidityBuffer)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestIfElseFieldArms)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestExtractYear)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterAdd2)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterProjectAdd2)->Unit(benchmark::kMicrosecond);
@@ -565,6 +619,7 @@ BENCHMARK(TimedTestAllocs)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestOutputStringAllocs)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestLower)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestMultiOr)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestMultiOrValidityBuffer)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestInExpr)->Unit(benchmark::kMicrosecond);
 BENCHMARK(DecimalAdd2Fast)->Unit(benchmark::kMicrosecond);
 BENCHMARK(DecimalAdd2LeadingZeroes)->Unit(benchmark::kMicrosecond);
