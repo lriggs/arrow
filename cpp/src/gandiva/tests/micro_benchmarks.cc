@@ -17,6 +17,10 @@
 
 #include <stdlib.h>
 
+#include <random>
+#include <string>
+#include <vector>
+
 #include "arrow/memory_pool.h"
 #include "arrow/status.h"
 #include "arrow/testing/gtest_util.h"
@@ -146,6 +150,160 @@ static void TimedTestIfElseFieldArms(benchmark::State& state) {
   ProjectEvaluator evaluator(projector);
 
   Status status = TimedEvaluate<arrow::Int64Type, int64_t>(
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
+      /*with_validity_buffer=*/true);
+  ASSERT_OK(status);
+}
+
+namespace {
+
+const std::vector<std::string>& MessageWords() {
+  static const std::vector<std::string> kWords = {
+      "failed",  "to",       "read",    "table",   "column",  "error",  "while",
+      "query",   "the",      "of",      "file",    "access",  "denied", "cannot",
+      "invoke",  "because",  "value",   "is",      "null",    "timeout", "remote",
+      "fragment", "execution", "unable", "connect", "server",  "plan",   "invalid",
+      "Schema",  "Dataset",  "Unknown", "type",    "request", "object", "not",
+      "found",   "user",     "limit",   "exceeded", "memory", "node",   "Could"};
+  return kWords;
+}
+
+// Makes a phrase of num_words random words.
+std::string MakePhrase(std::default_random_engine& rng, int num_words) {
+  const auto& words = MessageWords();
+  std::string phrase;
+  for (int i = 0; i < num_words; ++i) {
+    if (i > 0) phrase += ' ';
+    phrase += words[rng() % words.size()];
+  }
+  return phrase;
+}
+
+// Error-message-like strings of ~30 words; some contain one of the given phrases.
+class MessageDataGenerator : public DataGenerator<std::string> {
+ public:
+  explicit MessageDataGenerator(const std::vector<std::string>& phrases)
+      : phrases_(phrases) {}
+
+  std::string GenerateData() override {
+    std::string message = MakePhrase(rng_, 30);
+    if (rng_() % 10 == 0) {
+      message += " " + phrases_[rng_() % phrases_.size()];
+    }
+    return message;
+  }
+
+ private:
+  const std::vector<std::string>& phrases_;
+  std::default_random_engine rng_{7};
+};
+
+}  // namespace
+
+// CASE WHEN POSITION(phrase_0 IN a) > 0 THEN 'phrase_0' WHEN ... ELSE 'other' END, the
+// shape of queries that classify messages by the substrings they contain.
+static void TimedTestCasePosition(benchmark::State& state) {
+  auto field_a = field("a", utf8());
+  auto schema = arrow::schema({field_a});
+  auto pool_ = arrow::default_memory_pool();
+
+  std::default_random_engine rng(42);
+  std::vector<std::string> phrases;
+  for (int i = 0; i < 100; ++i) {
+    phrases.push_back(MakePhrase(rng, 3));
+  }
+
+  auto node_a = TreeExprBuilder::MakeField(field_a);
+  NodePtr case_node = TreeExprBuilder::MakeStringLiteral("other");
+  for (auto it = phrases.rbegin(); it != phrases.rend(); ++it) {
+    auto position = TreeExprBuilder::MakeFunction(
+        "locate", {TreeExprBuilder::MakeStringLiteral(*it), node_a}, int32());
+    auto condition = TreeExprBuilder::MakeFunction(
+        "greater_than", {position, TreeExprBuilder::MakeLiteral(0)}, boolean());
+    case_node = TreeExprBuilder::MakeIf(
+        condition, TreeExprBuilder::MakeStringLiteral(*it), case_node, utf8());
+  }
+  auto expr = TreeExprBuilder::MakeExpression(case_node, field("res", utf8()));
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+
+  MessageDataGenerator data_generator(phrases);
+  ProjectEvaluator evaluator(projector);
+
+  Status status = TimedEvaluate<arrow::StringType, std::string>(
+      schema, evaluator, data_generator, pool_, 64 * THOUSAND, 16 * THOUSAND, state,
+      /*with_validity_buffer=*/true);
+  ASSERT_OK(status);
+}
+
+// LIKE '%...%' over error-message-like strings.
+static void TimedTestFilterLikeMessages(benchmark::State& state) {
+  auto field_a = field("a", utf8());
+  auto schema = arrow::schema({field_a});
+  auto pool_ = arrow::default_memory_pool();
+
+  auto like = TreeExprBuilder::MakeFunction(
+      "like",
+      {TreeExprBuilder::MakeField(field_a),
+       TreeExprBuilder::MakeStringLiteral("%access denied%")},
+      boolean());
+  std::shared_ptr<Filter> filter;
+  ASSERT_OK(Filter::Make(schema, TreeExprBuilder::MakeCondition(like),
+                         TestConfiguration(), &filter));
+
+  static const std::vector<std::string> kPhrases = {"access denied", "table not found"};
+  MessageDataGenerator data_generator(kPhrases);
+  FilterEvaluator evaluator(filter);
+
+  Status status = TimedEvaluate<arrow::StringType, std::string>(
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
+      /*with_validity_buffer=*/true);
+  ASSERT_OK(status);
+}
+
+// CASE WHEN a = 'v0' THEN 'g0' WHEN a = 'v1' ... over 20 short strings with a validity
+// buffer, e.g. mapping a region code to a geography.
+static void TimedTestCaseStringEquals(benchmark::State& state) {
+  auto field_a = field("a", utf8());
+  auto schema = arrow::schema({field_a});
+  auto pool_ = arrow::default_memory_pool();
+
+  static const std::vector<std::string> kValues = {
+      "us-east-1",      "us-east-2",      "us-west-1",      "us-west-2",
+      "ca-central-1",   "sa-east-1",      "eu-west-1",      "eu-west-2",
+      "eu-west-3",      "eu-central-1",   "eu-north-1",     "eu-south-1",
+      "me-south-1",     "af-south-1",     "ap-south-1",     "ap-east-1",
+      "ap-northeast-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2"};
+  auto node_a = TreeExprBuilder::MakeField(field_a);
+  NodePtr case_node = TreeExprBuilder::MakeStringLiteral("Unknown");
+  for (size_t i = kValues.size(); i-- > 0;) {
+    auto condition = TreeExprBuilder::MakeFunction(
+        "equal", {node_a, TreeExprBuilder::MakeStringLiteral(kValues[i])}, boolean());
+    case_node = TreeExprBuilder::MakeIf(
+        condition, TreeExprBuilder::MakeStringLiteral("geo" + std::to_string(i % 6)),
+        case_node, utf8());
+  }
+  auto expr = TreeExprBuilder::MakeExpression(case_node, field("res", utf8()));
+
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, {expr}, TestConfiguration(), &projector));
+
+  // Draw inputs from the same values, plus some that match none of them.
+  class RegionGenerator : public DataGenerator<std::string> {
+   public:
+    std::string GenerateData() override {
+      auto i = rng_() % (kValues.size() + 4);
+      return i < kValues.size() ? kValues[i] : "xx-other-" + std::to_string(i);
+    }
+
+   private:
+    std::default_random_engine rng_{11};
+  };
+  RegionGenerator data_generator;
+  ProjectEvaluator evaluator(projector);
+
+  Status status = TimedEvaluate<arrow::StringType, std::string>(
       schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
       /*with_validity_buffer=*/true);
   ASSERT_OK(status);
@@ -609,10 +767,13 @@ BENCHMARK(TimedTestAdd3)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNested)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNestedValidityBuffer)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestIfElseFieldArms)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestCasePosition)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestCaseStringEquals)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestExtractYear)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterAdd2)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterProjectAdd2)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestFilterLike)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestFilterLikeMessages)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestCastFloatFromString)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestCastIntFromString)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestAllocs)->Unit(benchmark::kMicrosecond);

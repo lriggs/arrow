@@ -16,6 +16,7 @@
 // under the License.
 
 // String functions
+#include "arrow/util/endian.h"
 #include "arrow/util/logging_internal.h"
 #include "arrow/util/value_parsing.h"
 
@@ -135,30 +136,74 @@ bool ends_with_utf8_utf8(const char* data, gdv_int32 data_len, const char* suffi
           (memcmp(data + data_len - suffix_len, suffix, suffix_len) == 0));
 }
 
+// Returns the byte offset of the first occurrence of substr (of length >= 1) in data,
+// or -1 if there is none.
+FORCE_INLINE
+int32_t find_substr(const char* data, int32_t data_len, const char* substr,
+                    int32_t substr_len) {
+  if (data_len < substr_len) {
+    return -1;
+  }
+  if (substr_len == 1) {
+    auto match = static_cast<const char*>(memchr(data, substr[0], data_len));
+    return match == nullptr ? -1 : static_cast<int32_t>(match - data);
+  }
+
+  // Check the first and last bytes of substr at 8 candidate positions at a time, and
+  // only compare the rest where both match. In text, the first byte alone matches
+  // often; both together rarely do.
+  constexpr uint64_t kLowBits = 0x7f7f7f7f7f7f7f7fULL;
+  const uint64_t first = 0x0101010101010101ULL * static_cast<uint8_t>(substr[0]);
+  const uint64_t last =
+      0x0101010101010101ULL * static_cast<uint8_t>(substr[substr_len - 1]);
+  const int32_t last_start = data_len - substr_len;
+  // Returns the first match among the 8 start positions from i, or -1.
+  auto search_block = [&](int32_t i) -> int32_t {
+    uint64_t first_bytes, last_bytes;
+    memcpy(&first_bytes, data + i, sizeof(first_bytes));
+    memcpy(&last_bytes, data + i + substr_len - 1, sizeof(last_bytes));
+    // A zero byte in x marks a candidate position.
+    uint64_t x =
+        arrow::bit_util::ToLittleEndian((first_bytes ^ first) | (last_bytes ^ last));
+    // Exact per-byte zero test: the high bit ends up set only in zero bytes.
+    uint64_t candidates = ~(((x & kLowBits) + kLowBits) | x | kLowBits);
+    while (candidates != 0) {
+      int32_t pos = i + (__builtin_ctzll(candidates) / 8);
+      if (memcmp(data + pos + 1, substr + 1, substr_len - 2) == 0) {
+        return pos;
+      }
+      candidates &= candidates - 1;
+    }
+    return -1;
+  };
+  int32_t i = 0;
+  if (last_start >= 7) {
+    for (; i + 7 <= last_start; i += 8) {
+      int32_t match = search_block(i);
+      if (match >= 0) {
+        return match;
+      }
+    }
+    // Finish with a block ending at the last start position. It overlaps positions
+    // already searched, which had no match.
+    return i <= last_start ? search_block(last_start - 7) : -1;
+  }
+  for (; i <= last_start; ++i) {
+    if (data[i] == substr[0] && data[i + substr_len - 1] == substr[substr_len - 1] &&
+        memcmp(data + i + 1, substr + 1, substr_len - 2) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 FORCE_INLINE
 bool is_substr_utf8_utf8(const char* data, int32_t data_len, const char* substr,
                          int32_t substr_len) {
   if (substr_len <= 0) {
     return data_len >= substr_len;
   }
-  if (data_len < substr_len) {
-    return false;
-  }
-  // Use memchr to skip to each candidate first byte, then compare the rest.
-  const char first = substr[0];
-  const char* cur = data;
-  const char* last = data + (data_len - substr_len);
-  while (cur <= last) {
-    cur = static_cast<const char*>(memchr(cur, first, last - cur + 1));
-    if (cur == nullptr) {
-      return false;
-    }
-    if (memcmp(cur + 1, substr + 1, substr_len - 1) == 0) {
-      return true;
-    }
-    ++cur;
-  }
-  return false;
+  return find_substr(data, data_len, substr, substr_len) >= 0;
 }
 
 FORCE_INLINE
@@ -1912,12 +1957,12 @@ gdv_int32 locate_utf8_utf8_int32(gdv_int64 context, const char* sub_str,
   if (byte_pos < 0 || byte_pos >= str_len) {
     return 0;
   }
-  for (gdv_int32 i = byte_pos; i <= str_len - sub_str_len; ++i) {
-    if (memcmp(str + i, sub_str, sub_str_len) == 0) {
-      return utf8_length(context, str, i) + 1;
-    }
+  gdv_int32 match =
+      find_substr(str + byte_pos, str_len - byte_pos, sub_str, sub_str_len);
+  if (match < 0) {
+    return 0;
   }
-  return 0;
+  return utf8_length(context, str, byte_pos + match) + 1;
 }
 
 FORCE_INLINE
@@ -3204,14 +3249,6 @@ int32_t instr_utf8(const char* string, int32_t string_len, const char* substring
     return 0;
   }
 
-  int32_t end_idx = string_len - substring_len;
-
-  for (int i = 0; i <= end_idx; i++) {
-    if (string[i] == substring[0] &&
-        memcmp((void*)(string + i), substring, substring_len) == 0) {
-      return (i + 1);
-    }
-  }
-  return 0;
+  return find_substr(string, string_len, substring, substring_len) + 1;
 }
 }  // extern "C"
