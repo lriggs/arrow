@@ -18,6 +18,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <random>
+
 #include <limits>
 
 #include "gandiva/execution_context.h"
@@ -1878,6 +1880,71 @@ TEST(TestStringOps, TestLocate) {
               ::testing::HasSubstr(
                   "unexpected byte \\ff encountered while decoding utf8 string"));
   ctx.Reset();
+}
+
+TEST(TestStringOps, TestLocateSearch) {
+  gandiva::ExecutionContext ctx;
+  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
+  auto locate = [&](const std::string& sub, const std::string& str, int start = 1) {
+    return locate_utf8_utf8_int32(ctx_ptr, sub.data(), static_cast<int>(sub.size()),
+                                  str.data(), static_cast<int>(str.size()), start);
+  };
+  // The first byte of the pattern repeats before the real match.
+  EXPECT_EQ(locate("aab", "aaaab"), 3);
+  EXPECT_EQ(locate("aab", "aaaaa"), 0);
+  // Match at the start, at the very end, and the whole string.
+  EXPECT_EQ(locate("ab", "abxyz"), 1);
+  EXPECT_EQ(locate("yz", "abxyz"), 4);
+  EXPECT_EQ(locate("abxyz", "abxyz"), 1);
+  // A candidate first byte near the end, with too few bytes left to match.
+  EXPECT_EQ(locate("wor", "xxxxwo"), 0);
+  EXPECT_EQ(locate("longer", "long"), 0);
+  // Positions are in characters, including multi-byte ones before the match.
+  EXPECT_EQ(locate("b", "ççb"), 3);
+  EXPECT_EQ(locate("çb", "aççb"), 3);
+  // Matches before the start position are skipped.
+  EXPECT_EQ(locate("ab", "abxab", 2), 4);
+  EXPECT_EQ(locate("ab", "abxab", 5), 0);
+  EXPECT_EQ(locate("b", "ççbçb", 4), 5);
+  EXPECT_FALSE(ctx.has_error());
+
+  auto instr = [](const std::string& str, const std::string& sub) {
+    return instr_utf8(str.data(), static_cast<int>(str.size()), sub.data(),
+                      static_cast<int>(sub.size()));
+  };
+  EXPECT_EQ(instr("aaaab", "aab"), 3);
+  EXPECT_EQ(instr("aaaaa", "aab"), 0);
+  EXPECT_EQ(instr("abxyz", "yz"), 4);
+  EXPECT_EQ(instr("xxxxwo", "wor"), 0);
+  EXPECT_EQ(instr("abc", ""), 1);
+}
+
+// The substring search works on 8 positions at a time; check it against std::string
+// at every length, alignment and match position, with many near-misses.
+TEST(TestStringOps, TestSubstringSearchExhaustive) {
+  gandiva::ExecutionContext ctx;
+  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
+  std::mt19937 rng(3);
+  for (int data_len = 0; data_len <= 40; ++data_len) {
+    for (int trial = 0; trial < 50; ++trial) {
+      std::string data, sub;
+      for (int i = 0; i < data_len; ++i) data.push_back("ab"[rng() % 2]);
+      int sub_len = 1 + static_cast<int>(rng() % 6);
+      for (int i = 0; i < sub_len; ++i) sub.push_back("ab"[rng() % 2]);
+
+      auto found = data.find(sub);
+      int expected = found == std::string::npos ? 0 : static_cast<int>(found) + 1;
+      EXPECT_EQ(is_substr_utf8_utf8(data.data(), data_len, sub.data(), sub_len),
+                expected > 0)
+          << data << " / " << sub;
+      EXPECT_EQ(locate_utf8_utf8(ctx_ptr, sub.data(), sub_len, data.data(), data_len),
+                expected)
+          << data << " / " << sub;
+      EXPECT_EQ(instr_utf8(data.data(), data_len, sub.data(), sub_len), expected)
+          << data << " / " << sub;
+    }
+  }
+  EXPECT_FALSE(ctx.has_error());
 }
 
 TEST(TestStringOps, TestByteSubstr) {
