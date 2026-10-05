@@ -512,4 +512,65 @@ TEST_F(TestFilterProject, TestNullableExprsWithValidityBuffers) {
   }
 }
 
+// Functions that can return errors are skipped for null rows, using the args' validity
+// read inside the generated loop; plain arithmetic leaves validity to the bitmaps. Null
+// slots here hold values that would raise errors if the function were called on them.
+TEST_F(TestFilterProject, TestErrorFunctionsSkipNullRows) {
+  auto fa = field("a", int32());
+  auto fb = field("b", int32());
+  auto fs = field("s", arrow::utf8());
+  auto schema = arrow::schema({fa, fb, fs});
+  auto a = TreeExprBuilder::MakeField(fa);
+  auto b = TreeExprBuilder::MakeField(fb);
+  auto s = TreeExprBuilder::MakeField(fs);
+
+  ExpressionVector exprs = {
+      TreeExprBuilder::MakeExpression(TreeExprBuilder::MakeFunction("divide", {a, b}, int32()),
+                                      field("quotient", int32())),
+      TreeExprBuilder::MakeExpression(TreeExprBuilder::MakeFunction("castINT", {s}, int32()),
+                                      field("parsed", int32())),
+      TreeExprBuilder::MakeExpression(TreeExprBuilder::MakeFunction("add", {a, b}, int32()),
+                                      field("sum", int32()))};
+  std::shared_ptr<Projector> projector;
+  ASSERT_OK(Projector::Make(schema, exprs, TestConfiguration(), &projector));
+
+  std::mt19937 rng(11);
+  const int total = 1003;
+  std::vector<int32_t> va(total), vb(total);
+  std::vector<std::string> vs(total);
+  std::vector<bool> na(total), nb(total), ns(total);
+  for (int i = 0; i < total; ++i) {
+    na[i] = rng() % 4 != 0;
+    nb[i] = rng() % 4 != 0;
+    ns[i] = rng() % 4 != 0;
+    va[i] = static_cast<int32_t>(rng() % 100);
+    // A zero divisor and an unparseable string only ever appear in null slots.
+    vb[i] = nb[i] ? 1 + static_cast<int32_t>(rng() % 9) : 0;
+    vs[i] = ns[i] ? std::to_string(rng() % 1000) : "not a number";
+  }
+  auto full = arrow::RecordBatch::Make(
+      schema, total,
+      {MakeArrowArrayInt32(va, na), MakeArrowArrayInt32(vb, nb), MakeArrowArrayUtf8(vs, ns)});
+
+  for (int offset : {0, 5}) {
+    auto batch = full->Slice(offset);
+    const int n = static_cast<int>(batch->num_rows());
+    std::vector<int32_t> quotient(n), parsed(n), sum(n);
+    std::vector<bool> quotient_valid(n), parsed_valid(n), sum_valid(n);
+    for (int r = 0; r < n; ++r) {
+      const int i = r + offset;
+      quotient_valid[r] = sum_valid[r] = na[i] && nb[i];
+      parsed_valid[r] = ns[i];
+      quotient[r] = quotient_valid[r] ? va[i] / vb[i] : 0;
+      sum[r] = sum_valid[r] ? va[i] + vb[i] : 0;
+      parsed[r] = parsed_valid[r] ? std::stoi(vs[i]) : 0;
+    }
+    arrow::ArrayVector outputs;
+    ASSERT_OK(projector->Evaluate(*batch, pool_, &outputs));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayInt32(quotient, quotient_valid), outputs.at(0));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayInt32(parsed, parsed_valid), outputs.at(1));
+    EXPECT_ARROW_ARRAY_EQUALS(MakeArrowArrayInt32(sum, sum_valid), outputs.at(2));
+  }
+}
+
 }  // namespace gandiva

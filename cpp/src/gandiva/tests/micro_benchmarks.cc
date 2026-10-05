@@ -39,7 +39,7 @@ using arrow::int32;
 using arrow::int64;
 using arrow::utf8;
 
-static void TimedTestAdd3(benchmark::State& state) {
+static void TimedTestAdd3Impl(benchmark::State& state, bool with_validity_buffer) {
   // schema for input fields
   auto field0 = field("f0", int64());
   auto field1 = field("f1", int64());
@@ -66,8 +66,16 @@ static void TimedTestAdd3(benchmark::State& state) {
   ProjectEvaluator evaluator(projector);
 
   Status status = TimedEvaluate<arrow::Int64Type, int64_t>(
-      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state);
+      schema, evaluator, data_generator, pool_, 1 * MILLION, 16 * THOUSAND, state,
+      with_validity_buffer);
   ASSERT_OK(status);
+}
+
+static void TimedTestAdd3(benchmark::State& state) { TimedTestAdd3Impl(state, false); }
+
+// Plain arithmetic over inputs that carry a validity buffer, as in Dremio.
+static void TimedTestAdd3ValidityBuffer(benchmark::State& state) {
+  TimedTestAdd3Impl(state, true);
 }
 
 static void TimedTestBigNestedImpl(benchmark::State& state, bool with_validity_buffer) {
@@ -764,6 +772,7 @@ static void DecimalAdd3Large(benchmark::State& state) {
 
 BENCHMARK(TimedTestExprCompilation)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestAdd3)->Unit(benchmark::kMicrosecond);
+BENCHMARK(TimedTestAdd3ValidityBuffer)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNested)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestBigNestedValidityBuffer)->Unit(benchmark::kMicrosecond);
 BENCHMARK(TimedTestIfElseFieldArms)->Unit(benchmark::kMicrosecond);

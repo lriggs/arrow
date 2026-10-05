@@ -23,6 +23,9 @@
 
 #include "gandiva/engine.h"
 
+#include <cstdlib>
+#include <cstring>
+
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -505,10 +508,23 @@ Status Engine::RemoveUnusedFunctions() {
 
 // several passes requiring LLVM 14+ that are not available in the legacy pass manager
 #if LLVM_VERSION_MAJOR >= 14
+// Temporary switch for A/B testing: GANDIVA_DISABLE_VECTORIZE turns off loop and SLP
+// vectorization. Read once per process.
+static bool VectorizeEnabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GANDIVA_DISABLE_VECTORIZE");
+    return value == nullptr || *value == '\0' || std::strcmp(value, "0") == 0;
+  }();
+  return enabled;
+}
+
 static void OptimizeModuleWithNewPassManager(llvm::Module& module,
                                              llvm::TargetIRAnalysis target_analysis) {
   // Setup an optimiser pipeline
-  llvm::PassBuilder pass_builder;
+  llvm::PipelineTuningOptions tuning;
+  tuning.LoopVectorization = VectorizeEnabled();
+  tuning.SLPVectorization = VectorizeEnabled();
+  llvm::PassBuilder pass_builder(nullptr, tuning);
   llvm::LoopAnalysisManager loop_am;
   llvm::FunctionAnalysisManager function_am;
   llvm::CGSCCAnalysisManager cgscc_am;
@@ -533,8 +549,10 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
     function_pm.addPass(llvm::GVNPass());
     function_pm.addPass(llvm::NewGVNPass());
     function_pm.addPass(llvm::SimplifyCFGPass());
-    function_pm.addPass(llvm::LoopVectorizePass());
-    function_pm.addPass(llvm::SLPVectorizerPass());
+    if (VectorizeEnabled()) {
+      function_pm.addPass(llvm::LoopVectorizePass());
+      function_pm.addPass(llvm::SLPVectorizerPass());
+    }
     module_pm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(function_pm)));
 
     module_pm.addPass(llvm::GlobalOptPass());

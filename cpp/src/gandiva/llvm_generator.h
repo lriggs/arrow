@@ -91,6 +91,12 @@ class GANDIVA_EXPORT LLVMGenerator {
                  const ArrayDataVector& output_vector) const;
 
   SelectionVector::Mode selection_vector_mode() { return selection_vector_mode_; }
+
+  /// Whether cheap if-else chains are built with selects (GANDIVA_DISABLE_SELECT_CASE).
+  bool select_case_enabled() const { return select_case_enabled_; }
+  /// Whether row validity is presented as one byte per row
+  /// (GANDIVA_DISABLE_BYTE_VALIDITY).
+  bool byte_validity_enabled() const { return byte_validity_enabled_; }
   LLVMTypes* types() { return engine_->types(); }
   llvm::Module* module() { return engine_->module(); }
   const std::string& ir() { return engine_->ir(); }
@@ -243,6 +249,15 @@ class GANDIVA_EXPORT LLVMGenerator {
   llvm::Value* GetLocalBitMapReference(llvm::Value* arg_bitmaps, int idx);
 
   /// Generate code to get the bit value at 'position' in the bitmap.
+  /// Generate code to get the bit value at 'position' in the validity bitmap. Only used
+  /// when byte validity is disabled.
+  llvm::Value* GetPackedValidityBitValue(llvm::Value* bitmap, llvm::Value* position);
+
+  /// Generate code to clear the bit at 'position' in the bitmap if 'value' is false.
+  /// Only used when byte validity is disabled.
+  void ClearPackedBitValueIfFalse(llvm::Value* bitmap, llvm::Value* position,
+                                  llvm::Value* value);
+
   llvm::Value* GetPackedBitValue(llvm::Value* bitmap, llvm::Value* position);
 
   // Generate code to build a DecimalLValue with specified value/precision/scale.
@@ -275,6 +290,9 @@ class GANDIVA_EXPORT LLVMGenerator {
   std::unique_ptr<Engine> engine_;
   std::vector<std::unique_ptr<CompiledExpr>> compiled_exprs_;
   bool cached_;
+  // Temporary switches for A/B testing round-3 codegen, see RoundThreeSwitches().
+  bool select_case_enabled_;
+  bool byte_validity_enabled_;
   std::shared_ptr<FunctionRegistry> function_registry_;
   Annotator annotator_;
   SelectionVector::Mode selection_vector_mode_;

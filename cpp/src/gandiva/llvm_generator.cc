@@ -18,6 +18,8 @@
 #include "gandiva/llvm_generator.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -138,7 +140,19 @@ class RowValidityCollector : public DexVisitor {
   void Visit(const TrueDex&) override {}
   void Visit(const FalseDex&) override {}
   void Visit(const LiteralDex&) override {}
-  void Visit(const NonNullableFuncDex& dex) override { CollectAll(dex.args()); }
+  void Visit(const NonNullableFuncDex& dex) override {
+    // The generated code reads these args' validity row by row only for functions that
+    // can return errors, to skip calling them on null rows; otherwise the result's
+    // validity is computed from the bitmaps outside the loop. Expanding unread validity
+    // buffers would only cost time.
+    if (dex.native_function()->CanReturnErrors()) {
+      CollectAll(dex.args());
+    } else {
+      for (const auto& arg : dex.args()) {
+        arg->value_expr()->Accept(*this);
+      }
+    }
+  }
   void Visit(const NullableNeverFuncDex& dex) override { CollectAll(dex.args()); }
   void Visit(const NullableInternalFuncDex& dex) override {
     AddUnique(&local_bitmap_indices_, dex.local_bitmap_idx());
@@ -265,9 +279,39 @@ void GatherBits(const uint8_t* src_bitmap, const C_TYPE* indices, int64_t num_in
     AddTrace(__VA_ARGS__); \
   }
 
+namespace {
+
+bool EnvFlagSet(const char* name) {
+  const char* value = std::getenv(name);
+  return value != nullptr && *value != '\0' && std::strcmp(value, "0") != 0;
+}
+
+// Temporary switches to A/B test the round-3 code generation in a running engine. Read
+// once per process, so the code generated and Execute() always agree.
+struct RoundThreeSwitches {
+  bool select_case = !EnvFlagSet("GANDIVA_DISABLE_SELECT_CASE");
+  bool byte_validity = !EnvFlagSet("GANDIVA_DISABLE_BYTE_VALIDITY");
+};
+
+const RoundThreeSwitches& GetRoundThreeSwitches() {
+  static const RoundThreeSwitches switches = [] {
+    RoundThreeSwitches s;
+    std::fprintf(stderr,
+                 "gandiva: select CASE %s, byte validity %s, vectorize %s\n",
+                 s.select_case ? "on" : "OFF", s.byte_validity ? "on" : "OFF",
+                 EnvFlagSet("GANDIVA_DISABLE_VECTORIZE") ? "OFF" : "on");
+    return s;
+  }();
+  return switches;
+}
+
+}  // namespace
+
 LLVMGenerator::LLVMGenerator(bool cached,
                              std::shared_ptr<FunctionRegistry> function_registry)
     : cached_(cached),
+      select_case_enabled_(GetRoundThreeSwitches().select_case),
+      byte_validity_enabled_(GetRoundThreeSwitches().byte_validity),
       function_registry_(std::move(function_registry)),
       enable_ir_traces_(false) {}
 
@@ -415,8 +459,13 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
       eval_batch->SetBuffer(out_data_idx, bool_bytes.data(), 0);
     }
 
+    // With byte validity disabled the generated code reads and writes bitmaps directly.
+    static const std::vector<int> kNoIndices;
+    const auto& row_validity_indices = byte_validity_enabled_
+                                           ? compiled_expr->row_validity_indices()
+                                           : kNoIndices;
     saved_validity.clear();
-    for (int idx : compiled_expr->row_validity_indices()) {
+    for (int idx : row_validity_indices) {
       if (eval_batch->GetBuffer(idx) == nullptr) {
         // No validity buffer: every row is valid.
         saved_validity.push_back({idx, nullptr, eval_batch->GetBufferOffset(idx)});
@@ -437,7 +486,8 @@ Status LLVMGenerator::Execute(const arrow::RecordBatch& record_batch,
     // The local bitmaps are pre-filled with 1s, and the generated code stores the
     // validity of each row.
     uint8_t** local_bitmaps = eval_batch->GetLocalBitMapArray();
-    const auto& local_bitmap_indices = compiled_expr->local_bitmap_indices();
+    const auto& local_bitmap_indices =
+        byte_validity_enabled_ ? compiled_expr->local_bitmap_indices() : kNoIndices;
     if (local_bytes.size() < local_bitmap_indices.size()) {
       local_bytes.resize(local_bitmap_indices.size());
     }
@@ -771,6 +821,28 @@ Status LLVMGenerator::CodeGenExprValue(DexPtr value_expr, int buffer_count,
 }
 
 /// Return value of a bit in bitMap.
+/// Return value of a bit in validity bitMap (handles null bitmaps too).
+llvm::Value* LLVMGenerator::GetPackedValidityBitValue(llvm::Value* bitmap,
+                                                      llvm::Value* position) {
+  ADD_TRACE("fetch validity bit at position %T", position);
+
+  llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
+      bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
+  return AddFunctionCall("bitMapValidityGetBit", types()->i1_type(), {bitmap8, position});
+}
+
+/// Clear the bit in bitMap if value = false.
+void LLVMGenerator::ClearPackedBitValueIfFalse(llvm::Value* bitmap, llvm::Value* position,
+                                               llvm::Value* value) {
+  ADD_TRACE("ClearIfFalse bit at position %T", position);
+  ADD_TRACE("   value %T ", value);
+
+  llvm::Value* bitmap8 = ir_builder()->CreateBitCast(
+      bitmap, types()->ptr_type(types()->i8_type()), "bitMapCast");
+  AddFunctionCall("bitMapClearBitIfFalse", types()->void_type(),
+                  {bitmap8, position, value});
+}
+
 llvm::Value* LLVMGenerator::GetPackedBitValue(llvm::Value* bitmap,
                                               llvm::Value* position) {
   ADD_TRACE("fetch bit at position %T", position);
@@ -967,6 +1039,16 @@ void LLVMGenerator::Visitor::Visit(const VectorReadVarLenValueDex& dex) {
 }
 
 void LLVMGenerator::Visitor::Visit(const VectorReadValidityDex& dex) {
+  if (!generator_->byte_validity_enabled()) {
+    // Pre-round-3 behavior: read the bit where it's used.
+    llvm::IRBuilder<>* builder = ir_builder();
+    llvm::Value* slot_ref =
+        GetBufferReference(dex.ValidityIdx(), kBufferTypeValidity, dex.Field());
+    llvm::Value* slot_index =
+        builder->CreateAdd(loop_var_, GetSliceOffset(dex.ValidityIdx()));
+    result_.reset(new LValue(generator_->GetPackedValidityBitValue(slot_ref, slot_index)));
+    return;
+  }
   // Execute() presents the validity buffers read here as one byte per row (all ones if
   // the input has no validity buffer), so the read is a plain load without a null check
   // or bit extraction, which the loop vectorizer can handle.
@@ -1000,6 +1082,11 @@ void LLVMGenerator::Visitor::Visit(const VectorReadValidityDex& dex) {
 }
 
 void LLVMGenerator::Visitor::Visit(const LocalBitMapValidityDex& dex) {
+  if (!generator_->byte_validity_enabled()) {
+    llvm::Value* slot_ref = GetLocalBitMapReference(dex.local_bitmap_idx());
+    result_.reset(new LValue(generator_->GetPackedBitValue(slot_ref, loop_var_)));
+    return;
+  }
   // Execute() presents local bitmaps as one byte per row.
   auto types = generator_->types();
   llvm::IRBuilder<>* builder = ir_builder();
@@ -1214,7 +1301,7 @@ void LLVMGenerator::Visitor::Visit(const IfDex& dex) {
   // A chain of cheap, side-effect free branches, e.g. CASE WHEN a < 10 THEN 1 WHEN ...,
   // is built with selects: branches on data-dependent conditions mispredict and keep the
   // loop from being vectorized.
-  if (IsSpeculatable(dex)) {
+  if (generator_->select_case_enabled() && IsSpeculatable(dex)) {
     LValuePtr lvalue = BuildIfElseSelect(dex);
     if (lvalue == nullptr) return;
     // All the branches of an if-else-if chain share the local bitmap.
@@ -1849,6 +1936,11 @@ llvm::Value* LLVMGenerator::Visitor::GetLocalBitMapReference(int idx) {
 /// Record the row's validity in the local bitmap, which is pre-filled with 1s.
 void LLVMGenerator::Visitor::ClearLocalBitMapIfNotValid(int local_bitmap_idx,
                                                         llvm::Value* is_valid) {
+  if (!generator_->byte_validity_enabled()) {
+    llvm::Value* slot_ref = GetLocalBitMapReference(local_bitmap_idx);
+    generator_->ClearPackedBitValueIfFalse(slot_ref, loop_var_, is_valid);
+    return;
+  }
   // Execute() presents local bitmaps as one byte per row, pre-filled with 1s. Storing
   // the validity unconditionally is equivalent to clearing it if invalid, and doesn't
   // need a branch or a read-modify-write.
