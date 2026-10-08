@@ -247,44 +247,32 @@ const char* ExtractHolder::operator()(ExecutionContext* ctx, const char* user_in
     return "";
   }
 
-  std::string user_input_as_str(user_input, user_input_len);
-
-  // Create the vectors that will store the arguments to be captured by the regex
-  // groups.
-  std::vector<std::string> arguments_as_str(num_groups_pattern_);
-  std::vector<RE2::Arg> arguments(num_groups_pattern_);
-  std::vector<RE2::Arg*> arguments_ptrs(num_groups_pattern_);
-
-  for (int32_t i = 0; i < num_groups_pattern_; i++) {
-    // Bind argument to string from vector.
-    arguments[i] = &arguments_as_str[i];
-    // Save pointer to argument.
-    arguments_ptrs[i] = &arguments[i];
+  // Group i of the user's pattern is group i + 1 of regex_ (see the constructor), so
+  // ask RE2 for the groups up to that one only: fewer submatches let it use faster
+  // matching engines. The result points into user_input, which outlives the call.
+  const int num_submatches = extract_index + 2;
+  constexpr int kMaxSmallSubmatches = 8;
+  re2::StringPiece small_submatches[kMaxSmallSubmatches];
+  std::vector<re2::StringPiece> large_submatches;
+  re2::StringPiece* submatches = small_submatches;
+  if (num_submatches > kMaxSmallSubmatches) {
+    large_submatches.resize(num_submatches);
+    submatches = large_submatches.data();
   }
-
-  re2::StringPiece piece(user_input_as_str);
-  if (!RE2::FindAndConsumeN(&piece, regex_, arguments_ptrs.data(), num_groups_pattern_)) {
+  re2::StringPiece input(user_input, user_input_len);
+  if (!regex_.Match(input, 0, input.size(), RE2::UNANCHORED, submatches,
+                    num_submatches)) {
     *out_length = 0;
     return "";
   }
 
-  auto out_str = arguments_as_str[extract_index];
-  *out_length = static_cast<int32_t>(out_str.size());
-
+  const re2::StringPiece& group = submatches[extract_index + 1];
+  *out_length = static_cast<int32_t>(group.size());
   // This condition treats the case where the return is an empty string
   if (*out_length == 0) {
     return "";
   }
-
-  char* result_buffer = reinterpret_cast<char*>(ctx->arena()->Allocate(*out_length));
-  if (result_buffer == NULLPTR) {
-    ctx->set_error_msg("Could not allocate memory for result");
-    *out_length = 0;
-    return "";
-  }
-
-  memcpy(result_buffer, out_str.data(), *out_length);
-  return result_buffer;
+  return group.data();
 }
 
 }  // namespace gandiva

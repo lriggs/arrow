@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <vector>
+#include "arrow/util/bit_util.h"
 #include "benchmark/benchmark.h"
 #include "gandiva/arrow.h"
 #include "gandiva/filter.h"
@@ -108,7 +109,8 @@ class FilterProjectEvaluator : public BaseEvaluator {
 template <typename TYPE, typename C_TYPE>
 Status TimedEvaluate(SchemaPtr schema, BaseEvaluator& evaluator,
                      DataGenerator<C_TYPE>& data_generator, arrow::MemoryPool* pool,
-                     int num_records, int batch_size, benchmark::State& state) {
+                     int num_records, int batch_size, benchmark::State& state,
+                     bool with_validity_buffer = false) {
   int num_remaining = num_records;
   int num_fields = schema->num_fields();
   int num_calls = 0;
@@ -127,6 +129,17 @@ Status TimedEvaluate(SchemaPtr schema, BaseEvaluator& evaluator,
       std::vector<bool> validity(batch_size, true);
       ArrayPtr col_data =
           MakeArrowArray<TYPE, C_TYPE>(schema->field(col)->type(), data, validity);
+      if (with_validity_buffer) {
+        // Arrow builders leave out the validity buffer when there are no nulls, but
+        // engines like Dremio always provide one. Attach an all-valid bitmap.
+        auto array_data = col_data->data()->Copy();
+        ARROW_ASSIGN_OR_RAISE(array_data->buffers[0],
+                              arrow::AllocateBitmap(batch_size, pool));
+        arrow::bit_util::SetBitsTo(array_data->buffers[0]->mutable_data(), 0, batch_size,
+                                   true);
+        array_data->null_count = 0;
+        col_data = arrow::MakeArray(array_data);
+      }
 
       columns.push_back(col_data);
       batch_bytes += data.size() * sizeof(C_TYPE);

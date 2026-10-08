@@ -657,6 +657,39 @@ TEST_F(TestExtractHolder, TestNoUserGroups) {
   execution_context_.Reset();
 }
 
+TEST_F(TestExtractHolder, TestManyGroups) {
+  // More groups than ExtractHolder keeps on the stack.
+  EXPECT_OK_AND_ASSIGN(auto extract_holder,
+                       ExtractHolder::Make(R"((a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k))"));
+  auto& extract = *extract_holder;
+  std::string input = "xxabcdefghijkyy";
+  int32_t out_length = 0;
+  const std::string expected[] = {"abcdefghijk", "a", "b", "c", "d", "e",
+                                  "f",           "g", "h", "i", "j", "k"};
+  for (int32_t index = 0; index <= 11; ++index) {
+    const char* ret = extract(&execution_context_, input.c_str(),
+                              static_cast<int32_t>(input.size()), index, &out_length);
+    EXPECT_EQ(std::string(ret, out_length), expected[index]) << "index " << index;
+  }
+  EXPECT_FALSE(execution_context_.has_error());
+}
+
+TEST_F(TestExtractHolder, TestResultPointsIntoInput) {
+  // The result is a view of the input, not a copy, and stays valid after other calls.
+  EXPECT_OK_AND_ASSIGN(auto extract_holder, ExtractHolder::Make(R"((\d+-)([0-9A-Z]+))"));
+  auto& extract = *extract_holder;
+  std::string first = "id 8064-6DH8V8";
+  std::string second = "id 9053-O7Z54Y";
+  int32_t first_len = 0, second_len = 0;
+  const char* ret1 = extract(&execution_context_, first.c_str(),
+                             static_cast<int32_t>(first.size()), 2, &first_len);
+  const char* ret2 = extract(&execution_context_, second.c_str(),
+                             static_cast<int32_t>(second.size()), 2, &second_len);
+  EXPECT_EQ(std::string(ret1, first_len), "6DH8V8");
+  EXPECT_EQ(std::string(ret2, second_len), "O7Z54Y");
+  EXPECT_EQ(ret1, first.c_str() + 8);
+}
+
 TEST_F(TestExtractHolder, TestDefaultIndexExtract) {
   // 2-arg form defaults to index 1 (first capture group)
   auto field = std::make_shared<FieldNode>(arrow::field("in", arrow::utf8()));

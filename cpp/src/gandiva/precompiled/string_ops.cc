@@ -1957,8 +1957,7 @@ gdv_int32 locate_utf8_utf8_int32(gdv_int64 context, const char* sub_str,
   if (byte_pos < 0 || byte_pos >= str_len) {
     return 0;
   }
-  gdv_int32 match =
-      find_substr(str + byte_pos, str_len - byte_pos, sub_str, sub_str_len);
+  gdv_int32 match = find_substr(str + byte_pos, str_len - byte_pos, sub_str, sub_str_len);
   if (match < 0) {
     return 0;
   }

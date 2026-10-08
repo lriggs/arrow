@@ -167,12 +167,12 @@ namespace {
 
 const std::vector<std::string>& MessageWords() {
   static const std::vector<std::string> kWords = {
-      "failed",  "to",       "read",    "table",   "column",  "error",  "while",
-      "query",   "the",      "of",      "file",    "access",  "denied", "cannot",
-      "invoke",  "because",  "value",   "is",      "null",    "timeout", "remote",
-      "fragment", "execution", "unable", "connect", "server",  "plan",   "invalid",
-      "Schema",  "Dataset",  "Unknown", "type",    "request", "object", "not",
-      "found",   "user",     "limit",   "exceeded", "memory", "node",   "Could"};
+      "failed",   "to",        "read",    "table",    "column",  "error",   "while",
+      "query",    "the",       "of",      "file",     "access",  "denied",  "cannot",
+      "invoke",   "because",   "value",   "is",       "null",    "timeout", "remote",
+      "fragment", "execution", "unable",  "connect",  "server",  "plan",    "invalid",
+      "Schema",   "Dataset",   "Unknown", "type",     "request", "object",  "not",
+      "found",    "user",      "limit",   "exceeded", "memory",  "node",    "Could"};
   return kWords;
 }
 

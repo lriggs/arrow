@@ -613,11 +613,11 @@ TEST(TestGdvFnStubs, TestUpperLowerAsciiBlocks) {
   // Run at every alignment/length so the block loop and the scalar tail both get used.
   for (size_t start = 0; start < 8; ++start) {
     std::string in = all_ascii.substr(start);
-    const char* out_str = gdv_fn_upper_utf8(ctx_ptr, in.data(),
-                                            static_cast<int32_t>(in.size()), &out_len);
+    const char* out_str =
+        gdv_fn_upper_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()), &out_len);
     EXPECT_EQ(std::string(out_str, out_len), expected_upper.substr(start));
-    out_str = gdv_fn_lower_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()),
-                                &out_len);
+    out_str =
+        gdv_fn_lower_utf8(ctx_ptr, in.data(), static_cast<int32_t>(in.size()), &out_len);
     EXPECT_EQ(std::string(out_str, out_len), expected_lower.substr(start));
     EXPECT_FALSE(ctx.has_error());
   }
