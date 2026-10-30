@@ -23,9 +23,12 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
+#include <iostream>
 
 #include "arrow/memory_pool.h"
+#include "gandiva/configuration.h"
 #include "gandiva/function_registry.h"
 #include "gandiva/literal_holder.h"
 #include "gandiva/node.h"
@@ -4052,6 +4055,200 @@ TEST_F(TestProjector, TestRandIntegerWithMinMax) {
     int32_t value = result->Value(i);
     EXPECT_GE(value, 5);
     EXPECT_LE(value, 15);
+  }
+}
+
+// The trimmed (#3) and fast (#1) optimization tiers, and the no-opt path, must all
+// produce exactly the same results as the default -O3 pipeline.
+TEST_F(TestProjector, TestOptLevelsProduceSameResults) {
+  auto fa = field("a", int64());
+  auto fb = field("b", int64());
+  auto fc = field("c", int64());
+  auto schema = arrow::schema({fa, fb, fc});
+  ExpressionVector exprs = {
+      TreeExprBuilder::MakeExpression("add", {fa, fb}, field("o0", int64())),
+      TreeExprBuilder::MakeExpression("multiply", {fb, fc}, field("o1", int64())),
+      TreeExprBuilder::MakeExpression("subtract", {fa, fc}, field("o2", int64())),
+  };
+
+  int num_records = 6;
+  auto a = MakeArrowArrayInt64({1, 2, 3, 4, 5, 6}, {true, true, false, true, true, true});
+  auto b = MakeArrowArrayInt64({7, 8, 9, 10, 11, 12}, {true, false, true, true, true, true});
+  auto c = MakeArrowArrayInt64({2, 2, 2, 2, 2, 2}, {true, true, true, false, true, true});
+  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {a, b, c});
+
+  auto evaluate = [&](Configuration::OptimizeLevel level, bool optimize,
+                      arrow::ArrayVector* out) {
+    auto config = ConfigurationBuilder().build(optimize);
+    config->set_opt_level(level);
+    std::shared_ptr<Projector> projector;
+    ASSERT_OK(Projector::Make(schema, exprs, config, &projector));
+    ASSERT_OK(projector->Evaluate(*in_batch, pool_, out));
+  };
+
+  arrow::ArrayVector baseline;
+  ASSERT_NO_FATAL_FAILURE(evaluate(Configuration::OptimizeLevel::kDefault, true, &baseline));
+
+  for (auto variant : {std::make_pair(Configuration::OptimizeLevel::kTrimmed, true),
+                       std::make_pair(Configuration::OptimizeLevel::kFast, true),
+                       std::make_pair(Configuration::OptimizeLevel::kDefault, false)}) {
+    arrow::ArrayVector out;
+    ASSERT_NO_FATAL_FAILURE(evaluate(variant.first, variant.second, &out));
+    ASSERT_EQ(baseline.size(), out.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+      EXPECT_ARROW_ARRAY_EQUALS(baseline.at(i), out.at(i));
+    }
+  }
+}
+
+// Compile-latency vs runtime across optimization tiers (#1 cost-model fast tier, #3
+// trimmed O3) on top of the lazy precompiled-bitcode linking (#6) already in this
+// branch. A 16-output projection is compiled at each tier; each compile uses a distinct
+// literal so the object cache never short-circuits it. DISABLED by default; run with
+// --gtest_also_run_disabled_tests.
+TEST_F(TestProjector, DISABLED_OptLevelCompileTime) {
+  auto fa = field("a", int64());
+  auto fb = field("b", int64());
+  auto fc = field("c", int64());
+  auto fd = field("d", int64());
+  auto schema = arrow::schema({fa, fb, fc, fd});
+
+  const int kNumOut = 16;
+  auto make_exprs = [&](int seed) {
+    auto a = TreeExprBuilder::MakeField(fa);
+    auto b = TreeExprBuilder::MakeField(fb);
+    auto c = TreeExprBuilder::MakeField(fc);
+    auto d = TreeExprBuilder::MakeField(fd);
+    ExpressionVector v;
+    for (int j = 0; j < kNumOut; ++j) {
+      auto lit = TreeExprBuilder::MakeLiteral(static_cast<int64_t>(seed * 131 + j * 7 + 1));
+      auto t1 = TreeExprBuilder::MakeFunction("multiply", {a, b}, int64());
+      auto t2 = TreeExprBuilder::MakeFunction("add", {c, lit}, int64());
+      auto t3 = TreeExprBuilder::MakeFunction("subtract", {t1, t2}, int64());
+      auto t4 = TreeExprBuilder::MakeFunction("multiply", {t3, d}, int64());
+      auto t5 = TreeExprBuilder::MakeFunction("add", {t4, a}, int64());
+      auto out = TreeExprBuilder::MakeFunction("subtract", {t5, c}, int64());
+      v.push_back(
+          TreeExprBuilder::MakeExpression(out, field("o" + std::to_string(j), int64())));
+    }
+    return v;
+  };
+
+  const int num_rows = 16 * 1024;
+  std::vector<int64_t> da(num_rows), db(num_rows), dc(num_rows), dd(num_rows);
+  std::vector<bool> valid(num_rows, true);
+  for (int i = 0; i < num_rows; ++i) {
+    da[i] = i;
+    db[i] = i * 3 + 1;
+    dc[i] = i * 7 + 2;
+    dd[i] = i * 11 + 3;
+  }
+  auto in_batch = arrow::RecordBatch::Make(
+      schema, num_rows,
+      {MakeArrowArrayInt64(da, valid), MakeArrowArrayInt64(db, valid),
+       MakeArrowArrayInt64(dc, valid), MakeArrowArrayInt64(dd, valid)});
+
+  auto compile_ms = [&](const std::shared_ptr<Configuration>& config) {
+    const int warmup = 2, K = 25;
+    for (int k = 0; k < warmup; ++k) {
+      std::shared_ptr<Projector> p;
+      EXPECT_OK(Projector::Make(schema, make_exprs(1000 + k), config, &p));
+    }
+    double total = 0;
+    for (int k = 0; k < K; ++k) {
+      auto exprs = make_exprs(k);
+      auto start = std::chrono::steady_clock::now();
+      std::shared_ptr<Projector> p;
+      EXPECT_OK(Projector::Make(schema, exprs, config, &p));
+      auto end = std::chrono::steady_clock::now();
+      total += std::chrono::duration<double, std::milli>(end - start).count();
+    }
+    return total / K;
+  };
+
+  auto runtime_rps = [&](const std::shared_ptr<Configuration>& config) {
+    std::shared_ptr<Projector> projector;
+    EXPECT_OK(Projector::Make(schema, make_exprs(424242), config, &projector));
+    for (int i = 0; i < 10; ++i) {
+      arrow::ArrayVector out;
+      EXPECT_OK(projector->Evaluate(*in_batch, pool_, &out));
+    }
+    const int iters = 500;
+    auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < iters; ++i) {
+      arrow::ArrayVector out;
+      EXPECT_OK(projector->Evaluate(*in_batch, pool_, &out));
+    }
+    auto end = std::chrono::steady_clock::now();
+    double secs = std::chrono::duration<double>(end - start).count();
+    return static_cast<double>(num_rows) * iters / secs / 1e6;
+  };
+
+  struct Tier {
+    const char* name;
+    std::shared_ptr<Configuration> config;
+  };
+  auto none = ConfigurationBuilder().build(false);
+  auto fast = ConfigurationBuilder().build();
+  fast->set_opt_level(Configuration::OptimizeLevel::kFast);
+  auto trimmed = ConfigurationBuilder().build();
+  trimmed->set_opt_level(Configuration::OptimizeLevel::kTrimmed);
+  auto full = ConfigurationBuilder().build();
+  std::vector<Tier> tiers = {{"none (opt off)", none},
+                             {"fast (#1, O1)", fast},
+                             {"trimmed (#3)", trimmed},
+                             {"default (O3)", full}};
+
+  std::cout << "\n=== Optimization tiers on top of lazy-linking (#6): " << kNumOut
+            << "-output projection, ~6 ops each ===\n";
+  std::cout << "tier              compile(ms)   runtime(Mrows/s)\n";
+  for (auto& t : tiers) {
+    double cms = compile_ms(t.config);
+    double rps = runtime_rps(t.config);
+    std::cout << t.name;
+    for (size_t p = std::string(t.name).size(); p < 18; ++p) std::cout << ' ';
+    std::cout << cms << "        " << rps << "\n";
+  }
+  std::cout << "\n";
+}
+
+// The #1 cost-model hook: build_for_row_estimate() picks opt-off below the break-even
+// and trimmed -O3 at/above it (and when the estimate is unknown), and either way the
+// projector evaluates correctly.
+TEST_F(TestProjector, TestCompilationPolicyForRowEstimate) {
+  const int64_t break_even = Configuration::kDefaultOptBreakEvenRows;
+
+  auto small = ConfigurationBuilder().build_for_row_estimate(break_even - 1);
+  EXPECT_FALSE(small->optimize());
+
+  auto large = ConfigurationBuilder().build_for_row_estimate(break_even + 1);
+  EXPECT_TRUE(large->optimize());
+  EXPECT_EQ(large->opt_level(), Configuration::OptimizeLevel::kTrimmed);
+
+  auto unknown = ConfigurationBuilder().build_for_row_estimate(-1);
+  EXPECT_TRUE(unknown->optimize());
+
+  auto custom = ConfigurationBuilder().build_for_row_estimate(500, /*break_even_rows=*/100);
+  EXPECT_TRUE(custom->optimize());  // 500 >= 100
+
+  // Both policy outcomes must evaluate correctly.
+  auto field0 = field("f0", int32());
+  auto field1 = field("f1", int32());
+  auto schema = arrow::schema({field0, field1});
+  auto sum_expr =
+      TreeExprBuilder::MakeExpression("add", {field0, field1}, field("add", int32()));
+
+  auto array0 = MakeArrowArrayInt32({1, 2, 3}, {true, false, true});
+  auto array1 = MakeArrowArrayInt32({10, 20, 30}, {true, true, false});
+  auto in_batch = arrow::RecordBatch::Make(schema, 3, {array0, array1});
+  auto expected = MakeArrowArrayInt32({11, 0, 0}, {true, false, false});
+
+  for (auto& config : {small, large}) {
+    std::shared_ptr<Projector> projector;
+    ASSERT_OK(Projector::Make(schema, {sum_expr}, config, &projector));
+    arrow::ArrayVector outputs;
+    ASSERT_OK(projector->Evaluate(*in_batch, pool_, &outputs));
+    EXPECT_ARROW_ARRAY_EQUALS(expected, outputs.at(0));
   }
 }
 

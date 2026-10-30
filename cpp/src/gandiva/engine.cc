@@ -23,6 +23,7 @@
 
 #include "gandiva/engine.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -501,7 +502,8 @@ Status Engine::RemoveUnusedFunctions() {
 // several passes requiring LLVM 14+ that are not available in the legacy pass manager
 #if LLVM_VERSION_MAJOR >= 14
 static void OptimizeModuleWithNewPassManager(llvm::Module& module,
-                                             llvm::TargetIRAnalysis target_analysis) {
+                                             llvm::TargetIRAnalysis target_analysis,
+                                             Configuration::OptimizeLevel level) {
   // Setup an optimiser pipeline
   llvm::PassBuilder pass_builder;
   llvm::LoopAnalysisManager loop_am;
@@ -518,22 +520,38 @@ static void OptimizeModuleWithNewPassManager(llvm::Module& module,
   pass_builder.registerLoopAnalyses(loop_am);
   pass_builder.crossRegisterProxies(loop_am, function_am, cgscc_am, module_am);
 
-  pass_builder.registerPipelineStartEPCallback([&](llvm::ModulePassManager& module_pm,
-                                                   llvm::OptimizationLevel Level) {
-    module_pm.addPass(llvm::ModuleInlinerPass());
+  // #1 (cost-model fast tier): a lightweight -O1 pipeline for short-lived / small-batch
+  // expressions, trading runtime for much lower compile latency.
+  if (level == Configuration::OptimizeLevel::kFast) {
+    pass_builder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O1)
+        .run(module, module_am);
+    return;
+  }
 
-    llvm::FunctionPassManager function_pm;
-    function_pm.addPass(llvm::InstCombinePass());
-    function_pm.addPass(llvm::PromotePass());
-    function_pm.addPass(llvm::GVNPass());
-    function_pm.addPass(llvm::NewGVNPass());
-    function_pm.addPass(llvm::SimplifyCFGPass());
-    function_pm.addPass(llvm::LoopVectorizePass());
-    function_pm.addPass(llvm::SLPVectorizerPass());
-    module_pm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(function_pm)));
+  // kDefault reproduces the historical pipeline exactly. kTrimmed (#3) drops the two
+  // redundant passes: the legacy GVN that runs right before NewGVN, and LoopVectorize
+  // which overlaps the O3 default pipeline's own vectorization.
+  const bool full = (level == Configuration::OptimizeLevel::kDefault);
+  pass_builder.registerPipelineStartEPCallback(
+      [full](llvm::ModulePassManager& module_pm, llvm::OptimizationLevel Level) {
+        module_pm.addPass(llvm::ModuleInlinerPass());
 
-    module_pm.addPass(llvm::GlobalOptPass());
-  });
+        llvm::FunctionPassManager function_pm;
+        function_pm.addPass(llvm::InstCombinePass());
+        function_pm.addPass(llvm::PromotePass());
+        if (full) {
+          function_pm.addPass(llvm::GVNPass());
+        }
+        function_pm.addPass(llvm::NewGVNPass());
+        function_pm.addPass(llvm::SimplifyCFGPass());
+        if (full) {
+          function_pm.addPass(llvm::LoopVectorizePass());
+        }
+        function_pm.addPass(llvm::SLPVectorizerPass());
+        module_pm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(function_pm)));
+
+        module_pm.addPass(llvm::GlobalOptPass());
+      });
 
   pass_builder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3)
       .run(module, module_am);
@@ -570,11 +588,36 @@ Status Engine::FinalizeModule() {
     ARROW_RETURN_NOT_OK(LinkPreCompiledIR());
     ARROW_RETURN_NOT_OK(RemoveUnusedFunctions());
 
-    if (optimize_) {
+    // Effective optimization tier. The GANDIVA_OPT_LEVEL env var overrides the
+    // Configuration, so the opt tier (#1/#3) can be flipped at runtime (e.g. from
+    // dremio-perf-kit's dremio.env) without threading it through the JNI/Java layer.
+    //   unset / "default" / "O3" -> full -O3   (baseline)
+    //   "trimmed"                -> -O3 minus the redundant duplicate passes (#3)
+    //   "fast" / "O1"            -> lightweight -O1 pipeline (#1)
+    //   "none" / "off"           -> skip optimization entirely
+    bool optimize = optimize_;
+    auto level = conf_->opt_level();
+    if (const char* env = std::getenv("GANDIVA_OPT_LEVEL")) {
+      const std::string v(env);
+      if (v == "none" || v == "off") {
+        optimize = false;
+      } else if (v == "fast" || v == "O1") {
+        optimize = true;
+        level = Configuration::OptimizeLevel::kFast;
+      } else if (v == "trimmed") {
+        optimize = true;
+        level = Configuration::OptimizeLevel::kTrimmed;
+      } else if (v == "default" || v == "O3") {
+        optimize = true;
+        level = Configuration::OptimizeLevel::kDefault;
+      }
+    }
+
+    if (optimize) {
       auto target_analysis = target_machine_->getTargetIRAnalysis();
 // misc passes to allow for inlining, vectorization, ..
 #if LLVM_VERSION_MAJOR >= 14
-      OptimizeModuleWithNewPassManager(*module_, std::move(target_analysis));
+      OptimizeModuleWithNewPassManager(*module_, std::move(target_analysis), level);
 #else
       OptimizeModuleWithLegacyPassManager(*module_, std::move(target_analysis));
 #endif

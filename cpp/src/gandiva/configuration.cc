@@ -29,6 +29,7 @@ std::size_t Configuration::Hash() const {
   size_t result = kHashSeed;
   arrow::internal::hash_combine(result, static_cast<size_t>(optimize_));
   arrow::internal::hash_combine(result, static_cast<size_t>(target_host_cpu_));
+  arrow::internal::hash_combine(result, static_cast<size_t>(opt_level_));
   arrow::internal::hash_combine(
       result, reinterpret_cast<std::uintptr_t>(function_registry_.get()));
   return result;
@@ -36,7 +37,7 @@ std::size_t Configuration::Hash() const {
 
 bool Configuration::operator==(const Configuration& other) const {
   return optimize_ == other.optimize_ && target_host_cpu_ == other.target_host_cpu_ &&
-         function_registry_ == other.function_registry_;
+         opt_level_ == other.opt_level_ && function_registry_ == other.function_registry_;
 }
 
 bool Configuration::operator!=(const Configuration& other) const {
