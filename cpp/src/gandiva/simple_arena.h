@@ -48,6 +48,24 @@ class SimpleArena {
   // Allocate buffer of requested size.
   uint8_t* Allocate(int64_t size);
 
+  // Fast-path bump allocation: hand out from the current chunk, or return nullptr if it
+  // lacks space (WITHOUT allocating a new chunk). This keeps the slow path -- chunk
+  // allocation, which pulls in arrow::Status and the memory pool -- out of callers that
+  // are compiled to pre-compiled IR, so that IR has no unresolvable JIT symbols.
+  uint8_t* AllocateFast(int64_t size) {
+    if (avail_bytes_ < size) {
+      return nullptr;
+    }
+    // Mark the arena used, exactly as Allocate() does: generated code reads used_ (via
+    // used_ptr()) to decide whether to Reset(), so the fast path must set it too or the
+    // reset is skipped and the arena grows unbounded.
+    used_ = 1;
+    uint8_t* ret = avail_buf_;
+    avail_buf_ += size;
+    avail_bytes_ -= size;
+    return ret;
+  }
+
   // Reset arena state.
   void Reset();
 

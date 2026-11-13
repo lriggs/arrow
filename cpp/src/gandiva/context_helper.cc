@@ -18,6 +18,10 @@
 #include "gandiva/execution_context.h"
 #include "gandiva/gdv_function_stubs.h"
 
+// Slow path for the pre-compiled arena allocator (precompiled/arena_ops.cc); defined
+// below and registered as an external mapping.
+extern "C" uint8_t* gdv_fn_context_arena_malloc_slow(int64_t context_ptr, int32_t size);
+
 // This file is also used in the pre-compiled unit tests, which do include
 // llvm/engine/..
 #ifndef GANDIVA_UNIT_TEST
@@ -39,13 +43,14 @@ arrow::Status ExportedContextFunctions::AddMappings(Engine* engine) const {
                                   args,
                                   reinterpret_cast<void*>(gdv_fn_context_set_error_msg));
 
-  // gdv_fn_context_arena_malloc
+  // gdv_fn_context_arena_malloc's bump fast path is pre-compiled IR
+  // (precompiled/arena_ops.cc) so it inlines into generated code; only the slow path
+  // (chunk allocation, which needs arrow::Status / the memory pool) is an external stub.
   args = {types->i64_type(),   // int64_t context_ptr
           types->i32_type()};  // int32_t size
-
-  engine->AddGlobalMappingForFunc("gdv_fn_context_arena_malloc", types->i8_ptr_type(),
-                                  args,
-                                  reinterpret_cast<void*>(gdv_fn_context_arena_malloc));
+  engine->AddGlobalMappingForFunc(
+      "gdv_fn_context_arena_malloc_slow", types->i8_ptr_type(), args,
+      reinterpret_cast<void*>(gdv_fn_context_arena_malloc_slow));
 
   // gdv_fn_context_arena_used_ptr
   args = {types->i64_type()};  // int64_t context_ptr
@@ -56,7 +61,6 @@ arrow::Status ExportedContextFunctions::AddMappings(Engine* engine) const {
 
   // gdv_fn_context_arena_reset
   args = {types->i64_type()};  // int64_t context_ptr
-
   engine->AddGlobalMappingForFunc("gdv_fn_context_arena_reset", types->void_type(), args,
                                   reinterpret_cast<void*>(gdv_fn_context_arena_reset));
   return arrow::Status::OK();
@@ -80,6 +84,12 @@ uint8_t* gdv_fn_context_arena_malloc(int64_t context_ptr, int32_t size) {
 uint8_t* gdv_fn_context_arena_used_ptr(int64_t context_ptr) {
   auto context = reinterpret_cast<gandiva::ExecutionContext*>(context_ptr);
   return context->arena()->used_ptr();
+}
+
+// Slow path invoked by the pre-compiled fast-path allocator when the current chunk is
+// full. Kept out of pre-compiled IR because it pulls in arrow::Status / the memory pool.
+uint8_t* gdv_fn_context_arena_malloc_slow(int64_t context_ptr, int32_t size) {
+  return gdv_fn_context_arena_malloc(context_ptr, size);
 }
 
 void gdv_fn_context_arena_reset(int64_t context_ptr) {

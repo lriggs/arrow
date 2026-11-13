@@ -16,6 +16,7 @@
 # under the License.
 
 set(PRECOMPILED_SRCS
+    arena_ops.cc
     arithmetic_ops.cc
     bitmap.cc
     decimal_ops.cc
