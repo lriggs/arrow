@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <vector>
 #include "gandiva/llvm_includes.h"
 #include "gandiva/selection_vector.h"
@@ -46,12 +48,15 @@ class CompiledExpr {
     return ir_functions_[static_cast<int>(mode)];
   }
 
+  // Publish the JIT function for a mode. May be called from a background compile thread
+  // to hot-swap a higher-optimization build in; Execute() reads it at each record-batch
+  // boundary via GetJITFunction(), so the store/load are atomic (release/acquire).
   void SetJITFunction(SelectionVector::Mode mode, EvalFunc jit_function) {
-    jit_functions_[static_cast<int>(mode)] = jit_function;
+    jit_functions_[static_cast<int>(mode)].store(jit_function, std::memory_order_release);
   }
 
   EvalFunc GetJITFunction(SelectionVector::Mode mode) const {
-    return jit_functions_[static_cast<int>(mode)];
+    return jit_functions_[static_cast<int>(mode)].load(std::memory_order_acquire);
   }
 
  private:
@@ -64,8 +69,9 @@ class CompiledExpr {
   // Function names for various modes in the generated code
   std::array<std::string, SelectionVector::kNumModes> ir_functions_;
 
-  // JIT functions in the generated code (set after the module is optimised and finalized)
-  std::array<EvalFunc, SelectionVector::kNumModes> jit_functions_;
+  // JIT functions in the generated code (set after the module is optimised and finalized;
+  // atomic so a background recompile can swap a new build in while Execute() runs).
+  std::array<std::atomic<EvalFunc>, SelectionVector::kNumModes> jit_functions_{};
 };
 
 }  // namespace gandiva
