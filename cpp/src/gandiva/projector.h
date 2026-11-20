@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
@@ -149,6 +151,11 @@ class GANDIVA_EXPORT Projector {
   // Keeps the optimized background build's engine alive; the hot-swapped JIT pointers in
   // llvm_generator_ reference its JIT memory. Null unless an async upgrade ran.
   std::shared_ptr<LLVMGenerator> optimized_llvm_generator_;
+  // Set true by the destructor to tell a not-yet-started background compile to bail. The
+  // destructor then waits on async_upgrade_future_ so the task (which holds a raw `this`
+  // and writes llvm_generator_/optimized_llvm_generator_) can never outlive the projector.
+  std::shared_ptr<std::atomic<bool>> async_cancel_;
+  std::future<void> async_upgrade_future_;
   SchemaPtr schema_;
   FieldVector output_fields_;
   std::shared_ptr<Configuration> configuration_;

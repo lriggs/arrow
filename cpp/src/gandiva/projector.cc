@@ -17,8 +17,14 @@
 
 #include "gandiva/projector.h"
 
+#include <algorithm>
+#include <condition_variable>
 #include <cstdlib>
+#include <functional>
 #include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -29,6 +35,7 @@
 #include "gandiva/expression_cache_key.h"
 #include "gandiva/gandiva_object_cache.h"
 #include "gandiva/llvm_generator.h"
+#include "gandiva/node.h"
 
 namespace gandiva {
 
@@ -43,6 +50,96 @@ bool AsyncCompileEnabled() {
   }();
   return enabled;
 }
+
+// Minimum estimated compile cost (see EstimateCompileCost) for the async upgrade to be
+// worthwhile. Cheap expression sets compile fast at -O3 anyway, so paying for an async
+// unoptimized-then-optimized round trip only adds latency and relaxes cache coherence
+// (the synchronous build populates the object cache in-line; the async build does not
+// until the background task lands). Default tuned so trivial arithmetic / single casts
+// stay synchronous. Override with GANDIVA_ASYNC_COMPILE_MIN_COST.
+size_t MinAsyncCost() {
+  static const size_t cost = [] {
+    const char* v = std::getenv("GANDIVA_ASYNC_COMPILE_MIN_COST");
+    if (v != nullptr && v[0] != '\0') {
+      long n = std::atol(v);
+      if (n >= 0) return static_cast<size_t>(n);
+    }
+    return static_cast<size_t>(256);
+  }();
+  return cost;
+}
+
+// Cheap, uniform proxy for "how expensive is this expression set to compile at -O3":
+// the summed length of each expression's serialized form. ToString() is defined on every
+// Node, grows with tree size/complexity, and is computed only once per Make (negligible
+// next to the LLVM compile it gates). Avoids a bespoke node-counting visitor.
+size_t EstimateCompileCost(const ExpressionVector& exprs) {
+  size_t cost = 0;
+  for (const auto& expr : exprs) {
+    if (expr != nullptr && expr->root() != nullptr) {
+      cost += expr->root()->ToString().size();
+    }
+  }
+  return cost;
+}
+
+// Fixed-size pool of worker threads that run the background -O3 upgrades. A shared pool
+// (rather than one std::thread per projector) bounds thread count when many projectors
+// are built concurrently. Intentionally leaked: a never-destroyed singleton avoids
+// static-destruction-order hazards with worker threads at process exit.
+class AsyncCompilePool {
+ public:
+  static AsyncCompilePool& Instance() {
+    static AsyncCompilePool* pool = new AsyncCompilePool(DefaultThreads());
+    return *pool;
+  }
+
+  std::future<void> Submit(std::function<void()> fn) {
+    auto task = std::make_shared<std::packaged_task<void()>>(std::move(fn));
+    std::future<void> fut = task->get_future();
+    {
+      std::lock_guard<std::mutex> lk(mutex_);
+      queue_.emplace([task] { (*task)(); });
+    }
+    cv_.notify_one();
+    return fut;
+  }
+
+ private:
+  explicit AsyncCompilePool(size_t num_threads) {
+    for (size_t i = 0; i < num_threads; ++i) {
+      workers_.emplace_back([this] { WorkerLoop(); });
+    }
+  }
+
+  static size_t DefaultThreads() {
+    const char* v = std::getenv("GANDIVA_ASYNC_COMPILE_THREADS");
+    if (v != nullptr && v[0] != '\0') {
+      int n = std::atoi(v);
+      if (n > 0) return static_cast<size_t>(n);
+    }
+    unsigned hc = std::thread::hardware_concurrency();
+    return std::max(1u, hc / 2);
+  }
+
+  void WorkerLoop() {
+    for (;;) {
+      std::function<void()> job;
+      {
+        std::unique_lock<std::mutex> lk(mutex_);
+        cv_.wait(lk, [this] { return !queue_.empty(); });
+        job = std::move(queue_.front());
+        queue_.pop();
+      }
+      job();
+    }
+  }
+
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::queue<std::function<void()>> queue_;
+  std::vector<std::thread> workers_;
+};
 }  // namespace
 
 Projector::Projector(std::unique_ptr<LLVMGenerator> llvm_generator, SchemaPtr schema,
@@ -53,7 +150,17 @@ Projector::Projector(std::unique_ptr<LLVMGenerator> llvm_generator, SchemaPtr sc
       output_fields_(output_fields),
       configuration_(configuration) {}
 
-Projector::~Projector() {}
+Projector::~Projector() {
+  // A background -O3 upgrade (if any) holds a raw `this` and writes our generators. Tell
+  // a not-yet-started task to bail, then wait for an in-flight one to finish before we
+  // destroy members. The wait also establishes happens-before for the task's writes.
+  if (async_cancel_) {
+    async_cancel_->store(true, std::memory_order_relaxed);
+  }
+  if (async_upgrade_future_.valid()) {
+    async_upgrade_future_.wait();
+  }
+}
 
 Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
                        std::shared_ptr<Projector>* projector) {
@@ -95,10 +202,14 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   GandivaObjectCache obj_cache(cache, cache_key);
 
-  // Async compile (GANDIVA_ASYNC_COMPILE): when this is a cold, optimized build, compile
-  // an UNoptimized version now for low latency and upgrade to -O3 in the background.
-  const bool use_async =
-      AsyncCompileEnabled() && !is_cached && configuration->optimize();
+  // Async compile (GANDIVA_ASYNC_COMPILE): when this is a cold, optimized build and the
+  // expression set is expensive enough to compile (EstimateCompileCost >= MinAsyncCost),
+  // compile an UNoptimized version now for low latency and upgrade to -O3 in the
+  // background. Cheap expressions stay synchronous so they still populate the object
+  // cache in-line.
+  const bool use_async = AsyncCompileEnabled() && !is_cached &&
+                         configuration->optimize() &&
+                         EstimateCompileCost(exprs) >= MinAsyncCost();
 
   std::unique_ptr<LLVMGenerator> llvm_gen;
   if (use_async) {
@@ -329,27 +440,40 @@ bool Projector::GetBuiltFromCache() { return built_from_cache_; }
 void Projector::StartAsyncUpgrade(const ExpressionVector& exprs,
                                   SelectionVector::Mode mode,
                                   std::shared_ptr<Configuration> optimized_config) {
-  // Increment 2: build the optimized replacement synchronously here and hot-swap it in
-  // before returning. The atomic fn-ptr publish (CompiledExpr) and keep-alive handling
-  // are the parts that must be correct; moving this onto a background thread is a later,
-  // isolated change. Any failure leaves the fast unoptimized projector in place.
-  auto cache = LLVMGenerator::GetCache();
-  ExpressionCacheKey cache_key(schema_, optimized_config, exprs, mode);
-  std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj = cache->GetObjectCode(cache_key);
-  const bool is_cached = (prev_cached_obj != nullptr);
-  GandivaObjectCache obj_cache(cache, cache_key);
+  // Build the optimized replacement on a background worker and hot-swap it in when ready.
+  // The task captures a raw `this`; ~Projector waits on async_upgrade_future_ so the task
+  // can never touch a destroyed projector. exprs/optimized_config are captured by value
+  // (shared_ptr copies) so they stay alive regardless of the caller.
+  async_cancel_ = std::make_shared<std::atomic<bool>>(false);
+  auto cancel = async_cancel_;
+  async_upgrade_future_ = AsyncCompilePool::Instance().Submit(
+      [this, exprs, mode, optimized_config, cancel] {
+        if (cancel->load(std::memory_order_relaxed)) return;  // projector already dying
 
-  auto maybe_gen = LLVMGenerator::Make(optimized_config, is_cached, obj_cache);
-  if (!maybe_gen.ok()) return;
-  std::shared_ptr<LLVMGenerator> optimized = maybe_gen.MoveValueUnsafe();
+        auto cache = LLVMGenerator::GetCache();
+        ExpressionCacheKey cache_key(schema_, optimized_config, exprs, mode);
+        std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj =
+            cache->GetObjectCode(cache_key);
+        const bool is_cached = (prev_cached_obj != nullptr);
+        GandivaObjectCache obj_cache(cache, cache_key);
 
-  if (!optimized->SetLLVMObjectCache(prev_cached_obj).ok()) return;
-  if (!optimized->Build(exprs, mode).ok()) return;
+        auto maybe_gen = LLVMGenerator::Make(optimized_config, is_cached, obj_cache);
+        if (!maybe_gen.ok()) return;  // keep the fast unoptimized code; no swap
+        std::shared_ptr<LLVMGenerator> optimized = maybe_gen.MoveValueUnsafe();
 
-  // Publish the optimized JIT pointers into the running generator (atomic per mode), then
-  // retain the optimized generator: its engine owns the JIT memory those pointers target.
-  llvm_generator_->AdoptJITFunctions(*optimized);
-  optimized_llvm_generator_ = std::move(optimized);
+        if (!optimized->SetLLVMObjectCache(prev_cached_obj).ok()) return;
+        if (!optimized->Build(exprs, mode).ok()) return;
+
+        // Re-check: skip mutating the projector if it is being torn down. (~Projector
+        // still waits on us, so the generators are alive either way.)
+        if (cancel->load(std::memory_order_relaxed)) return;
+
+        // Publish the optimized JIT pointers into the running generator (atomic per
+        // mode), then retain the optimized generator: its engine owns the JIT memory
+        // those pointers target.
+        llvm_generator_->AdoptJITFunctions(*optimized);
+        optimized_llvm_generator_ = std::move(optimized);
+      });
 }
 
 }  // namespace gandiva
