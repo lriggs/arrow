@@ -17,6 +17,7 @@
 
 #include "gandiva/llvm_generator.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -120,6 +121,24 @@ Status LLVMGenerator::Build(const ExpressionVector& exprs, SelectionVector::Mode
 /// element in the vector represents an expression tree
 Status LLVMGenerator::Build(const ExpressionVector& exprs) {
   return Build(exprs, SelectionVector::Mode::MODE_NONE);
+}
+
+void LLVMGenerator::AdoptJITFunctions(const LLVMGenerator& optimized) {
+  // Both generators were built from the same expression vector in the same order, so
+  // their compiled_exprs_ correspond 1:1. Copy each compiled function pointer from the
+  // optimized build into ours; Execute() reads these atomically at the batch boundary,
+  // so an in-flight batch finishes on the old pointer and the next picks up the new one.
+  DCHECK_EQ(compiled_exprs_.size(), optimized.compiled_exprs_.size());
+  const size_t n = std::min(compiled_exprs_.size(), optimized.compiled_exprs_.size());
+  for (size_t i = 0; i < n; ++i) {
+    for (int m = 0; m < SelectionVector::kNumModes; ++m) {
+      auto mode = static_cast<SelectionVector::Mode>(m);
+      EvalFunc fn = optimized.compiled_exprs_[i]->GetJITFunction(mode);
+      if (fn != nullptr) {
+        compiled_exprs_[i]->SetJITFunction(mode, fn);
+      }
+    }
+  }
 }
 
 /// Execute the compiled module against the provided vectors.

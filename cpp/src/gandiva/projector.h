@@ -139,7 +139,16 @@ class GANDIVA_EXPORT Projector {
   /// Validate the common args for Evaluate() APIs.
   Status ValidateEvaluateArgsCommon(const arrow::RecordBatch& batch) const;
 
+  /// Build an optimized (-O3) replacement in a separate engine on a background thread and
+  /// hot-swap its JIT functions into llvm_generator_. Used when GANDIVA_ASYNC_COMPILE is
+  /// set and the primary was built unoptimized for low compile latency.
+  void StartAsyncUpgrade(const ExpressionVector& exprs, SelectionVector::Mode mode,
+                         std::shared_ptr<Configuration> optimized_config);
+
   std::unique_ptr<LLVMGenerator> llvm_generator_;
+  // Keeps the optimized background build's engine alive; the hot-swapped JIT pointers in
+  // llvm_generator_ reference its JIT memory. Null unless an async upgrade ran.
+  std::shared_ptr<LLVMGenerator> optimized_llvm_generator_;
   SchemaPtr schema_;
   FieldVector output_fields_;
   std::shared_ptr<Configuration> configuration_;

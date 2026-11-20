@@ -17,6 +17,7 @@
 
 #include "gandiva/projector.h"
 
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -25,9 +26,24 @@
 
 #include "gandiva/cache.h"
 #include "gandiva/expr_validator.h"
+#include "gandiva/expression_cache_key.h"
+#include "gandiva/gandiva_object_cache.h"
 #include "gandiva/llvm_generator.h"
 
 namespace gandiva {
+
+namespace {
+// Async compile is opt-in via the GANDIVA_ASYNC_COMPILE environment variable. When set
+// (to any non-empty value other than "0"), a cold optimized Projector build returns an
+// unoptimized projector immediately and upgrades it to -O3 out of band. Read once.
+bool AsyncCompileEnabled() {
+  static const bool enabled = [] {
+    const char* v = std::getenv("GANDIVA_ASYNC_COMPILE");
+    return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+  }();
+  return enabled;
+}
+}  // namespace
 
 Projector::Projector(std::unique_ptr<LLVMGenerator> llvm_generator, SchemaPtr schema,
                      const FieldVector& output_fields,
@@ -79,9 +95,20 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
 
   GandivaObjectCache obj_cache(cache, cache_key);
 
-  // Build LLVM generator, and generate code for the specified expressions
-  ARROW_ASSIGN_OR_RAISE(auto llvm_gen,
-                        LLVMGenerator::Make(configuration, is_cached, obj_cache));
+  // Async compile (GANDIVA_ASYNC_COMPILE): when this is a cold, optimized build, compile
+  // an UNoptimized version now for low latency and upgrade to -O3 in the background.
+  const bool use_async =
+      AsyncCompileEnabled() && !is_cached && configuration->optimize();
+
+  std::unique_ptr<LLVMGenerator> llvm_gen;
+  if (use_async) {
+    auto fast_config = std::make_shared<Configuration>(*configuration);
+    fast_config->set_optimize(false);
+    ARROW_ASSIGN_OR_RAISE(llvm_gen, LLVMGenerator::Make(fast_config, /*cached=*/false));
+  } else {
+    ARROW_ASSIGN_OR_RAISE(llvm_gen,
+                          LLVMGenerator::Make(configuration, is_cached, obj_cache));
+  }
 
   // Run the validation on the expressions.
   // Return if any of the expression is invalid since
@@ -97,8 +124,11 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   // Pre-load the already-compiled object from the cache lookup above, if there was
   // one. Reuses prev_cached_obj instead of letting SetLLVMObjectCache re-query the
   // shared cache, so this can never disagree with the is_cached snapshot that
-  // decided whether Build() below still compiles fresh IR (see GH-601).
-  ARROW_RETURN_NOT_OK(llvm_gen->SetLLVMObjectCache(prev_cached_obj));
+  // decided whether Build() below still compiles fresh IR (see GH-601). The async
+  // path's primary is always a fresh unoptimized build, so it skips this.
+  if (!use_async) {
+    ARROW_RETURN_NOT_OK(llvm_gen->SetLLVMObjectCache(prev_cached_obj));
+  }
 
   ARROW_RETURN_NOT_OK(llvm_gen->Build(exprs, selection_vector_mode));
 
@@ -113,6 +143,12 @@ Status Projector::Make(SchemaPtr schema, const ExpressionVector& exprs,
   *projector = std::shared_ptr<Projector>(
       new Projector(std::move(llvm_gen), schema, output_fields, configuration));
   projector->get()->SetBuiltFromCache(is_cached);
+
+  // Kick off the background -O3 upgrade that hot-swaps optimized code into the running
+  // projector (also populates the shared object cache for future calls).
+  if (use_async) {
+    projector->get()->StartAsyncUpgrade(exprs, selection_vector_mode, configuration);
+  }
 
   return Status::OK();
 }
@@ -289,5 +325,31 @@ const std::string& Projector::DumpIR() { return llvm_generator_->ir(); }
 void Projector::SetBuiltFromCache(bool flag) { built_from_cache_ = flag; }
 
 bool Projector::GetBuiltFromCache() { return built_from_cache_; }
+
+void Projector::StartAsyncUpgrade(const ExpressionVector& exprs,
+                                  SelectionVector::Mode mode,
+                                  std::shared_ptr<Configuration> optimized_config) {
+  // Increment 2: build the optimized replacement synchronously here and hot-swap it in
+  // before returning. The atomic fn-ptr publish (CompiledExpr) and keep-alive handling
+  // are the parts that must be correct; moving this onto a background thread is a later,
+  // isolated change. Any failure leaves the fast unoptimized projector in place.
+  auto cache = LLVMGenerator::GetCache();
+  ExpressionCacheKey cache_key(schema_, optimized_config, exprs, mode);
+  std::shared_ptr<llvm::MemoryBuffer> prev_cached_obj = cache->GetObjectCode(cache_key);
+  const bool is_cached = (prev_cached_obj != nullptr);
+  GandivaObjectCache obj_cache(cache, cache_key);
+
+  auto maybe_gen = LLVMGenerator::Make(optimized_config, is_cached, obj_cache);
+  if (!maybe_gen.ok()) return;
+  std::shared_ptr<LLVMGenerator> optimized = maybe_gen.MoveValueUnsafe();
+
+  if (!optimized->SetLLVMObjectCache(prev_cached_obj).ok()) return;
+  if (!optimized->Build(exprs, mode).ok()) return;
+
+  // Publish the optimized JIT pointers into the running generator (atomic per mode), then
+  // retain the optimized generator: its engine owns the JIT memory those pointers target.
+  llvm_generator_->AdoptJITFunctions(*optimized);
+  optimized_llvm_generator_ = std::move(optimized);
+}
 
 }  // namespace gandiva

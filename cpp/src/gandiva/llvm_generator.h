@@ -97,6 +97,14 @@ class GANDIVA_EXPORT LLVMGenerator {
                  const ArrayDataVector& output_vector) const;
 
   SelectionVector::Mode selection_vector_mode() { return selection_vector_mode_; }
+
+  /// \brief Atomically adopt the JIT function pointers from another generator built from
+  /// the same expressions (same order). Used to hot-swap a higher-optimization build
+  /// (produced on a background thread) into a running projector. The source generator
+  /// must stay alive as long as this one is used: the adopted pointers reference its JIT
+  /// memory.
+  void AdoptJITFunctions(const LLVMGenerator& optimized);
+
   LLVMTypes* types() { return engine_->types(); }
   llvm::Module* module() { return engine_->module(); }
   const std::string& ir() { return engine_->ir(); }
